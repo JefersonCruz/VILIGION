@@ -1,0 +1,18 @@
+# Dependências e build
+node_modules/
+dist/
+build/
+
+# Segredos - NUNCA commitar
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+user-thresholds.json
+
+# Logs e temporários
+*.log
+.DS_Store
+coverage/

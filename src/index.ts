@@ -1,0 +1,100 @@
+/**
+ * Ponto de entrada: conecta motor de detecção (Tempo) → regras → disparo de
+ * alerta por ligação → confirmação de PIN via webhook. Caminho crítico
+ * ponta a ponta, pensado pra testar e demonstrar antes de existir qualquer UI.
+ *
+ * ⚠️ Antes de rodar contra a rede de verdade: confirme TEMPO_RECEIVE_POLICY_GUARD_ADDRESS
+ * e o ABI em tempo.adapter.ts contra https://tempo.xyz/developers/docs/protocol/tip403/spec
+ */
+
+import "dotenv/config";
+import type { Address } from "viem";
+import { RECEIVE_POLICY_GUARD_ADDRESS, TempoAdapter } from "./engine/chains/tempo.adapter.js";
+import type { UserThresholds } from "./engine/rules/detection-rules.js";
+import { Monitor } from "./monitor.js";
+import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
+import { generatePin, type PendingPin } from "./alerts/pin.js";
+import { createWebhookServer, type PinStore } from "./webhook-server.js";
+import { randomUUID } from "node:crypto";
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Variável de ambiente obrigatória ausente: ${name}`);
+  return value;
+}
+
+async function main() {
+  const tempoAdapter = new TempoAdapter({
+    rpcUrl: requireEnv("TEMPO_RPC_URL"),
+    chainId: Number(requireEnv("TEMPO_CHAIN_ID")),
+    minConfirmations: 3,
+    // Endereço de sistema confirmado na doc oficial - permite override por
+    // env caso a doc publique um endereço diferente futuramente.
+    receivePolicyGuardAddress:
+      (process.env.TEMPO_RECEIVE_POLICY_GUARD_ADDRESS as Address | undefined) ??
+      RECEIVE_POLICY_GUARD_ADDRESS,
+  });
+
+  const voiceClient = createTwilioVoiceClient({
+    accountSid: requireEnv("TWILIO_ACCOUNT_SID"),
+    authToken: requireEnv("TWILIO_AUTH_TOKEN"),
+    fromNumber: requireEnv("TWILIO_VOICE_NUMBER"),
+    gatherActionUrl: `${requireEnv("PUBLIC_BASE_URL")}/webhooks/twilio/gather`,
+  });
+
+  const pinStore: PinStore = new Map();
+
+  // TODO produção: trocar pela leitura real de user_thresholds (ver mapping-schema.sql)
+  // e pela lista real de destinatários cadastrados via PhoneMappingService.
+  const thresholds: UserThresholds = {
+    userId: "demo-user",
+    maxBalanceDropPct: 20,
+    windowMinutes: 10,
+    blockedTransferAlertThreshold: 1_000_000n,
+  };
+  const alertRecipients = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
+
+  const monitor = new Monitor(
+    tempoAdapter,
+    {
+      address: requireEnv("DEMO_WATCHED_ADDRESS") as Address,
+      thresholds,
+      pollIntervalMs: 15_000,
+    },
+    async (event) => {
+      const alertId = randomUUID();
+      const pending: PendingPin = generatePin(alertId);
+      pinStore.set(alertId, pending);
+
+      console.log(`[alerta] disparando ${event.kind} (alertId=${alertId})`);
+
+      // Demo manda o PIN por log - em produção isto vai por WhatsApp/SMS
+      // separado do canal de voz, nunca junto da mesma ligação.
+      console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
+
+      await voiceClient.placeAlertCall({ toNumbers: alertRecipients, event, alertId });
+    },
+  );
+
+  const webhookServer = createWebhookServer(
+    {
+      port: Number(process.env.PORT ?? 3000),
+      authToken: requireEnv("TWILIO_AUTH_TOKEN"),
+      publicBaseUrl: requireEnv("PUBLIC_BASE_URL"),
+    },
+    pinStore,
+    (alertId, result) => {
+      console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
+    },
+  );
+
+  const port = Number(process.env.PORT ?? 3000);
+  webhookServer.listen(port, () => console.log(`[webhook] escutando na porta ${port}`));
+
+  await monitor.start();
+}
+
+main().catch((err) => {
+  console.error("[fatal]", err);
+  process.exit(1);
+});
