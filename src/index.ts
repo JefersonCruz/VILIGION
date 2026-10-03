@@ -24,6 +24,12 @@ import { Monitor } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
 import { createWebhookServer, type PinStore } from "./webhook-server.js";
+import { createDashboardServer } from "./dashboard/server.js";
+import {
+  InMemoryAccountDetailsRepository,
+  InMemoryAlertLog,
+  InMemoryUserRepository,
+} from "./dashboard/in-memory-repositories.js";
 import { randomUUID } from "node:crypto";
 
 function requireEnv(name: string): string {
@@ -42,6 +48,7 @@ async function main() {
     blockedTransferAlertThreshold: 1_000_000n,
   };
   const alertRecipients = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
+  const watchedAddress = requireEnv("DEMO_WATCHED_ADDRESS") as Address;
 
   const voiceClient = createTwilioVoiceClient({
     accountSid: requireEnv("TWILIO_ACCOUNT_SID"),
@@ -51,11 +58,13 @@ async function main() {
   });
 
   const pinStore: PinStore = new Map();
+  const alertLog = new InMemoryAlertLog();
 
   const dispatchAlert = async (event: DetectionEvent) => {
     const alertId = randomUUID();
     const pending: PendingPin = generatePin(alertId);
     pinStore.set(alertId, pending);
+    alertLog.record(event.kind);
 
     console.log(`[alerta] disparando ${event.kind} (alertId=${alertId})`);
 
@@ -79,7 +88,7 @@ async function main() {
   const tempoMonitor = new Monitor(
     tempoAdapter,
     {
-      address: requireEnv("DEMO_WATCHED_ADDRESS") as Address,
+      address: watchedAddress,
       thresholds,
       pollIntervalMs: 15_000,
     },
@@ -129,6 +138,30 @@ async function main() {
 
   const port = Number(process.env.PORT ?? 3000);
   webhookServer.listen(port, () => console.log(`[webhook] escutando na porta ${port}`));
+
+  // --- Painel (Dia 8): único lugar onde saldo/endereço completo aparece ---
+  const users = new InMemoryUserRepository();
+  const accounts = new InMemoryAccountDetailsRepository(
+    watchedAddress,
+    alertLog,
+    async () => (await tempoAdapter.getBalance(watchedAddress)).raw,
+  );
+
+  const demoUsername = process.env.DEMO_DASHBOARD_USERNAME ?? "demo";
+  const demoCredentials = users.createDemoUser(demoUsername);
+  // Impresso uma única vez, no startup - nunca persistido em log/arquivo.
+  // Produção: fluxo de cadastro real, nunca usuário gerado automaticamente.
+  console.log("\n=== Credenciais de demo do painel (válidas só nesta execução) ===");
+  console.log(`Usuário: ${demoCredentials.username}`);
+  console.log(`Senha: ${demoCredentials.password}`);
+  console.log(`Configure o TOTP no autenticador com: ${demoCredentials.otpAuthUri}`);
+  console.log("===================================================================\n");
+
+  const dashboardServer = createDashboardServer(users, accounts);
+  const dashboardPort = Number(process.env.DASHBOARD_PORT ?? port + 1);
+  dashboardServer.listen(dashboardPort, () =>
+    console.log(`[painel] escutando na porta ${dashboardPort}`),
+  );
 
   await Promise.all(monitors);
 }
