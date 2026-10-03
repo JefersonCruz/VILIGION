@@ -4,7 +4,8 @@
 
 ## 0. Onde estamos de fato (sem otimismo nem pessimismo)
 
-- **Produto**: núcleo técnico completo e testado (63 testes, CI verde) — motor de detecção, decodificação TIP-403/`ReceivePolicyGuard` via `ox/tempo`, privacidade (criptografia, prova de propriedade, PIN de uso único), painel (API) com MFA.
+- **Produto**: núcleo técnico completo e testado (70 testes, CI verde) — motor de detecção, decodificação TIP-403/`ReceivePolicyGuard` via `ox/tempo`, privacidade (criptografia, prova de propriedade, PIN de uso único), painel (API) com MFA.
+- **Persistência Postgres real, testada, ainda não ligada em endpoint HTTP** — repositórios prontos (`db/postgres-repositories.ts`) pra `phone_mappings`, `monitored_accounts` (qualquer chain EVM-compatível + qualquer token, por decisão consciente de escopo — ver `ARCHITECTURE.md`) e `alert_log`, com `npm run migrate` aplicando o schema. Decisão registrada: não construir os endpoints (cadastro, escolha de conta, bootstrap dinâmico do monitor) antes do prazo — é mais um bloco do mesmo tamanho, e o que falta agora é vídeo/submissão, não mais infraestrutura.
 - **Alerta por severidade**: crítico vai por ligação (Twilio), normal vai por e-mail (SMTP) — ambos os canais opcionais em runtime, Twilio pode ficar configurado só mais perto da demo.
 - **Validado contra a rede real** (não só simulação): RPC, endereço do `ReceivePolicyGuard` e decode de `TransferBlocked` confirmados contra a testnet Moderato com eventos reais (`scripts/verify-testnet.ts`). Um bug real de leitura de saldo (nativo vs. TIP-20) foi encontrado e corrigido nesse processo.
 - **Open-source**: repositório público, MIT, CI, CODEOWNERS, templates de issue, histórico de commits limpo (sem segredo vazado).
