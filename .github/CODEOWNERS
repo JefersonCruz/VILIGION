@@ -1,0 +1,11 @@
+# Zona sensível (ver CONTRIBUTING.md e SECURITY.md) — qualquer PR que toque
+# estes caminhos exige revisão de um dos donos listados aqui, além da
+# aprovação geral exigida pela proteção de branch.
+#
+# Adicione os GitHub handles do time conforme entrarem no projeto, ex:
+# /src/privacy/ @JefersonCruz @usuario-do-time
+
+/src/privacy/   @JefersonCruz
+/src/alerts/    @JefersonCruz
+/src/dashboard/ @JefersonCruz
+/SECURITY.md    @JefersonCruz
