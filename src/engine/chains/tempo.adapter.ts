@@ -16,21 +16,25 @@
  *    transações revertidas: precisa decodificar o evento específico do
  *    contrato Guard.
  *
+ * Decodificação do recibo (bytes opacos do campo `receipt`, o witness
+ * `ClaimReceiptV1` da TIP-1028) via `ox/tempo` (ReceivePolicyReceipt) — pacote
+ * oficial do ecossistema viem/ox com suporte dedicado à Tempo, já instalado
+ * como dependência transitiva do viem. Não reinventamos esse decode: antes
+ * este arquivo tratava `receipt` como bytes opacos (TODO não implementado);
+ * `ox` decodifica o witness inteiro (motivo do bloqueio, tipo de operação,
+ * memo, autoridade de recuperação) com uma chamada.
+ *
  * Fontes oficiais consultadas e confirmadas em 2026-10-01:
  * - https://tempo.xyz/developers/docs/protocol/tip403/receive-policies (ABI do evento, citado literalmente abaixo)
  * - https://tempo.xyz/developers/docs/guide/payments/configure-receive-policies (endereço do contrato, comportamento)
  * - https://tempo.xyz/developers/docs/protocol/tip403/spec (interface ITIP403Registry - política em si, não o guard)
  * - https://tempo.xyz/developers/docs/protocol/tip20/overview
  * - https://tempo.xyz/developers/docs/quickstart/connection-details (RPC/chain ID reais)
- *
- * ⚠️ Confirmado via leitura da documentação oficial, mas NÃO verificado
- * contra o bytecode/source do contrato deployado. Antes de produção, valide
- * contra a implementação real (ou aguarde a spec completa em https://tips.sh/1028,
- * que a própria doc da Tempo cita como fonte de assinaturas de função —
- * claim(...) e burnBlockedReceipt(...) ainda não têm assinatura exata confirmada).
+ * - https://docs.tempo.xyz/protocol/tips/tip-1028 (layout do ClaimReceiptV1, decodificado via ox/tempo)
  */
 
 import { type Address, type Log, decodeEventLog, parseAbi } from "viem";
+import { ReceivePolicyReceipt } from "ox/tempo";
 import { EvmAdapter, type EvmAdapterConfig } from "./evm-adapter.js";
 
 /**
@@ -57,6 +61,8 @@ export interface TransferBlockedEvent {
   amount: bigint;
   receiptVersion: number;
   receipt: `0x${string}`;
+  /** Witness ClaimReceiptV1 decodificado (TIP-1028) via ox/tempo — motivo do bloqueio, tipo de operação, memo. */
+  receiptDecoded: ReceivePolicyReceipt.Decoded;
   blockNumber: bigint;
   transactionHash: `0x${string}`;
 }
@@ -120,6 +126,7 @@ export class TempoAdapter extends EvmAdapter {
 
       return {
         ...args,
+        receiptDecoded: ReceivePolicyReceipt.decode(args.receipt),
         blockNumber: log.blockNumber ?? 0n,
         transactionHash: log.transactionHash ?? "0x",
       };

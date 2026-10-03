@@ -25,13 +25,26 @@ const thresholds: UserThresholds = {
 };
 
 function makeEvent(amount: bigint): TransferBlockedEvent {
+  const addr = "0x0000000000000000000000000000000000dEaD" as Address;
   return {
-    token: "0x0000000000000000000000000000000000dEaD" as Address,
-    receiver: "0x0000000000000000000000000000000000dEaD" as Address,
+    token: addr,
+    receiver: addr,
     blockedNonce: 1n,
     amount,
     receiptVersion: 1,
     receipt: "0x00",
+    receiptDecoded: {
+      version: 1,
+      token: addr,
+      recoveryAuthority: addr,
+      originator: addr,
+      recipient: addr,
+      blockedAt: 0n,
+      blockedNonce: 1n,
+      blockedReason: "receivePolicy",
+      kind: "transfer",
+      memo: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    },
     blockNumber: 1n,
     transactionHash: "0x00",
   };
