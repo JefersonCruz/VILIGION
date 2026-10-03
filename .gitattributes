@@ -1,0 +1,14 @@
+# Força o Git a tratar estes tipos como binário - sem isso, core.autocrlf
+# pode reescrever final de linha dentro do arquivo e corromper a estrutura
+# interna (PDF depende de posição exata de byte no xref table).
+*.pdf binary
+*.png -text
+*.jpg -text
+*.jpeg -text
+*.gif -text
+*.ico -text
+*.woff -text
+*.woff2 -text
+*.ttf -text
+*.mp4 -text
+*.mov -text
