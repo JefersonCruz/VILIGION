@@ -58,6 +58,17 @@ Se implementado no futuro, como canal **redundante adicional** (reforça a mitig
 - PWA com Web Push API, não app nativo — loja de app (App Store/Play Store) não é viável pra timeline de hackathon nem pra manter paridade de deploy rápido depois.
 - Ressalva técnica real: push em PWA no iOS só funciona a partir do iOS 16.4+, e exige que o usuário tenha feito "Adicionar à Tela de Início" manualmente antes — taxa de adoção desse passo tende a ser baixa, então não deve virar o canal primário mesmo no futuro.
 
+### Sub-ideia avaliada: som e vibração distintos por tipo de alerta (estilo "nudge" do MSN)
+
+Avaliamos (2026-10-03) dar ao usuário um som/vibração característico por tipo de evento (`kind` × `severity`), pra reconhecer o que aconteceu sem nem olhar a tela. Vale implementar, mas só como parte do painel **aberto em foco**, não como notificação de sistema em segundo plano — duas limitações reais de plataforma:
+
+- `navigator.vibrate()` não existe no iOS Safari (nunca foi implementado pela Apple) — funciona só em Android.
+- Som customizado por categoria **não é suportado por nenhum navegador** em push notification de sistema (Chrome/Firefox/Safari sempre usam o som padrão do SO) — só funciona como JS comum tocando áudio, o que exige a aba já aberta e em foco.
+
+Pré-requisito que ainda não existe: o `dashboard/server.ts` hoje é só API JSON (`/login`, `/details`) — não há página HTML nem canal de push em tempo real (SSE/WebSocket) do `dispatchAlert` até o navegador. Implementar o nudge exige construir essas duas peças primeiro, não é só adicionar arquivos de som. Escopo real: endpoint SSE streando eventos + página mínima do painel assinando esse canal + 2-4 sons distintos (crítico vs. normal, opcionalmente por `kind` também).
+
+Decisão: tratar como item de roadmap pós-hackathon junto com o push via PWA, não construir antes do prazo de submissão — prioridade agora é validar contra a rede real, gravar os vídeos e completar a submissão.
+
 ## Limitações conhecidas (documentadas por honestidade, não escondidas)
 
 - Limiares calibrados em testnet (Moderato) não necessariamente generalizam para mainnet — comportamento de saldo em testnet é mais ruidoso (faucets, scripts de teste).

@@ -4,12 +4,15 @@
 
 ## 0. Onde estamos de fato (sem otimismo nem pessimismo)
 
-- **Produto**: núcleo técnico completo e testado (55 testes, CI verde) — motor de detecção, decodificação TIP-403/`ReceivePolicyGuard` via `ox/tempo`, alerta por Twilio Voice, privacidade (criptografia, prova de propriedade, PIN de uso único), painel com MFA.
+- **Produto**: núcleo técnico completo e testado (63 testes, CI verde) — motor de detecção, decodificação TIP-403/`ReceivePolicyGuard` via `ox/tempo`, privacidade (criptografia, prova de propriedade, PIN de uso único), painel (API) com MFA.
+- **Alerta por severidade**: crítico vai por ligação (Twilio), normal vai por e-mail (SMTP) — ambos os canais opcionais em runtime, Twilio pode ficar configurado só mais perto da demo.
+- **Validado contra a rede real** (não só simulação): RPC, endereço do `ReceivePolicyGuard` e decode de `TransferBlocked` confirmados contra a testnet Moderato com eventos reais (`scripts/verify-testnet.ts`). Um bug real de leitura de saldo (nativo vs. TIP-20) foi encontrado e corrigido nesse processo.
 - **Open-source**: repositório público, MIT, CI, CODEOWNERS, templates de issue, histórico de commits limpo (sem segredo vazado).
 - **Equipe**: founder solo. Sem cofounder, sem colaboradores externos no momento.
-- **Maior risco técnico em aberto**: nunca testado contra a rede real da Tempo (mainnet ou testnet Moderato) — só validado em simulação/teste unitário.
+- **Maior risco em aberto agora**: fluxo de ponta a ponta com Twilio de verdade ainda não testado (falta conta Twilio configurada); vídeos não gravados; submissão ainda não criada no portal.
 - **Pitch**: já corrigido de uma claim de "ineditismo" que não se sustentava (ver histórico desta investigação) — posicionamento agora é honesto sobre concorrência (Hexagate, Elliptic, TRM, Cryptocurrency Alerting).
 - **Mercado**: a chain Tempo tem ~7 meses de existência (mainnet 18/03/2026). Não validamos ainda quantos negócios reais mantêm tesouraria TIP-20 nela hoje.
+- **Roadmap registrado, não construído ainda**: canal de push via PWA e nudge (som/vibração distintos por tipo de alerta) — ver `ARCHITECTURE.md`. Avaliado e adiado conscientemente pra depois do prazo de submissão.
 
 ## 1. Modelo de negócio
 
