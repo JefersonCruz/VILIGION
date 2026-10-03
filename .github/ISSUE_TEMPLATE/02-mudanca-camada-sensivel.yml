@@ -1,0 +1,54 @@
+name: "🔐 Mudança — Camada sensível (privacy/alerts/dashboard)"
+description: Proposta de mudança em autenticação, criptografia, conteúdo de alerta ou qualquer coisa em /privacy, /alerts ou /dashboard.
+title: "[sensível] "
+labels:
+  - zona-2-sensivel
+  - precisa-2-revisoes
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Este template é para a **Zona 2** do projeto (`/privacy`, `/alerts`, `/dashboard`). Por regra do [`CONTRIBUTING.md`](../../CONTRIBUTING.md), qualquer mudança aqui exige entender o modelo de ameaça em [`SECURITY.md`](../../SECURITY.md) **antes** de abrir a issue ou o PR, e todo PR nesta zona precisa de **pelo menos 2 revisões** antes de merge.
+
+        Se o que você quer reportar já é uma falha explorável (não uma proposta de mudança), **não abra issue aqui** — use o link de Security Advisory na lista de templates.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afetada
+      options:
+        - privacy/ (criptografia, prova de propriedade)
+        - alerts/ (Twilio, PIN, webhook)
+        - dashboard/ (MFA, sessão, rate-limiting)
+        - Mais de uma área
+    validations:
+      required: true
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que você quer mudar e por quê
+    validations:
+      required: true
+
+  - type: textarea
+    id: mitigacoes
+    attributes:
+      label: Como esta mudança preserva (ou melhora) cada item relevante da tabela de mitigação do SECURITY.md
+      description: Obrigatório — se a mudança não toca nenhuma mitigação da tabela, explique por quê.
+      placeholder: |
+        Ex: esta mudança não altera o conteúdo do alerta de voz, então a mitigação "conteúdo do alerta nunca revela saldo/endereço" continua intacta.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Li o SECURITY.md inteiro, incluindo a tabela de modelo de ameaça
+          required: true
+        - label: Confirmo que isto é uma proposta de mudança, não o relato de uma falha já explorável (se for falha, vou usar o Security Advisory)
+          required: true
+        - label: Sei que o PR correspondente vai precisar de pelo menos 2 aprovações antes de merge
+          required: true

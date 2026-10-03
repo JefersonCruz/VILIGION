@@ -1,0 +1,72 @@
+name: "🐛 Bug — Camada aberta (engine/chains/rules)"
+description: Bug no motor de detecção, adaptador de chain ou regras — a parte do repositório aberta a qualquer contribuidor do ecossistema Tempo.
+title: "[engine] "
+labels:
+  - bug
+  - zona-1-engine
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Este template é para a **Zona 1** do projeto (`/engine`): motor de detecção, adaptadores de chain (Tempo, EVM genérico) e regras de detecção. Essa parte é aberta por design — ver [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+
+        Se o que você encontrou é uma **falha de segurança ou privacidade** (ex: algo que poderia vazar saldo/endereço, ou contornar uma mitigação do `SECURITY.md`), **não abra issue aqui** — use o link de Security Advisory na lista de templates.
+
+  - type: dropdown
+    id: modulo
+    attributes:
+      label: Módulo afetado
+      options:
+        - engine/chains/evm-adapter.ts (genérico EVM)
+        - engine/chains/tempo.adapter.ts (específico Tempo)
+        - engine/chains/tempo-extension.ts
+        - engine/rules/detection-rules.ts
+        - Outro (descrever abaixo)
+    validations:
+      required: true
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que está acontecendo
+      description: Descreva o comportamento incorreto.
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Comportamento esperado
+      description: O que deveria acontecer em vez disso.
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Configurar TEMPO_RPC_URL com...
+        2. Rodar...
+        3. Observar...
+    validations:
+      required: false
+
+  - type: input
+    id: ambiente
+    attributes:
+      label: Rede/ambiente
+      description: Testnet Moderato, mainnet Tempo, ou simulado em teste local?
+      placeholder: "ex: testnet Moderato"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Confirmo que isto não é uma vulnerabilidade de segurança ou privacidade (se for, vou usar o Security Advisory em vez desta issue)
+          required: true
+        - label: Li o [`CONTRIBUTING.md`](../../CONTRIBUTING.md)
+          required: true

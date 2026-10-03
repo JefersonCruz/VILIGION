@@ -1,0 +1,50 @@
+name: "✨ Proposta de feature ou melhoria"
+description: Sugerir algo novo — funcionalidade, chain adicional, melhoria de documentação, etc.
+title: "[proposta] "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: zona
+    attributes:
+      label: Qual zona do projeto isso afeta?
+      description: Ver CONTRIBUTING.md para a divisão entre as duas zonas.
+      options:
+        - "Zona 1 — engine/chains/rules (aberta)"
+        - "Zona 2 — privacy/alerts/dashboard (sensível, precisa SECURITY.md)"
+        - Documentação (README, ARCHITECTURE, etc.)
+        - Infraestrutura/CI/build
+        - Não tenho certeza
+    validations:
+      required: true
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema isso resolve
+      description: Qual limitação atual ou oportunidade motiva esta proposta.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposta
+    attributes:
+      label: O que você propõe
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+      description: Opcional — outras formas de resolver o mesmo problema que você descartou e por quê.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Verifiquei que não existe issue parecida já aberta
+          required: true
