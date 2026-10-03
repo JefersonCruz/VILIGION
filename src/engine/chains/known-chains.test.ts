@@ -29,7 +29,11 @@ describe("known-chains", () => {
     expect(resolved).toBe("https://mainnet.base.org");
   });
 
-  it("resolveRpcUrl lança erro quando a chain não tem RPC público nem override (caso da Tempo)", () => {
-    expect(() => resolveRpcUrl("tempo", undefined)).toThrow(/Nenhum RPC configurado/);
+  it("resolveRpcUrl resolve o RPC público oficial da Tempo mainnet (confirmado contra a rede real)", () => {
+    expect(resolveRpcUrl("tempo", undefined)).toBe("https://rpc.tempo.xyz");
+  });
+
+  it("resolveRpcUrl lança erro quando a chain não tem RPC público nem override", () => {
+    expect(() => resolveRpcUrl("chain-que-nao-existe", undefined)).toThrow(/desconhecida/);
   });
 });

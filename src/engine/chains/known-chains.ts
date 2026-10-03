@@ -28,8 +28,11 @@ export const KNOWN_CHAINS: Record<string, KnownChainConfig> = {
   tempo: {
     id: "tempo",
     name: "Tempo",
-    chainId: 0, // TODO: confirmar o chain ID real em connection-details antes de produção
-    defaultPublicRpcUrl: "", // sem RPC público estável conhecido ainda - exigir via env
+    // Mainnet. Confirmado contra o RPC real em 2026-10-03 (ver scripts/verify-testnet.ts)
+    // e batendo com a definição oficial em viem/chains (tempo/tempoMainnet).
+    // Testnet Moderato, pra desenvolvimento: chainId 42431, RPC https://rpc.moderato.tempo.xyz
+    chainId: 4217,
+    defaultPublicRpcUrl: "https://rpc.tempo.xyz",
     hackathonTrack: "Tempo ($100.000 / 10 vagas)",
     hasTempoStyleExtensions: true,
   },

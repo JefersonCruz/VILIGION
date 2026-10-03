@@ -15,6 +15,7 @@
 
 import "dotenv/config";
 import type { Address } from "viem";
+import { Addresses } from "viem/tempo";
 import { RECEIVE_POLICY_GUARD_ADDRESS, TempoAdapter } from "./engine/chains/tempo.adapter.js";
 import { TempoBlockedTransferExtension } from "./engine/chains/tempo-extension.js";
 import { EvmAdapter } from "./engine/chains/evm-adapter.js";
@@ -83,6 +84,12 @@ async function main() {
     receivePolicyGuardAddress:
       (process.env.TEMPO_RECEIVE_POLICY_GUARD_ADDRESS as Address | undefined) ??
       RECEIVE_POLICY_GUARD_ADDRESS,
+    // Tempo não tem gas token nativo - eth_getBalance NÃO é o saldo da
+    // tesouraria (confirmado contra a rede real, ver scripts/verify-testnet.ts).
+    // Lê via balanceOf do token TIP-20 configurado em vez do saldo nativo.
+    tokenAddress:
+      (process.env.TEMPO_WATCHED_TOKEN_ADDRESS as Address | undefined) ??
+      (Addresses.pathUsd as Address),
   });
 
   const tempoMonitor = new Monitor(

@@ -13,6 +13,7 @@ import {
   type Log,
   createPublicClient,
   http,
+  parseAbi,
 } from "viem";
 
 export interface BalanceSnapshot {
@@ -24,6 +25,10 @@ export interface BalanceSnapshot {
   observedAt: Date;
 }
 
+const ERC20_BALANCE_OF_ABI = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
 export interface EvmAdapterConfig {
   rpcUrl: string;
   chainId: number;
@@ -33,6 +38,17 @@ export interface EvmAdapterConfig {
    * agente de segurança em SECURITY.md.
    */
   minConfirmations: number;
+  /**
+   * Endereço do contrato do token a monitorar (TIP-20/ERC-20), via
+   * `balanceOf`. Quando ausente, `getBalance` lê o saldo NATIVO da chain
+   * (`eth_getBalance`) — correto só em chains que têm moeda nativa de
+   * verdade (Base, Arbitrum, Ethereum L1). Na Tempo, que não tem gas token
+   * nativo, `eth_getBalance` NÃO reflete o saldo da tesouraria: confirmado
+   * empiricamente contra a testnet Moderato (ver scripts/verify-testnet.ts)
+   * — retorna um valor sem relação com saldo TIP-20 real. Pra Tempo, este
+   * campo é obrigatório na prática.
+   */
+  tokenAddress?: Address;
 }
 
 /**
@@ -50,10 +66,22 @@ export class EvmAdapter {
     }) as PublicClient;
   }
 
-  /** Lê o saldo nativo do endereço. Para tokens TIP-20/ERC-20, ver o adaptador específico. */
+  /**
+   * Lê o saldo do endereço: via `balanceOf` do token configurado
+   * (`config.tokenAddress`) quando presente, ou saldo nativo (`eth_getBalance`)
+   * caso contrário. Ver nota em `EvmAdapterConfig.tokenAddress` sobre por que
+   * isso importa na Tempo.
+   */
   async getBalance(address: Address): Promise<BalanceSnapshot> {
     const [raw, blockNumber] = await Promise.all([
-      this.client.getBalance({ address }),
+      this.config.tokenAddress
+        ? this.client.readContract({
+            address: this.config.tokenAddress,
+            abi: ERC20_BALANCE_OF_ABI,
+            functionName: "balanceOf",
+            args: [address],
+          })
+        : this.client.getBalance({ address }),
       this.client.getBlockNumber(),
     ]);
 
