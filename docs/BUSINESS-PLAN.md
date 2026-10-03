@@ -34,7 +34,7 @@ Três modelos compatíveis entre si, em ordem de prioridade de implementação:
 
 1. **SaaS por endereço monitorado** — preço mensal por tesouraria vigiada. Modelo principal.
 2. **Freemium → upsell de canal de alerta** — alerta por e-mail grátis; ligação telefônica e múltiplos destinatários (a parte que tem custo real e é o diferencial) no plano pago.
-3. **Cobrança on-chain via TIP-20** (diferenciador de pitch, não essencial no dia 1) — usando o Machine Payments Protocol nativo da Tempo para cobrar a assinatura diretamente da tesouraria monitorada.
+3. **Cobrança on-chain via TIP-20** (diferenciador de pitch, não essencial no dia 1) — usando o Machine Payments Protocol nativo da Tempo para cobrar a assinatura diretamente da tesouraria monitorada. Escopo deliberado: **só a stablecoin TIP-20 nativa da Tempo, não "qualquer cripto"** — o cliente já segura esse token (é o que o produto monitora), então cobrar nele é fricção zero e reforça a especificidade técnica na Tempo. Aceitar múltiplas criptos exigiria gateway de pagamento de terceiro (custo por transação, mais uma dependência externa) e um tesouro próprio em ativos variados pra gerenciar/converter — resolve um problema que este cliente específico não tem, mesmo padrão de risco já descartado pra "monitorar qualquer carteira/chain/exchange" (ver seção 1.2 e `ARCHITECTURE.md`).
 
 ### 1.4 Estrutura de custo (validada com preços reais de mercado)
 | Item | Custo |
