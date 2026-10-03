@@ -1,52 +1,52 @@
 # VILIGION
 
-> Monitoramento de tesouraria on-chain para a blockchain Tempo, com alerta por ligação telefônica quando o dono não está olhando um dashboard — e proteção de privacidade desenhada contra ataques físicos ("wrench attacks").
+> On-chain treasury monitoring for the Tempo blockchain, with phone-call alerting for when the owner isn't watching a dashboard — and privacy protection designed against physical attacks ("wrench attacks").
 
-Construído para o hackathon **Crypto World's Fair** (Colosseum), track **Tempo**.
+Built for the **Crypto World's Fair** hackathon (Colosseum), **Tempo** track.
 
-## O problema
+## The problem
 
-Donos de negócio que recebem/mantêm stablecoin em tesourarias on-chain na Tempo não têm uma forma de saber, em tempo real, quando algo sai do padrão — queda brusca de saldo, transferência bloqueada por política de recebimento, atividade fora do histórico — a menos que estejam olhando um dashboard o dia inteiro. Ferramentas de monitoramento existentes (Hexagate, Elliptic, TRM Labs, Blockaid) são construídas para times de segurança institucionais, não para o dono de uma PME sem esse time.
+Business owners who receive/hold stablecoin in on-chain treasuries on Tempo have no way to know, in real time, when something falls outside the norm — a sudden balance drop, a transfer blocked by a receive policy, out-of-pattern activity — unless they're watching a dashboard all day. Existing monitoring tools (Hexagate, Elliptic, TRM Labs, Blockaid) are built for institutional security teams, not for an SMB owner without one.
 
-Ao mesmo tempo, vincular um número de telefone a um saldo on-chain cria um risco real e documentado: ataques físicos ligados à posse de cripto ("wrench attacks") cresceram mais de 33% ano a ano em 2026 (CertiK), com mais de US$30M roubados só no primeiro semestre (Chainalysis).
+At the same time, linking a phone number to an on-chain balance creates a real, documented risk: physical attacks tied to crypto ownership ("wrench attacks") grew more than 33% year-over-year in 2026 (CertiK), with more than $30M stolen in the first half alone (Chainalysis).
 
-## O que este projeto faz
+## What this project does
 
-1. **Monitora** endereços TIP-20 na Tempo (saldo, eventos de `ReceivePolicyGuard`/TIP-403, padrão de transferência) via RPC direto (Viem) como fonte primária.
-2. **Detecta** anomalias com limiares configuráveis por usuário (privados, não hardcoded).
-3. **Alerta** por dois canais, escolhidos por severidade: anomalia crítica vai por **ligação telefônica real** (Twilio Programmable Voice); anomalia normal vai por **e-mail** (sem custo por mensagem, sem o problema de retenção de registro de chamada na operadora — ver `SECURITY.md`). Conteúdo **sempre genérico** nos dois canais — nunca revela saldo ou endereço.
-4. **Protege a identidade do dono**: número de telefone virtual dedicado (nunca o pessoal), vínculo telefone↔endereço armazenado criptografado via KMS gerenciado, prova de propriedade do endereço exigida no cadastro (assinatura EIP-191).
-5. Detalhes completos (saldo real, histórico) só ficam visíveis após autenticação no painel — nunca pelo canal de alerta.
+1. **Monitors** TIP-20 addresses on Tempo (balance, `ReceivePolicyGuard`/TIP-403 events, transfer patterns) via direct RPC (Viem) as the primary source.
+2. **Detects** anomalies against per-user configurable thresholds (private, never hardcoded).
+3. **Alerts** through two channels, chosen by severity: a critical anomaly goes out by **real phone call** (Twilio Programmable Voice); a normal anomaly goes out by **email** (no per-message cost, no carrier call-log retention problem — see `SECURITY.md`). Content is **always generic** on both channels — never reveals balance or address.
+4. **Protects the owner's identity**: dedicated virtual phone number (never the owner's personal one), phone↔address link stored encrypted via managed KMS, proof of address ownership required at signup (EIP-191 signature).
+5. Full details (real balance, history) are only visible after dashboard authentication — never through the alert channel.
 
-## O que este projeto **não** faz (por decisão de segurança, não por falta de tempo)
+## What this project **doesn't** do (by security decision, not lack of time)
 
-- Não executa transações a partir de resposta por voz/SMS. Qualquer ação de valor exige login completo + assinatura da própria carteira do usuário.
-- Não é um produto de custódia. Nunca detemos chave privada do usuário.
-- Não substitui ferramentas de segurança institucional (Hexagate, Elliptic, TRM) — é um complemento pensado para quem não tem time de segurança.
+- Doesn't execute transactions from a voice/SMS reply. Any action involving funds requires full login plus the user's own wallet signature.
+- Isn't a custody product. We never hold the user's private key.
+- Doesn't replace institutional security tools (Hexagate, Elliptic, TRM) — it's a complement designed for owners who don't have a security team.
 
-Ver [`SECURITY.md`](./SECURITY.md) para o modelo de ameaça completo.
+See [`SECURITY.md`](./SECURITY.md) for the full threat model.
 
-## Como funciona (visão geral)
+## How it works (overview)
 
 ```
-Motor de Detecção (core EVM + adaptador Tempo)
-        │ evento de anomalia (sem dado sensível)
+Detection Engine (EVM core + Tempo adapter)
+        │ anomaly event (no sensitive data)
         ▼
-Camada de Privacidade (resolve endereço→contato, decide o que pode sair)
-        │ payload genérico
+Privacy Layer (resolves address→contact, decides what can go out)
+        │ generic payload
         ▼
-Camada de Entrega (Twilio Voice)
+Delivery Layer (Twilio Voice)
         │
         ▼
-Painel/Auth (detalhe completo só após login)
+Dashboard/Auth (full detail only after login)
 ```
 
-Detalhe técnico completo em [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+Full technical detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Status
 
-Projeto em construção para o hackathon Crypto World's Fair (submissão até 13/10/2026). Ver [`GOVERNANCE.md`](./GOVERNANCE.md) para como decisões são tomadas nesta fase, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) para o plano de negócio e desenvolvimento por fase, e [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) para o roteiro dos vídeos de submissão.
+Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, and [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script.
 
-## Licença
+## License
 
-MIT — ver [`LICENSE`](./LICENSE).
+MIT — see [`LICENSE`](./LICENSE).

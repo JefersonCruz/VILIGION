@@ -1,31 +1,31 @@
-# Governança
+# Governance
 
-## Fase atual: pré-lançamento (hackathon)
+## Current phase: pre-launch (hackathon)
 
-Este projeto nasceu para o hackathon Crypto World's Fair da Colosseum. Nesta fase, decisões técnicas e de produto são tomadas pela equipe fundadora listada em [`CONTRIBUTING.md`](./CONTRIBUTING.md). Não há processo formal de votação ainda — não faria sentido simular governança que não existe de verdade apenas para parecer maduro.
+This project was born for Colosseum's Crypto World's Fair hackathon. At this stage, technical and product decisions are made by the founding team listed in [`CONTRIBUTING.md`](./CONTRIBUTING.md). There's no formal voting process yet — it wouldn't make sense to simulate governance that doesn't really exist just to look mature.
 
-## Objetivo declarado de evolução
+## Declared evolution goal
 
-Se o projeto continuar após o hackathon (especialmente se o decodificador TIP-403/`ReceivePolicyGuard` for adotado por outros builders do ecossistema Tempo), a intenção é migrar para:
+If the project continues after the hackathon (especially if the TIP-403/`ReceivePolicyGuard` decoder gets adopted by other builders in the Tempo ecosystem), the intent is to migrate to:
 
-1. **Issues e PRs abertos a qualquer contribuidor**, com critérios de aceite documentados em `CONTRIBUTING.md`.
-2. **Decisões técnicas relevantes discutidas publicamente** (GitHub Discussions ou equivalente), não decididas em privado.
-3. Avaliar formalização de um processo de revisão com mais de uma pessoa aprovando mudanças na camada de segurança/privacidade (`/privacy`, `/alerts`), dado o risco elevado dessas áreas.
+1. **Issues and PRs open to any contributor**, with acceptance criteria documented in `CONTRIBUTING.md`.
+2. **Relevant technical decisions discussed publicly** (GitHub Discussions or equivalent), not decided privately.
+3. Evaluate formalizing a review process requiring more than one person to approve changes to the security/privacy layer (`/privacy`, `/alerts`), given the elevated risk of those areas.
 
-## Papéis futuros (quando houver tração pra justificar, ver `docs/BUSINESS-PLAN.md`)
+## Future roles (once there's traction to justify them — see `docs/BUSINESS-PLAN.md`)
 
-Dois papéis identificados a partir de lacunas reais da arquitetura (ver `ARCHITECTURE.md` → "Lacunas de arquitetura"), não genéricos — cada um tem dono de problema concreto:
+Two roles identified from real architecture gaps (see `ARCHITECTURE.md` → "Architecture gaps"), not generic placeholders — each has a concrete problem owner:
 
-**Agente de Pesquisa e Desenvolvimento (P&D)**
-Responsabilidade: manter as premissas do projeto contra a Tempo em dia, formalizando o que foi feito manualmente nesta investigação (confirmar RPC/chain ID, endereço do `ReceivePolicyGuard`, ABI, e a descoberta de que `ox`/`viem/tempo` já cobre partes do protocolo) como processo recorrente, não evento único. A própria Tempo avisa que TIP-403 e a Indexer API "ainda estão evoluindo" — alguém precisa re-verificar isso periodicamente contra a documentação oficial e a rede real (`scripts/verify-testnet.ts` é o ponto de partida natural pra automatizar isso, ex: rodar como job agendado e alertar se algo não bater mais).
+**R&D Agent**
+Responsibility: keep the project's assumptions about Tempo up to date, formalizing as a recurring process what was done manually during this investigation (confirming RPC/chain ID, the `ReceivePolicyGuard` address, the ABI, and the discovery that `ox`/`viem/tempo` already cover parts of the protocol) — not a one-off event. Tempo itself warns that TIP-403 and the Indexer API "are still evolving" — someone needs to periodically re-verify this against the official docs and the real network (`scripts/verify-testnet.ts` is the natural starting point to automate this, e.g. running it as a scheduled job and alerting if something stops matching).
 
-**Cientista de Dados**
-Responsabilidade: calibrar os limiares de detecção com dado real em vez de constante chutada, e resolver a lacuna do `classifyBalanceDelta` (hoje stub, nunca filtra fee de valor real). Como a Tempo não tem gas token nativo, toda transação deduz fee do mesmo saldo monitorado — sem um modelo estatístico real de "qual é o tamanho típico de uma dedução de fee", o sistema não consegue diferenciar ruído operacional de anomalia de verdade. Primeira entrega concreta: coletar histórico de transações de endereços reais na Tempo e definir, com dado, o que é "tamanho de fee" vs. "saída de valor".
+**Data Scientist**
+Responsibility: calibrate detection thresholds with real data instead of a guessed constant, and close the `classifyBalanceDelta` gap (today a stub that never filters out a fee from a real value transfer). Since Tempo has no native gas token, every transaction deducts a fee from the same monitored balance — without a real statistical model of "what's a typical fee-deduction size," the system can't tell operational noise apart from a genuine anomaly. First concrete deliverable: collect transaction history from real addresses on Tempo and define, with data, what counts as "fee-sized" vs. "an actual outflow of value."
 
-## O que não muda independentemente da governança
+## What doesn't change regardless of governance
 
-As regras de `SECURITY.md` (nunca revelar saldo/endereço em alerta, nunca custodiar chave privada, nunca autorizar transação por resposta de voz/SMS) são tratadas como **invariantes do projeto**, não sujeitas a decisão de roadmap — mudar isso exigiria reescrever o modelo de ameaça inteiro, não é uma feature normal.
+The rules in `SECURITY.md` (never reveal balance/address in an alert, never hold a private key, never authorize a transaction from a voice/SMS reply) are treated as **project invariants**, not subject to roadmap decisions — changing these would require rewriting the entire threat model, it isn't a normal feature.
 
-## Licenciamento
+## Licensing
 
-MIT. Qualquer fork ou uso comercial é permitido nos termos da licença; não há obrigação de contribuir de volta, mas é incentivada.
+MIT. Any fork or commercial use is permitted under the license terms; there's no obligation to contribute back, but it's encouraged.

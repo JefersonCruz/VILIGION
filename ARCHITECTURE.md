@@ -1,86 +1,86 @@
-# Arquitetura
+# Architecture
 
-## Princípio de design
+## Design principle
 
-**Núcleo genérico + adaptador por chain**, não um motor "universal". A lógica de detecção de saldo/padrão é compartilhável entre chains EVM (Tempo, Base, Arbitrum, Ethereum L1), mas regras específicas de protocolo — como decodificar eventos do `ReceivePolicyGuard` (TIP-403) da Tempo — **não existem** nas outras chains e vivem isoladas no adaptador.
+**Generic core + per-chain adapter**, not a "universal" engine. Balance/pattern detection logic is shareable across EVM chains (Tempo, Base, Arbitrum, Ethereum L1), but protocol-specific rules — like decoding Tempo's `ReceivePolicyGuard` (TIP-403) events — **don't exist** on other chains and live isolated in the adapter.
 
-## Módulos
+## Modules
 
-### 1. `/engine` — Motor de detecção
-- `chains/evm-adapter.ts` — leitura de saldo/eventos via RPC (Viem), genérico entre chains EVM.
-- `chains/tempo.adapter.ts` — específico da Tempo: decodifica eventos do contrato `ReceivePolicyGuard`; trata o fato de que a Tempo não tem gas token nativo (fee sai do próprio TIP-20, o que exige diferenciar dedução de taxa de saída real de valor).
-- `rules/detection-rules.ts` — lógica de regras **aberta** (ex: "queda percentual", "transferência redirecionada pro Guard"). Os limiares numéricos exatos de cada usuário ficam fora deste arquivo, em configuração privada por usuário.
+### 1. `/engine` — Detection engine
+- `chains/evm-adapter.ts` — balance/event reads via RPC (Viem), generic across EVM chains.
+- `chains/tempo.adapter.ts` — Tempo-specific: decodes `ReceivePolicyGuard` contract events; handles the fact that Tempo has no native gas token (fees come out of the TIP-20 itself, which requires distinguishing a fee deduction from a real outbound transfer of value).
+- `rules/detection-rules.ts` — **open** rule logic (e.g. "percentage drop", "transfer redirected to the Guard"). Each user's exact numeric thresholds stay out of this file, in private per-user configuration.
 
-Fonte da verdade: RPC direto via Viem, não a Indexer API da Tempo (que a própria documentação oficial descreve como "ainda evoluindo"). A Indexer é usada apenas para funcionalidades secundárias do painel (histórico, analytics), nunca no caminho crítico do alerta.
+Source of truth: direct RPC via Viem, not Tempo's Indexer API (which the official docs themselves describe as "still evolving"). The Indexer is only used for secondary dashboard features (history, analytics), never on the alert's critical path.
 
-Proteção contra reorg: alerta só dispara após profundidade mínima de confirmação.
+Reorg protection: an alert only fires after a minimum confirmation depth.
 
-### 2. `/privacy` — Camada de privacidade
-- `encryption.ts` — método de criptografia do vínculo telefone↔endereço (AES), documentado publicamente; a **chave** vive em KMS gerenciado (nunca no mesmo ambiente do banco de dados).
-- `ownership-proof.ts` — exige assinatura (`signMessage`/`recoverAddress` via Viem) no cadastro, provando que quem registra o telefone controla de fato o endereço.
-- `alert-content-policy.ts` — regra rígida: nenhum valor monetário ou endereço sai no conteúdo do alerta por voz/SMS, sob nenhuma circunstância.
+### 2. `/privacy` — Privacy layer
+- `encryption.ts` — encryption method for the phone↔address link (AES), publicly documented; the **key** lives in managed KMS (never in the same environment as the database).
+- `ownership-proof.ts` — requires a signature (`signMessage`/`recoverAddress` via Viem) at signup, proving whoever registers the phone number actually controls the address.
+- `alert-content-policy.ts` — hard rule: no monetary value or address ever goes out in voice/SMS alert content, under any circumstance.
 
-### 3. `/alerts` — Camada de entrega
-Dois canais, escolhidos por **severidade** (`DetectionEvent.severity`, decidida em `detection-rules.ts` a partir de um segundo limiar "crítico" por tipo de evento) — não toda anomalia justifica o custo e a exposição de uma ligação:
+### 3. `/alerts` — Delivery layer
+Two channels, chosen by **severity** (`DetectionEvent.severity`, decided in `detection-rules.ts` from a second, per-event-type "critical" threshold) — not every anomaly justifies the cost and exposure of a phone call:
 
-- `twilio-voice.ts` — severidade **critical**: ligação telefônica real via Twilio Programmable Voice.
-  - `twilio-webhook-validator.ts` — valida o header `X-Twilio-Signature` em todo endpoint que recebe resposta — sem isso, qualquer pessoa que descubra a URL do webhook pode forjar confirmação de PIN.
-  - PIN é de **uso único**, atrelado a um ID de alerta específico, nunca reaproveitável.
-  - Múltiplos destinatários configuráveis (mitiga tanto fadiga de alerta/TDoS quanto o cenário onde um único destinatário é o próprio alvo de coação).
-- `email-notifier.ts` — severidade **normal**: e-mail via SMTP genérico. Sem custo por mensagem, sem o problema de retenção de CDR de operadora (ver `SECURITY.md`). Reusa a mesma política de conteúdo (`alert-content-policy.ts`) — a garantia de "nunca revela saldo/endereço" vale pros dois canais igualmente.
-- Ambos os clientes são **opcionais** em runtime (`index.ts`): sem Twilio/SMTP configurado, o alerta correspondente só loga no console em vez de travar a aplicação — permite rodar o monitor e validar detecção antes de ter conta Twilio.
+- `twilio-voice.ts` — **critical** severity: real phone call via Twilio Programmable Voice.
+  - `twilio-webhook-validator.ts` — validates the `X-Twilio-Signature` header on every endpoint that receives a callback — without this, anyone who discovers the webhook URL could forge a PIN confirmation.
+  - The PIN is **single-use**, tied to a specific alert ID, never reusable.
+  - Multiple configurable recipients (mitigates both alert fatigue/TDoS and the scenario where a single recipient is themselves the target of coercion).
+- `email-notifier.ts` — **normal** severity: email via generic SMTP. No per-message cost, no carrier CDR retention problem (see `SECURITY.md`). Reuses the same content policy (`alert-content-policy.ts`) — the "never reveals balance/address" guarantee applies equally to both channels.
+- Both clients are **optional** at runtime (`index.ts`): without Twilio/SMTP configured, the corresponding alert just logs to the console instead of crashing the app — lets you run the monitor and validate detection before you have a Twilio account.
 
-### 4. `/dashboard` — Painel
-- Login com MFA + rate-limiting (paridade de proteção com a camada de voz — não adianta proteger a ligação e deixar o painel com login simples).
-- Único lugar onde saldo/endereço completo é exibido.
+### 4. `/dashboard` — Dashboard
+- Login with MFA + rate limiting (protection parity with the voice layer — no point protecting the phone call and leaving the dashboard with simple login).
+- The only place where the full balance/address is shown.
 
-## O que é público vs. privado no repositório
+## What's public vs. private in the repository
 
-| Público (neste repo) | Privado (nunca no repo) |
+| Public (in this repo) | Private (never in the repo) |
 |---|---|
-| Lógica de detecção e regras | Limiares numéricos configurados por usuário |
-| Método de criptografia (como funciona) | Chave de criptografia em si |
-| Schema de banco de dados | Dados reais de usuário |
-| Integração Twilio (código) | Credenciais/API keys Twilio |
-| Decodificador de eventos TIP-403/ReceivePolicyGuard | — |
+| Detection and rules logic | Per-user configured numeric thresholds |
+| Encryption method (how it works) | The encryption key itself |
+| Database schema | Real user data |
+| Twilio integration (code) | Twilio credentials/API keys |
+| TIP-403/ReceivePolicyGuard event decoder | — |
 
-## Roadmap: canal de push via PWA (pós-hackathon)
+## Roadmap: PWA push channel (post-hackathon)
 
-Avaliamos substituir a ligação telefônica por um app instalável (PWA) com push notification em background, motivado por reduzir dependência da Twilio. Decisão: **não substituir, só complementar depois**.
+We evaluated replacing the phone call with an installable app (PWA) using background push notifications, motivated by reducing dependency on Twilio. Decision: **don't replace it, only complement it later**.
 
-Por quê:
-- O diferencial validado do produto (ver README.md e a pesquisa de mercado que embasou o pitch) é justamente **não exigir nenhum app instalado** — é isso que diferencia de Hexagate/Elliptic/TRM, que pressupõem usuário técnico engajado com ferramenta própria. Um app PWA reintroduz essa barreira exatamente pro público que o produto tenta servir.
-- Ligação telefônica tem maior taxa de interrupção efetiva que push notification (toca/vibra vs. fica acumulado num badge que a maioria ignora) — para um alerta de segurança urgente, isso importa.
-- O vazamento de dado sensível que motivou a ideia **já está mitigado** pela política de conteúdo genérico (`alert-content-policy.ts`) — a Twilio nunca vê saldo/endereço, só "ligar com frase genérica". Trocar de canal não resolve um problema que já foi resolvido na camada de conteúdo.
-- Push também depende de terceiro (APNs/FCM) — não elimina dependência externa, só troca qual empresa vê metadado da entrega.
+Why:
+- The product's validated differentiator (see README.md and the market research behind the pitch) is precisely **not requiring any installed app** — that's what sets it apart from Hexagate/Elliptic/TRM, which assume a technical user engaged with their own tool. A PWA app reintroduces exactly that barrier for the audience the product tries to serve.
+- A phone call has a higher effective interruption rate than a push notification (rings/vibrates vs. piles up in a badge most people ignore) — for an urgent security alert, that matters.
+- The sensitive-data leak that motivated the idea **is already mitigated** by the generic content policy (`alert-content-policy.ts`) — Twilio never sees balance/address, only "call with a generic phrase." Switching channels doesn't fix a problem already solved at the content layer.
+- Push also depends on a third party (APNs/FCM) — it doesn't eliminate external dependency, it just swaps which company sees delivery metadata.
 
-Se implementado no futuro, como canal **redundante adicional** (reforça a mitigação de TDoS já desenhada, múltiplos canais simultâneos) e não como substituição:
-- PWA com Web Push API, não app nativo — loja de app (App Store/Play Store) não é viável pra timeline de hackathon nem pra manter paridade de deploy rápido depois.
-- Ressalva técnica real: push em PWA no iOS só funciona a partir do iOS 16.4+, e exige que o usuário tenha feito "Adicionar à Tela de Início" manualmente antes — taxa de adoção desse passo tende a ser baixa, então não deve virar o canal primário mesmo no futuro.
+If implemented in the future, as an **additional redundant channel** (reinforcing the TDoS mitigation already designed, multiple simultaneous channels) and not as a replacement:
+- PWA with the Web Push API, not a native app — an app store (App Store/Play Store) isn't viable for a hackathon timeline, nor for keeping fast-deploy parity afterward.
+- Real technical caveat: PWA push on iOS only works from iOS 16.4+, and requires the user to have manually done "Add to Home Screen" beforehand — adoption of that step tends to be low, so it shouldn't become the primary channel even in the future.
 
-### Sub-ideia avaliada: som e vibração distintos por tipo de alerta (estilo "nudge" do MSN)
+### Sub-idea evaluated: distinct sound and vibration per alert type (MSN-style "nudge")
 
-Avaliamos (2026-10-03) dar ao usuário um som/vibração característico por tipo de evento (`kind` × `severity`), pra reconhecer o que aconteceu sem nem olhar a tela. Vale implementar, mas só como parte do painel **aberto em foco**, não como notificação de sistema em segundo plano — duas limitações reais de plataforma:
+We evaluated (2026-10-03) giving the user a characteristic sound/vibration per event type (`kind` × `severity`), to recognize what happened without even looking at the screen. Worth implementing, but only as part of the dashboard **open and in focus**, not as a background system notification — two real platform limitations:
 
-- `navigator.vibrate()` não existe no iOS Safari (nunca foi implementado pela Apple) — funciona só em Android.
-- Som customizado por categoria **não é suportado por nenhum navegador** em push notification de sistema (Chrome/Firefox/Safari sempre usam o som padrão do SO) — só funciona como JS comum tocando áudio, o que exige a aba já aberta e em foco.
+- `navigator.vibrate()` doesn't exist on iOS Safari (Apple never implemented it) — works only on Android.
+- Custom sound per category **isn't supported by any browser** for system push notifications (Chrome/Firefox/Safari always use the OS default sound) — it only works as plain JS playing audio, which requires the tab already open and in focus.
 
-Pré-requisito que ainda não existe: o `dashboard/server.ts` hoje é só API JSON (`/login`, `/details`) — não há página HTML nem canal de push em tempo real (SSE/WebSocket) do `dispatchAlert` até o navegador. Implementar o nudge exige construir essas duas peças primeiro, não é só adicionar arquivos de som. Escopo real: endpoint SSE streando eventos + página mínima do painel assinando esse canal + 2-4 sons distintos (crítico vs. normal, opcionalmente por `kind` também).
+Prerequisite that doesn't exist yet: `dashboard/server.ts` today is just a JSON API (`/login`, `/details`) — there's no HTML page nor a real-time push channel (SSE/WebSocket) from `dispatchAlert` to the browser. Implementing the nudge requires building those two pieces first, not just adding sound files. Real scope: an SSE endpoint streaming events + a minimal dashboard page subscribing to that channel + 2-4 distinct sounds (critical vs. normal, optionally by `kind` too).
 
-Decisão: tratar como item de roadmap pós-hackathon junto com o push via PWA, não construir antes do prazo de submissão — prioridade agora é validar contra a rede real, gravar os vídeos e completar a submissão.
+Decision: treat as a post-hackathon roadmap item alongside PWA push, not build before the submission deadline — priority right now is validating against the real network, recording the videos, and completing the submission.
 
-## Limitações conhecidas (documentadas por honestidade, não escondidas)
+## Known limitations (documented for honesty, not hidden)
 
-- Limiares calibrados em testnet (Moderato) não necessariamente generalizam para mainnet — comportamento de saldo em testnet é mais ruidoso (faucets, scripts de teste).
-- Dependência de disponibilidade da Twilio e do RPC da Tempo.
-- Sandbox do WhatsApp (se usado em demo) é um número compartilhado publicamente conhecido da Twilio — válido apenas para demonstração, não para produção.
+- Thresholds calibrated on testnet (Moderato) don't necessarily generalize to mainnet — balance behavior on testnet is noisier (faucets, test scripts).
+- Dependency on Twilio and Tempo RPC availability.
+- The WhatsApp sandbox (if used in a demo) is a publicly known, shared Twilio number — valid for demonstration only, not production.
 
-## Lacunas de arquitetura (auditado em 2026-10-03, nenhuma escondida)
+## Architecture gaps (audited 2026-10-03, none hidden)
 
-Revisão do repositório encontrou peças descritas na documentação (ou já com lógica/schema prontos) mas que ainda não estão conectadas ponta a ponta:
+A repository review found pieces described in the documentation (or already with logic/schema in place) that aren't connected end-to-end yet:
 
-- **Persistência Postgres construída, ainda não ligada em `index.ts`/`dashboard/server.ts`** (atualizado 2026-10-03): `db/postgres-repositories.ts` tem `PostgresPhoneMappingRepository`, `PostgresMonitoredAccountRepository` e `PostgresAlertLog`, testados (`Queryable` injetável, sem precisar de Postgres real no teste), com `scripts/migrate.ts` aplicando `privacy/mapping-schema.sql` de forma idempotente. O que falta: `index.ts` ainda bootstrapa só o monitor único de demo (env var fixa), não lê `monitored_accounts` do banco; `dashboard/server.ts` ainda usa as implementações em memória (`InMemoryUserRepository` etc.) pro login — unificar a identidade de login do painel com `phone_mappings.id` é decisão de design ainda não tomada, não só código faltando.
-- **Cadastro (`PhoneMappingService.register`) existe mas não está exposto por HTTP**: a lógica de prova de propriedade + criptografia está completa e testada (`privacy/phone-mapping.ts`, `privacy/ownership-proof.ts`), e agora tem onde persistir (`PostgresPhoneMappingRepository.save`), mas nenhuma rota em `dashboard/server.ts` chama isso — hoje não tem como um usuário real se cadastrar pelo sistema.
-- **`monitored_accounts` (tabela e repositório existem) ainda não tem endpoint pra escolher chain/token**: a tabela já suporta qualquer chain EVM-compatível conhecida (`known-chains.ts`) e qualquer token ERC-20/TIP-20 por usuário, mas falta a rota HTTP que valida a escolha (`getKnownChain`) e grava via `PostgresMonitoredAccountRepository.add`.
-- **`TempoAdapter.classifyBalanceDelta` é um stub não conectado**: existe, mas (a) sempre retorna `"value-transfer"` (nunca filtra fee), e (b) `monitor.ts` nem chama essa função antes de `checkBalanceDrop` — ou seja, hoje uma dedução de fee de rotina (lembrando: Tempo não tem gas token nativo, a fee sai do mesmo TIP-20 monitorado) pode disparar falso positivo de "queda de saldo". Risco real de ruído na demo se o endereço observado fizer transações no meio da gravação.
-- **Sem health-check do próprio monitor**: se o loop em `monitor.ts` parar de progredir (RPC fora do ar, erro não tratado), hoje só aparece no log local — nada avisa a equipe ativamente. A linha anterior deste documento afirmava que isso existia; não existe, corrigido aqui.
+- **Postgres persistence built, not yet wired into `index.ts`/`dashboard/server.ts`** (updated 2026-10-03): `db/postgres-repositories.ts` has `PostgresPhoneMappingRepository`, `PostgresMonitoredAccountRepository`, and `PostgresAlertLog`, tested (injectable `Queryable`, no real Postgres needed for the test), with `scripts/migrate.ts` applying `privacy/mapping-schema.sql` idempotently. What's missing: `index.ts` still bootstraps only the single demo monitor (fixed env var), it doesn't read `monitored_accounts` from the database; `dashboard/server.ts` still uses the in-memory implementations (`InMemoryUserRepository`, etc.) for login — unifying the dashboard login identity with `phone_mappings.id` is a design decision not yet made, not just missing code.
+- **Signup (`PhoneMappingService.register`) exists but isn't exposed over HTTP**: the ownership-proof + encryption logic is complete and tested (`privacy/phone-mapping.ts`, `privacy/ownership-proof.ts`), and now has somewhere to persist to (`PostgresPhoneMappingRepository.save`), but no route in `dashboard/server.ts` calls it — today there's no way for a real user to sign up through the system.
+- **`monitored_accounts` (table and repository exist) still has no endpoint to choose a chain/token**: the table already supports any known EVM-compatible chain (`known-chains.ts`) and any ERC-20/TIP-20 token per user, but the HTTP route that validates the choice (`getKnownChain`) and writes it via `PostgresMonitoredAccountRepository.add` is still missing.
+- **`TempoAdapter.classifyBalanceDelta` is an unwired stub**: it exists, but (a) always returns `"value-transfer"` (never filters out a fee), and (b) `monitor.ts` doesn't even call this function before `checkBalanceDrop` — meaning today a routine fee deduction (remember: Tempo has no native gas token, the fee comes out of the same monitored TIP-20) can trigger a false-positive "balance drop". Real risk of noise during a demo if the observed address transacts mid-recording.
+- **No health check for the monitor itself**: if the loop in `monitor.ts` stops progressing (RPC down, unhandled error), today it only shows up in the local log — nothing actively alerts the team. The previous line of this document claimed this existed; it doesn't, corrected here.

@@ -1,34 +1,34 @@
-# Modelo de Ameaça e Política de Segurança
+# Threat Model and Security Policy
 
-## Por que este documento existe
+## Why this document exists
 
-Este projeto lida com dados que, se vazados ou mal desenhados, podem expor usuários a risco financeiro **e físico** (ataques de coação ligados à posse de cripto — "wrench attacks"). Tratamos isso como requisito de design, não como item de checklist.
+This project handles data that, if leaked or poorly designed, can expose users to financial **and physical** risk (coercion attacks tied to crypto ownership — "wrench attacks"). We treat this as a design requirement, not a checklist item.
 
-## Modelo de ameaça
+## Threat model
 
-| Ameaça | Mitigação |
+| Threat | Mitigation |
 |---|---|
-| Vazamento do banco de dados expõe vínculo telefone↔endereço | Vínculo armazenado criptografado (AES); chave em KMS gerenciado, nunca no mesmo ambiente do banco |
-| SIM swap / interceptação da linha telefônica | Conteúdo do alerta nunca revela saldo/endereço; ação sensível nunca é autorizada só por PIN de voz/SMS |
-| Alguém cadastra o endereço público de outra pessoa com o próprio telefone | Exigida assinatura (`signMessage`) provando controle do endereço no cadastro |
-| Forjar confirmação de PIN via webhook | Validação obrigatória de `X-Twilio-Signature` em todo endpoint que recebe resposta |
-| TDoS (inundar a linha de alerta durante um ataque real) | Múltiplos canais e múltiplos destinatários configuráveis; sem dependência de uma única linha |
-| Conta Twilio comprometida (vishing, smishing — já aconteceu à própria Twilio em 2022 e 2024) | Escopo mínimo de permissões da conta, rotação de API keys, PIN sempre de uso único atrelado a alerta específico |
-| Retenção de registro de chamada (CDR) na operadora expõe que um número é cliente VILIGION — mesmo sem invasão de conta. Confirmado: Twilio retém From/To por 13 meses (Console/API) e indefinidamente via Bulk Export; no Brasil, ANATEL (Resolução 426/05) exige retenção mínima de 5 anos por qualquer operadora, independente de fornecedor — **não é específico da Twilio, é regulatório** | Não revela saldo/endereço (só a existência do relacionamento). Mitigado por escopo: ligação é reservada à severidade **critical** (ver `detection-rules.ts`/`ARCHITECTURE.md`) — reduz o volume de chamadas, não elimina a exposição residual. Aceito como limitação documentada, mesmo padrão de "obscurecido, não secreto" usado pros limiares de detecção |
-| Ataque físico de coação ao dono ("wrench attack") | Múltiplos destinatários possíveis; nenhuma informação de valor exposta no canal de voz, reduzindo o incentivo de forçar o dono a atender |
-| Painel web como alvo mais fácil que o canal de voz | MFA + rate-limiting no login, paridade de proteção com a camada de voz |
+| Database leak exposes the phone↔address link | Link stored encrypted (AES); key in managed KMS, never in the same environment as the database |
+| SIM swap / phone line interception | Alert content never reveals balance/address; a sensitive action is never authorized by voice/SMS PIN alone |
+| Someone registers another person's public address with their own phone number | Signature required (`signMessage`) proving control of the address at signup |
+| Forging PIN confirmation via webhook | Mandatory `X-Twilio-Signature` header validation on every endpoint that receives a callback |
+| TDoS (flooding the alert line during a real attack) | Multiple configurable channels and recipients; no dependency on a single line |
+| Compromised Twilio account (vishing, smishing — has happened to Twilio itself in 2022 and 2024) | Minimal account permission scope, API key rotation, PIN always single-use and tied to a specific alert |
+| Carrier call-detail-record (CDR) retention exposes that a number is a VILIGION customer — even without account compromise. Confirmed: Twilio retains From/To for 13 months (Console/API) and indefinitely via Bulk Export; in Brazil, ANATEL (Resolution 426/05) requires a minimum 5-year retention by any carrier, regardless of provider — **this isn't Twilio-specific, it's regulatory** | Doesn't reveal balance/address (only that the relationship exists). Mitigated by scope: the phone call is reserved for **critical** severity (see `detection-rules.ts`/`ARCHITECTURE.md`) — reduces call volume, doesn't eliminate the residual exposure. Accepted as a documented limitation, same "obscured, not secret" pattern used for detection thresholds |
+| Physical coercion attack on the owner ("wrench attack") | Multiple possible recipients; no value information exposed on the voice channel, reducing the incentive to force the owner to answer |
+| Web dashboard as an easier target than the voice channel | MFA + rate limiting on login, protection parity with the voice layer |
 
-## O que nunca fazemos
+## What we never do
 
-- Não custodiamos chave privada do usuário.
-- Não executamos transação a partir de resposta por voz/SMS.
-- Não revelamos saldo ou endereço no conteúdo de um alerta.
-- Não guardamos credenciais em texto puro no repositório ou no mesmo ambiente dos dados que protegem.
+- We never hold the user's private key.
+- We never execute a transaction from a voice/SMS reply.
+- We never reveal balance or address in an alert's content.
+- We never store credentials in plaintext in the repository or in the same environment as the data they protect.
 
-## Limitações conhecidas
+## Known limitations
 
-Limiares de detecção são "obscurecidos, não secretos" — um atacante com paciência pode sondar empiricamente os limites com transferências de teste. Isso é uma limitação aceita e documentada, não uma garantia de impossibilidade de evasão.
+Detection thresholds are "obscured, not secret" — a patient attacker could empirically probe the limits with test transfers. This is an accepted, documented limitation, not a guarantee that evasion is impossible.
 
-## Divulgação responsável
+## Responsible disclosure
 
-Encontrou uma falha de segurança? Abra uma issue privada (GitHub Security Advisory) ou contate [email a definir]. Não abra issue pública para vulnerabilidades não corrigidas.
+Found a security flaw? Open a private issue (GitHub Security Advisory) or contact [email to be defined]. Don't open a public issue for unpatched vulnerabilities.

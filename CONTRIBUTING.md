@@ -1,23 +1,23 @@
-# Como contribuir
+# Contributing
 
-## Antes de tudo
+## Before anything
 
-Este projeto tem duas partes com regras diferentes:
+This project has two parts with different rules:
 
-1. **Biblioteca de decodificação TIP-403/`ReceivePolicyGuard`** (`/engine/chains/tempo.adapter.ts` e módulos relacionados) — contribuições bem-vindas de qualquer builder do ecossistema Tempo. Esta é a parte pensada para ser infraestrutura compartilhada.
-2. **Produto de alerta/privacidade** (`/privacy`, `/alerts`, `/dashboard`) — mudanças aqui exigem entender o modelo de ameaça em [`SECURITY.md`](./SECURITY.md) antes de abrir PR. Qualquer mudança que toque autenticação, criptografia ou conteúdo de alerta precisa justificar explicitamente como preserva (ou melhora) cada item da tabela de mitigação.
+1. **TIP-403/`ReceivePolicyGuard` decoding library** (`/engine/chains/tempo.adapter.ts` and related modules) — contributions welcome from any builder in the Tempo ecosystem. This part is meant to be shared infrastructure.
+2. **Alert/privacy product** (`/privacy`, `/alerts`, `/dashboard`) — changes here require understanding the threat model in [`SECURITY.md`](./SECURITY.md) before opening a PR. Any change touching authentication, encryption, or alert content needs to explicitly justify how it preserves (or improves) every item in the mitigation table.
 
-## Regras gerais
+## General rules
 
-- Nunca commite segredos, chaves, ou dados reais de usuário — nem em código, nem em exemplos, nem em testes.
-- `.env.example` deve conter apenas nomes de variáveis, nunca valores reais.
-- Limiares de detecção específicos de usuário nunca entram hardcoded no código público.
-- PRs que tocam `/privacy` ou `/alerts` precisam de pelo menos uma revisão adicional antes de merge.
+- Never commit secrets, keys, or real user data — not in code, not in examples, not in tests.
+- `.env.example` must contain only variable names, never real values.
+- User-specific detection thresholds never go hardcoded into public code.
+- PRs touching `/privacy` or `/alerts` need at least one additional review before merge.
 
-## Como rodar localmente
+## Running locally
 
-(preencher conforme o setup final: testnet Moderato da Tempo, conta Twilio trial, variáveis de ambiente necessárias)
+(to be filled in once the final setup is settled: Tempo's Moderato testnet, a trial Twilio account, required environment variables)
 
-## Reportar bugs vs. vulnerabilidades de segurança
+## Reporting bugs vs. security vulnerabilities
 
-Bug normal → issue pública. Vulnerabilidade de segurança → ver processo de divulgação responsável em [`SECURITY.md`](./SECURITY.md), nunca issue pública.
+Regular bug → public issue. Security vulnerability → see the responsible disclosure process in [`SECURITY.md`](./SECURITY.md), never a public issue.
