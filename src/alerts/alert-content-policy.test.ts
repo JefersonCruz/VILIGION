@@ -31,4 +31,22 @@ describe("alert-content-policy", () => {
     const bad = "Sua tesouraria caiu $5000 USDC nos últimos 10 minutos.";
     expect(() => assertNoSensitiveData(bad)).toThrow();
   });
+
+  it("gera conteúdo nos dois idiomas suportados, sem dado sensível em nenhum", () => {
+    const event = {
+      kind: "balance-drop" as const,
+      userId: "user-1",
+      pctDropped: 42,
+      windowMinutes: 10,
+      severity: "critical" as const,
+    };
+
+    const en = buildAlertMessage(event, "en");
+    const pt = buildAlertMessage(event, "pt");
+
+    expect(en).toMatch(/VILIGION alert/);
+    expect(pt).toMatch(/Alerta VILIGION/);
+    expect(() => assertNoSensitiveData(en)).not.toThrow();
+    expect(() => assertNoSensitiveData(pt)).not.toThrow();
+  });
 });

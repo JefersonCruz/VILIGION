@@ -8,6 +8,17 @@
 import twilio from "twilio";
 import type { DetectionEvent } from "../engine/rules/detection-rules.js";
 import { assertNoSensitiveData, buildAlertMessage } from "./alert-content-policy.js";
+import { type AlertLocale, resolveLocale, twilioSayLanguage } from "./locale.js";
+
+const GATHER_PROMPT: Record<AlertLocale, string> = {
+  en: "Press the 4-digit code sent via WhatsApp to confirm you received this alert.",
+  pt: "Digite o código de 4 dígitos enviado por WhatsApp para confirmar que recebeu este alerta.",
+};
+
+const NO_CODE_FALLBACK: Record<AlertLocale, string> = {
+  en: "No code received. Check the dashboard for details.",
+  pt: "Nenhum código recebido. Acesse o painel para ver os detalhes.",
+};
 
 export interface TwilioVoiceConfig {
   accountSid: string;
@@ -30,12 +41,15 @@ export function createTwilioVoiceClient(config: TwilioVoiceConfig) {
       toNumbers: string[];
       event: DetectionEvent;
       alertId: string;
+      locale?: AlertLocale;
     }) {
-      const message = buildAlertMessage(params.event);
+      const locale = params.locale ?? resolveLocale();
+      const message = buildAlertMessage(params.event, locale);
       assertNoSensitiveData(message); // nunca confie só na revisão manual
 
       const twiml = buildGatherTwiml({
         message,
+        locale,
         actionUrl: `${config.gatherActionUrl}?alertId=${encodeURIComponent(params.alertId)}`,
       });
 
@@ -54,15 +68,16 @@ export function createTwilioVoiceClient(config: TwilioVoiceConfig) {
   };
 }
 
-function buildGatherTwiml(params: { message: string; actionUrl: string }): string {
+function buildGatherTwiml(params: { message: string; actionUrl: string; locale: AlertLocale }): string {
   // numDigits=4 casa com pin.ts (PIN de 4 dígitos). timeout curto - isto é
   // um alerta urgente, não um menu de atendimento.
+  const sayLanguage = twilioSayLanguage(params.locale);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather numDigits="4" timeout="10" action="${params.actionUrl}" method="POST">
-    <Say language="pt-BR">${escapeXml(params.message)} Digite o código de 4 dígitos enviado por WhatsApp para confirmar que recebeu este alerta.</Say>
+    <Say language="${sayLanguage}">${escapeXml(params.message)} ${escapeXml(GATHER_PROMPT[params.locale])}</Say>
   </Gather>
-  <Say language="pt-BR">Nenhum código recebido. Acesse o painel para ver os detalhes.</Say>
+  <Say language="${sayLanguage}">${escapeXml(NO_CODE_FALLBACK[params.locale])}</Say>
 </Response>`;
 }
 

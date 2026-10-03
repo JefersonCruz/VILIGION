@@ -29,6 +29,7 @@ Two channels, chosen by **severity** (`DetectionEvent.severity`, decided in `det
   - Multiple configurable recipients (mitigates both alert fatigue/TDoS and the scenario where a single recipient is themselves the target of coercion).
 - `email-notifier.ts` — **normal** severity: email via generic SMTP. No per-message cost, no carrier CDR retention problem (see `SECURITY.md`). Reuses the same content policy (`alert-content-policy.ts`) — the "never reveals balance/address" guarantee applies equally to both channels.
 - Both clients are **optional** at runtime (`index.ts`): without Twilio/SMTP configured, the corresponding alert just logs to the console instead of crashing the app — lets you run the monitor and validate detection before you have a Twilio account.
+- `locale.ts` — alert content language, English or Portuguese, not a full i18n system (no per-user selection, no locale files). Resolved from `ALERT_LOCALE` (default `en`, chosen for the hackathon demo video's international audience); a real Brazilian customer switches it to `pt` via config, no code change needed. Covers the TwiML `<Say>` language attribute, the call/email message text, and the email subject/footer — all three pull from the same two-entry map.
 
 ### 4. `/dashboard` — Dashboard
 - Login with MFA + rate limiting (protection parity with the voice layer — no point protecting the phone call and leaving the dashboard with simple login).

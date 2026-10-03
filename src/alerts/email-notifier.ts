@@ -12,6 +12,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import type { DetectionEvent } from "../engine/rules/detection-rules.js";
 import { assertNoSensitiveData, buildAlertMessage } from "./alert-content-policy.js";
+import { type AlertLocale, resolveLocale } from "./locale.js";
 
 export interface EmailNotifierConfig {
   smtpHost: string;
@@ -26,14 +27,24 @@ export interface AlertEmail {
   text: string;
 }
 
+const SUBJECT: Record<AlertLocale, string> = {
+  en: "VILIGION: activity detected in your treasury",
+  pt: "VILIGION: atividade detectada na sua tesouraria",
+};
+
+const FOOTER: Record<AlertLocale, string> = {
+  en: "\n\nThis is a normal-severity alert. Critical alerts arrive by phone call.",
+  pt: "\n\nEste é um alerta de severidade normal. Alertas críticos chegam por ligação telefônica.",
+};
+
 /** Monta o e-mail do alerta - função pura, testável sem SMTP de verdade. */
-export function buildAlertEmail(event: DetectionEvent): AlertEmail {
-  const message = buildAlertMessage(event);
+export function buildAlertEmail(event: DetectionEvent, locale: AlertLocale = resolveLocale()): AlertEmail {
+  const message = buildAlertMessage(event, locale);
   assertNoSensitiveData(message); // nunca confie só na revisão manual - mesma regra da ligação
 
   return {
-    subject: "VILIGION: atividade detectada na sua tesouraria",
-    text: `${message}\n\nEste é um alerta de severidade normal. Alertas críticos chegam por ligação telefônica.`,
+    subject: SUBJECT[locale],
+    text: `${message}${FOOTER[locale]}`,
   };
 }
 
@@ -49,8 +60,8 @@ export function createEmailNotifier(config: EmailNotifierConfig, transporter?: T
 
   return {
     /** Manda o e-mail do alerta pra todos os destinatários configurados. Tenta todos, não só o primeiro. */
-    async sendAlertEmail(params: { toAddresses: string[]; event: DetectionEvent }) {
-      const { subject, text } = buildAlertEmail(params.event);
+    async sendAlertEmail(params: { toAddresses: string[]; event: DetectionEvent; locale?: AlertLocale }) {
+      const { subject, text } = buildAlertEmail(params.event, params.locale);
 
       return Promise.allSettled(
         params.toAddresses.map((to) =>
