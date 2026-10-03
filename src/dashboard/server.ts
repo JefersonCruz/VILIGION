@@ -129,6 +129,14 @@ async function route(
   if (req.method === "GET" && url === "/details") return handleJsonDetails(req, res, deps.accounts, sessions);
 
   // --- Páginas HTML ---
+  if (req.method === "GET" && url === "/") {
+    // Raiz do domínio público (ex: alguém abre o link puro, sem caminho) -
+    // sem isso, caía no 404 genérico, confuso pra quem não sabe que rota pedir.
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies["viligion_session"];
+    const session = token ? sessions.validate(token) : null;
+    return redirect(res, session ? "/dashboard" : "/login");
+  }
   if (req.method === "GET" && url === "/signup") return renderSignupPage(res);
   if (req.method === "POST" && url === "/signup") return handleSignup(req, res, deps.signup);
   if (req.method === "GET" && url === "/login") return send(res, 200, loginPage({}));
