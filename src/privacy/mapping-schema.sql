@@ -32,6 +32,32 @@ CREATE TABLE user_thresholds (
     critical_blocked_transfer_threshold NUMERIC NOT NULL
 );
 
+-- Contas monitoradas por usuário - permite escolher QUALQUER chain
+-- EVM-compatível conhecida (ver engine/chains/known-chains.ts) e QUALQUER
+-- token ERC-20/TIP-20 nela, em vez de fixo em variável de ambiente. Um
+-- usuário pode ter mais de uma conta monitorada (ex: tesouraria na Tempo E
+-- um endereço na Base). Escopo deliberadamente limitado a chains
+-- EVM-compatíveis - ver ARCHITECTURE.md sobre por que não-EVM e exchanges
+-- centralizadas ficam fora por enquanto (risco de custódia de credencial,
+-- adaptador do zero por chain, dilui o diferencial do produto).
+CREATE TABLE monitored_accounts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES phone_mappings (id),
+    -- chave da chain em known-chains.ts (ex: "tempo", "base") - não o
+    -- chain_id numérico diretamente, pra reusar a validação/registro já
+    -- existente em getKnownChain()
+    chain_key       TEXT NOT NULL,
+    -- endereço do contrato do token (ERC-20/TIP-20) a monitorar via
+    -- balanceOf - ver EvmAdapterConfig.tokenAddress
+    token_address   TEXT NOT NULL,
+    -- endereço (carteira/tesouraria) cujo saldo desse token é observado
+    watched_address TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, chain_key, token_address, watched_address)
+);
+
+CREATE INDEX idx_monitored_accounts_user ON monitored_accounts (user_id);
+
 -- Log de alertas disparados - útil pra auditoria e pra detectar TDoS
 -- (muitos alertas num intervalo curto pro mesmo usuário é sinal de ataque
 -- coordenado, não só de muita sorte ruim - ver SECURITY.md).
