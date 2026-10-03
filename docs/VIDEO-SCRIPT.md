@@ -4,9 +4,9 @@
 
 Exigências oficiais ([h-faq-11](https://colosseum.com/hackathon#h-faq-11)): vídeo de apresentação de 2–3 minutos + vídeo de demo de produto de até 3 minutos. São dois arquivos separados.
 
-## O que dá pra gravar hoje, sem esperar Twilio
+## O que dá pra gravar hoje (atualizado — agora com portal de verdade)
 
-O painel (`dashboard/server.ts`) hoje é só API JSON, sem tela — e a ligação ainda não está configurada (decisão consciente, ver `BUSINESS-PLAN.md`). A demo real e honesta agora é: **terminal rodando o monitor contra a rede real da Tempo**, mostrando detecção acontecendo ao vivo. Isso é mais forte do que parece pro critério "Functionality" — jurista técnico valoriza ver código funcionando contra chain de verdade mais do que uma UI polida de mentira.
+O portal (`dashboard/views.ts` + `dashboard/server.ts`) foi construído em 2026-10-03: cadastro com assinatura de carteira real, login com MFA, painel, gerenciar contas, limiares, histórico de alertas — ver `docs/UI-SPEC.md`. A ligação ainda não está configurada (decisão consciente, ver `BUSINESS-PLAN.md`), mas agora dá pra mostrar **terminal + portal juntos**: o monitor rodando contra a rede real da Tempo no terminal, e o cadastro/painel funcionando de verdade no navegador — mais forte que só terminal, sem perder a prova de "roda contra chain real" que pesa no critério "Functionality".
 
 Dica pra deixar a demo visualmente impressionante: aponte `DEMO_WATCHED_ADDRESS` pro endereço que já confirmamos ter `TransferBlocked` real na testnet Moderato (`0x384314C543c3CBE50D3F148F7da97d5F8be928Ec`, bloco 37914998, achado via `scripts/verify-testnet.ts`) — o evento decodifica ao vivo na tela, não é mockado.
 
@@ -51,9 +51,14 @@ Foco: provar que funciona contra dado real, não simulação.
 - Terminal: `npm run dev` (com `.env` configurado: `TEMPO_RPC_URL`, `TEMPO_CHAIN_ID`, `DEMO_WATCHED_ADDRESS` apontando pro endereço com `TransferBlocked` real).
 - Mostre o log de startup: RPC conectado, canais de alerta (crítico/normal) reportando se estão ativos ou não configurados ainda.
 
-**[1:00–2:00] Mostre a detecção acontecendo**
+**[1:00–1:40] Mostre a detecção acontecendo**
 - Rode (ou já tenha rodado e mostre o output de) `npx tsx scripts/verify-testnet.ts` como prova adicional, lado a lado: endereço do `ReceivePolicyGuard` batendo com o oficial, bytecode confirmado, e principalmente — o evento `TransferBlocked` real decodificado na tela, com `blockedReason`, `kind`, `memo`, tudo via `ox/tempo`.
 - Narre o que a tela mostra: "isso não é dado inventado, é uma transferência real bloqueada por política de recebimento, decodificada ao vivo."
+
+**[1:40–2:10] Mostre o portal rodando**
+- Abra `localhost:<porta do painel>/signup` no navegador — conecte uma carteira (MetaMask/outra), assine a prova de propriedade ao vivo, complete o cadastro, mostre a tela de sucesso com o QR/código TOTP.
+- Faça login (com o autenticador já configurado) e mostre o painel: saldo, contas monitoradas, histórico de alertas.
+- Narre: "cadastro e login são de verdade — identidade do painel é a mesma que provou dono do endereço, banco de dados real por trás."
 
 **[2:00–2:40] Mostre o roteamento por severidade**
 - No log do `dispatchAlert`, aponte a linha mostrando severidade (`normal` ou `critical`) e qual canal seria usado.

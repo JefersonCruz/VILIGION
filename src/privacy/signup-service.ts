@@ -16,14 +16,31 @@
 import { createHash } from "node:crypto";
 import type { Address } from "viem";
 import { PhoneMappingService, type RegisterMappingInput } from "./phone-mapping.js";
+import type { EncryptedPayload } from "./encryption.js";
 import { hashPassword } from "../dashboard/password.js";
 import { buildOtpAuthUri, generateBase32Secret } from "../dashboard/totp.js";
-import {
-  PostgresDashboardUserRepository,
-  PostgresPhoneMappingRepository,
-  PostgresThresholdsRepository,
-} from "../db/postgres-repositories.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
+
+/**
+ * Portas (não classes concretas) de propósito - permite o mesmo
+ * SignupService rodar tanto contra Postgres de verdade (produção) quanto
+ * contra implementação em memória (demo local sem DATABASE_URL), igual ao
+ * padrão já usado em UserRepository/AccountDetailsRepository
+ * (dashboard/server.ts). PostgresPhoneMappingRepository etc. já satisfazem
+ * essas formas estruturalmente, sem precisar de "implements" explícito.
+ */
+export interface PhoneMappingStore {
+  save(addressHash: string, payload: EncryptedPayload): Promise<string>;
+}
+
+export interface DashboardUserStore {
+  findByUsername(username: string): Promise<{ userId: string } | null>;
+  create(input: { userId: string; username: string; passwordHash: string; totpSecret: string }): Promise<void>;
+}
+
+export interface ThresholdsStore {
+  upsert(thresholds: UserThresholds): Promise<void>;
+}
 
 /** Limiares padrão pra quem acabou de se cadastrar - ajustáveis depois em /thresholds (ver UI-SPEC.md). */
 const DEFAULT_THRESHOLDS: Omit<UserThresholds, "userId"> = {
@@ -53,9 +70,9 @@ export function hashAddress(address: Address): string {
 export class SignupService {
   constructor(
     private readonly phoneMapping: PhoneMappingService,
-    private readonly phoneMappingRepo: PostgresPhoneMappingRepository,
-    private readonly dashboardUsers: PostgresDashboardUserRepository,
-    private readonly thresholds: PostgresThresholdsRepository,
+    private readonly phoneMappingRepo: PhoneMappingStore,
+    private readonly dashboardUsers: DashboardUserStore,
+    private readonly thresholds: ThresholdsStore,
   ) {}
 
   /** Lança erro se a assinatura não provar posse do endereço (ver PhoneMappingService.register), ou se o username já existir. */
