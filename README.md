@@ -45,7 +45,7 @@ Full technical detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Status
 
-Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, and [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script, and [`docs/UI-SPEC.md`](./docs/UI-SPEC.md) for the planned portal/dashboard structure.
+Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, and [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script, [`docs/UI-SPEC.md`](./docs/UI-SPEC.md) for the portal/dashboard structure, and [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for how to host it.
 
 ## License
 

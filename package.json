@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
     "migrate": "tsx scripts/migrate.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
