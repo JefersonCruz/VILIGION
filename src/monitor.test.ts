@@ -39,8 +39,10 @@ class FakeExtension implements ChainExtension {
 const thresholds: UserThresholds = {
   userId: "u1",
   maxBalanceDropPct: 20,
+  criticalBalanceDropPct: 50,
   windowMinutes: 60,
   blockedTransferAlertThreshold: 1n,
+  criticalBlockedTransferThreshold: 10n,
 };
 
 describe("Monitor", () => {
@@ -85,6 +87,7 @@ describe("Monitor", () => {
       userId: "u1",
       amount: 5_000_000n,
       blockedNonce: 1n,
+      severity: "normal",
     };
     const extension = new FakeExtension([extraEvent]);
     const dispatched: DetectionEvent[] = [];

@@ -21,10 +21,14 @@ Proteção contra reorg: alerta só dispara após profundidade mínima de confir
 - `alert-content-policy.ts` — regra rígida: nenhum valor monetário ou endereço sai no conteúdo do alerta por voz/SMS, sob nenhuma circunstância.
 
 ### 3. `/alerts` — Camada de entrega
-- `twilio-voice.ts` — ligação telefônica real via Twilio Programmable Voice.
-- `twilio-webhook-validator.ts` — valida o header `X-Twilio-Signature` em todo endpoint que recebe resposta — sem isso, qualquer pessoa que descubra a URL do webhook pode forjar confirmação de PIN.
-- PIN é de **uso único**, atrelado a um ID de alerta específico, nunca reaproveitável.
-- Múltiplos destinatários configuráveis (mitiga tanto fadiga de alerta/TDoS quanto o cenário onde um único destinatário é o próprio alvo de coação).
+Dois canais, escolhidos por **severidade** (`DetectionEvent.severity`, decidida em `detection-rules.ts` a partir de um segundo limiar "crítico" por tipo de evento) — não toda anomalia justifica o custo e a exposição de uma ligação:
+
+- `twilio-voice.ts` — severidade **critical**: ligação telefônica real via Twilio Programmable Voice.
+  - `twilio-webhook-validator.ts` — valida o header `X-Twilio-Signature` em todo endpoint que recebe resposta — sem isso, qualquer pessoa que descubra a URL do webhook pode forjar confirmação de PIN.
+  - PIN é de **uso único**, atrelado a um ID de alerta específico, nunca reaproveitável.
+  - Múltiplos destinatários configuráveis (mitiga tanto fadiga de alerta/TDoS quanto o cenário onde um único destinatário é o próprio alvo de coação).
+- `email-notifier.ts` — severidade **normal**: e-mail via SMTP genérico. Sem custo por mensagem, sem o problema de retenção de CDR de operadora (ver `SECURITY.md`). Reusa a mesma política de conteúdo (`alert-content-policy.ts`) — a garantia de "nunca revela saldo/endereço" vale pros dois canais igualmente.
+- Ambos os clientes são **opcionais** em runtime (`index.ts`): sem Twilio/SMTP configurado, o alerta correspondente só loga no console em vez de travar a aplicação — permite rodar o monitor e validar detecção antes de ter conta Twilio.
 
 ### 4. `/dashboard` — Painel
 - Login com MFA + rate-limiting (paridade de proteção com a camada de voz — não adianta proteger a ligação e deixar o painel com login simples).

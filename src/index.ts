@@ -23,6 +23,7 @@ import { resolveRpcUrl } from "./engine/chains/known-chains.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { Monitor } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
+import { createEmailNotifier } from "./alerts/email-notifier.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
 import { createWebhookServer, type PinStore } from "./webhook-server.js";
 import { createDashboardServer } from "./dashboard/server.js";
@@ -39,41 +40,98 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * Twilio fica OPCIONAL de propósito - decisão de produto: ligação telefônica
+ * é o canal de severidade "critical", e custa dinheiro + fica registrada na
+ * operadora por anos (ver SECURITY.md). Até configurar uma conta Twilio de
+ * verdade, alertas críticos só avisam no log em vez de travar a aplicação
+ * inteira - o canal "normal" (e-mail) funciona independente disso.
+ */
+function buildVoiceClientIfConfigured() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = process.env.TWILIO_VOICE_NUMBER;
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+  if (!accountSid || !authToken || !fromNumber || !publicBaseUrl) return null;
+
+  return createTwilioVoiceClient({
+    accountSid,
+    authToken,
+    fromNumber,
+    gatherActionUrl: `${publicBaseUrl}/webhooks/twilio/gather`,
+  });
+}
+
+/** Mesma lógica de opcionalidade do voice client, pro canal "normal" (e-mail). */
+function buildEmailNotifierIfConfigured() {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const fromAddress = process.env.SMTP_FROM_ADDRESS;
+  if (!smtpHost || !smtpPort || !smtpUser || !smtpPass || !fromAddress) return null;
+
+  return createEmailNotifier({
+    smtpHost,
+    smtpPort: Number(smtpPort),
+    smtpUser,
+    smtpPass,
+    fromAddress,
+  });
+}
+
 async function main() {
   // TODO produção: trocar pela leitura real de user_thresholds (ver mapping-schema.sql)
   // e pela lista real de destinatários cadastrados via PhoneMappingService.
   const thresholds: UserThresholds = {
     userId: "demo-user",
     maxBalanceDropPct: 20,
+    criticalBalanceDropPct: 50,
     windowMinutes: 10,
     blockedTransferAlertThreshold: 1_000_000n,
+    criticalBlockedTransferThreshold: 10_000_000n,
   };
-  const alertRecipients = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
+  const alertPhoneNumbers = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
+  const alertEmails = (process.env.DEMO_ALERT_EMAILS ?? "").split(",").filter(Boolean);
   const watchedAddress = requireEnv("DEMO_WATCHED_ADDRESS") as Address;
 
-  const voiceClient = createTwilioVoiceClient({
-    accountSid: requireEnv("TWILIO_ACCOUNT_SID"),
-    authToken: requireEnv("TWILIO_AUTH_TOKEN"),
-    fromNumber: requireEnv("TWILIO_VOICE_NUMBER"),
-    gatherActionUrl: `${requireEnv("PUBLIC_BASE_URL")}/webhooks/twilio/gather`,
-  });
+  const voiceClient = buildVoiceClientIfConfigured();
+  const emailNotifier = buildEmailNotifierIfConfigured();
+  console.log(
+    `[alertas] canal crítico (ligação): ${voiceClient ? "ativo" : "NÃO configurado - só logará"}`,
+  );
+  console.log(
+    `[alertas] canal normal (e-mail): ${emailNotifier ? "ativo" : "NÃO configurado - só logará"}`,
+  );
 
   const pinStore: PinStore = new Map();
   const alertLog = new InMemoryAlertLog();
 
   const dispatchAlert = async (event: DetectionEvent) => {
     const alertId = randomUUID();
-    const pending: PendingPin = generatePin(alertId);
-    pinStore.set(alertId, pending);
     alertLog.record(event.kind);
+    console.log(`[alerta] disparando ${event.kind} (severidade=${event.severity}, alertId=${alertId})`);
 
-    console.log(`[alerta] disparando ${event.kind} (alertId=${alertId})`);
+    if (event.severity === "critical") {
+      const pending: PendingPin = generatePin(alertId);
+      pinStore.set(alertId, pending);
+      // Demo manda o PIN por log - em produção isto vai por WhatsApp/SMS
+      // separado do canal de voz, nunca junto da mesma ligação.
+      console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
 
-    // Demo manda o PIN por log - em produção isto vai por WhatsApp/SMS
-    // separado do canal de voz, nunca junto da mesma ligação.
-    console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
+      if (voiceClient) {
+        await voiceClient.placeAlertCall({ toNumbers: alertPhoneNumbers, event, alertId });
+      } else {
+        console.log("[alerta] ligação NÃO disparada - Twilio ainda não configurado (ver .env.example)");
+      }
+      return;
+    }
 
-    await voiceClient.placeAlertCall({ toNumbers: alertRecipients, event, alertId });
+    if (emailNotifier) {
+      await emailNotifier.sendAlertEmail({ toAddresses: alertEmails, event });
+    } else {
+      console.log("[alerta] e-mail NÃO enviado - SMTP ainda não configurado (ver .env.example)");
+    }
   };
 
   // --- Monitor principal: Tempo, com extensão TransferBlocked ---

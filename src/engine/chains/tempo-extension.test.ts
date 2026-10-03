@@ -20,8 +20,10 @@ class FakeTempoAdapter extends TempoAdapter {
 const thresholds: UserThresholds = {
   userId: "u1",
   maxBalanceDropPct: 20,
+  criticalBalanceDropPct: 50,
   windowMinutes: 60,
   blockedTransferAlertThreshold: 1_000_000n,
+  criticalBlockedTransferThreshold: 10_000_000n,
 };
 
 function makeEvent(amount: bigint): TransferBlockedEvent {

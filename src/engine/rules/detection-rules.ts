@@ -10,15 +10,29 @@
 import type { BalanceSnapshot } from "../chains/evm-adapter.js";
 import type { TransferBlockedEvent } from "../chains/tempo.adapter.js";
 
+/**
+ * Nível de urgência do alerta — decide o CANAL de entrega (ver dispatch em
+ * index.ts), não só o conteúdo. "critical" vai por ligação telefônica
+ * (Twilio, tem custo e fica registrado na operadora - ver SECURITY.md);
+ * "normal" vai por e-mail (sem custo por mensagem, sem o mesmo problema de
+ * retenção de CDR). Decisão de produto: nem toda anomalia justifica o
+ * custo/exposição de uma ligação - só a que de fato é urgente.
+ */
+export type AlertSeverity = "normal" | "critical";
+
 /** Configuração privada por usuário — NUNCA hardcoded, NUNCA neste arquivo. */
 export interface UserThresholds {
   userId: string;
-  /** percentual de queda de saldo, numa janela de tempo, que dispara alerta */
+  /** percentual de queda de saldo, numa janela de tempo, que dispara alerta (severidade normal) */
   maxBalanceDropPct: number;
+  /** percentual de queda a partir do qual o alerta escala pra ligação telefônica */
+  criticalBalanceDropPct: number;
   /** janela de tempo (minutos) usada pro cálculo de queda percentual */
   windowMinutes: number;
-  /** valor absoluto bloqueado pelo ReceivePolicyGuard que já dispara sozinho, independente de percentual */
+  /** valor absoluto bloqueado pelo ReceivePolicyGuard que já dispara alerta (severidade normal) */
   blockedTransferAlertThreshold: bigint;
+  /** valor a partir do qual a transferência bloqueada escala pra ligação telefônica */
+  criticalBlockedTransferThreshold: bigint;
 }
 
 export type DetectionEvent =
@@ -27,12 +41,14 @@ export type DetectionEvent =
       userId: string;
       pctDropped: number;
       windowMinutes: number;
+      severity: AlertSeverity;
     }
   | {
       kind: "transfer-blocked";
       userId: string;
       amount: bigint;
       blockedNonce: bigint;
+      severity: AlertSeverity;
     };
 
 /**
@@ -63,6 +79,7 @@ export function checkBalanceDrop(
     userId: thresholds.userId,
     pctDropped,
     windowMinutes: elapsedMinutes,
+    severity: pctDropped >= thresholds.criticalBalanceDropPct ? "critical" : "normal",
   };
 }
 
@@ -78,5 +95,6 @@ export function checkBlockedTransfer(
     userId: thresholds.userId,
     amount: event.amount,
     blockedNonce: event.blockedNonce,
+    severity: event.amount >= thresholds.criticalBlockedTransferThreshold ? "critical" : "normal",
   };
 }

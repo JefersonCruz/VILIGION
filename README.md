@@ -14,7 +14,7 @@ Ao mesmo tempo, vincular um número de telefone a um saldo on-chain cria um risc
 
 1. **Monitora** endereços TIP-20 na Tempo (saldo, eventos de `ReceivePolicyGuard`/TIP-403, padrão de transferência) via RPC direto (Viem) como fonte primária.
 2. **Detecta** anomalias com limiares configuráveis por usuário (privados, não hardcoded).
-3. **Alerta** por ligação telefônica real (Twilio Programmable Voice) com conteúdo **sempre genérico** — nunca revela saldo ou endereço por voz/SMS.
+3. **Alerta** por dois canais, escolhidos por severidade: anomalia crítica vai por **ligação telefônica real** (Twilio Programmable Voice); anomalia normal vai por **e-mail** (sem custo por mensagem, sem o problema de retenção de registro de chamada na operadora — ver `SECURITY.md`). Conteúdo **sempre genérico** nos dois canais — nunca revela saldo ou endereço.
 4. **Protege a identidade do dono**: número de telefone virtual dedicado (nunca o pessoal), vínculo telefone↔endereço armazenado criptografado via KMS gerenciado, prova de propriedade do endereço exigida no cadastro (assinatura EIP-191).
 5. Detalhes completos (saldo real, histórico) só ficam visíveis após autenticação no painel — nunca pelo canal de alerta.
 

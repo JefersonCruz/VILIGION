@@ -8,12 +8,14 @@ describe("alert-content-policy", () => {
       userId: "user-1",
       pctDropped: 42,
       windowMinutes: 10,
+      severity: "critical",
     });
     const redirectMsg = buildAlertMessage({
       kind: "transfer-blocked",
       userId: "user-1",
       amount: 500_000_000n,
       blockedNonce: 7n,
+      severity: "normal",
     });
 
     expect(() => assertNoSensitiveData(dropMsg)).not.toThrow();
