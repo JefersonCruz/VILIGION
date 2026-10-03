@@ -1,6 +1,8 @@
 # Guia de Deploy — VILIGION
 
 > Passo a passo pra colocar o sistema no ar de verdade: hospedagem, banco de dados, variáveis de ambiente. Host recomendado: **Railway** (mesma plataforma pro app e pro Postgres — uma conta, uma fatura, `DATABASE_URL` pronto sem configurar nada à mão). Alternativas (Render, Fly.io, Neon, Supabase) funcionam também, mas os passos abaixo são específicos da Railway.
+>
+> **Já executado de verdade em 2026-10-03** — não é só teoria. Projeto no ar em `https://viligion-app-production.up.railway.app`, testado com curl contra o domínio público (login, cadastro, dashboard, webhook todos respondendo). Os passos abaixo refletem o que realmente aconteceu, incluindo um obstáculo real (Passo 6) que não estava previsto na primeira versão deste guia.
 
 ## Antes de começar — o que o sistema expõe
 
@@ -57,7 +59,22 @@ railway link                  # escolhe o projeto que você criou
 railway run npm run migrate
 ```
 
-`railway run` injeta as variáveis do ambiente da Railway (inclusive `DATABASE_URL`) no comando rodado localmente — não precisa copiar a connection string pra mão.
+⚠️ **Isso não funciona direto** — testado na prática: `${{Postgres.DATABASE_URL}}` resolve pro hostname **privado** da Railway (`postgres.railway.internal`), que só existe dentro da rede da própria Railway. Rodando `railway run` da sua máquina local, a conexão falha com `ENOTFOUND postgres.railway.internal`. Pra migrar de fora, crie um proxy TCP temporário no serviço do Postgres:
+
+```bash
+railway tcp-proxy create --service Postgres --port 5432 --json
+# devolve um endpoint tipo "algumacoisa.proxy.rlwy.net:PORTA"
+```
+
+Pegue `PGUSER`/`PGPASSWORD`/`PGDATABASE` em `railway variable list --service Postgres --json`, monte `postgresql://PGUSER:PGPASSWORD@<endpoint-do-proxy>/PGDATABASE`, e rode a migration com essa URL:
+
+```bash
+DATABASE_URL="postgresql://..." npx tsx scripts/migrate.ts
+```
+
+**Depois, apague o proxy** (`railway tcp-proxy delete <porta> --service Postgres --yes`) — ele expõe o Postgres direto pra internet, só serve pra essa tarefa pontual. O app em produção continua usando a rede privada normalmente.
+
+Depois de rodar a migration, se o deploy já tinha subido antes (e crashado tentando ler uma tabela que ainda não existia), dispare um redeploy manual: `railway redeploy --service <nome> --yes`.
 
 ## Passo 7 — Testar de verdade
 
