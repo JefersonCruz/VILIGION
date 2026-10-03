@@ -1,7 +1,13 @@
 /**
- * Ponto de entrada: conecta motor de detecção (Tempo) → regras → disparo de
- * alerta por ligação → confirmação de PIN via webhook. Caminho crítico
- * ponta a ponta, pensado pra testar e demonstrar antes de existir qualquer UI.
+ * Ponto de entrada: conecta motor de detecção → regras → disparo de alerta
+ * por ligação → confirmação de PIN via webhook. Caminho crítico ponta a
+ * ponta, pensado pra testar e demonstrar antes de existir qualquer UI.
+ *
+ * Também prova em código a estratégia multi-track do pitch: o monitor da
+ * Tempo usa o adaptador completo + extensão TransferBlocked; opcionalmente,
+ * um segundo monitor roda em paralelo numa chain EVM genérica (Base) usando
+ * só o núcleo comum, sem nenhuma linha de código específica da Tempo - ver
+ * ARCHITECTURE.md e known-chains.ts.
  *
  * ⚠️ Antes de rodar contra a rede de verdade: confirme TEMPO_RECEIVE_POLICY_GUARD_ADDRESS
  * e o ABI em tempo.adapter.ts contra https://tempo.xyz/developers/docs/protocol/tip403/spec
@@ -10,7 +16,10 @@
 import "dotenv/config";
 import type { Address } from "viem";
 import { RECEIVE_POLICY_GUARD_ADDRESS, TempoAdapter } from "./engine/chains/tempo.adapter.js";
-import type { UserThresholds } from "./engine/rules/detection-rules.js";
+import { TempoBlockedTransferExtension } from "./engine/chains/tempo-extension.js";
+import { EvmAdapter } from "./engine/chains/evm-adapter.js";
+import { resolveRpcUrl } from "./engine/chains/known-chains.js";
+import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { Monitor } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
@@ -24,26 +33,6 @@ function requireEnv(name: string): string {
 }
 
 async function main() {
-  const tempoAdapter = new TempoAdapter({
-    rpcUrl: requireEnv("TEMPO_RPC_URL"),
-    chainId: Number(requireEnv("TEMPO_CHAIN_ID")),
-    minConfirmations: 3,
-    // Endereço de sistema confirmado na doc oficial - permite override por
-    // env caso a doc publique um endereço diferente futuramente.
-    receivePolicyGuardAddress:
-      (process.env.TEMPO_RECEIVE_POLICY_GUARD_ADDRESS as Address | undefined) ??
-      RECEIVE_POLICY_GUARD_ADDRESS,
-  });
-
-  const voiceClient = createTwilioVoiceClient({
-    accountSid: requireEnv("TWILIO_ACCOUNT_SID"),
-    authToken: requireEnv("TWILIO_AUTH_TOKEN"),
-    fromNumber: requireEnv("TWILIO_VOICE_NUMBER"),
-    gatherActionUrl: `${requireEnv("PUBLIC_BASE_URL")}/webhooks/twilio/gather`,
-  });
-
-  const pinStore: PinStore = new Map();
-
   // TODO produção: trocar pela leitura real de user_thresholds (ver mapping-schema.sql)
   // e pela lista real de destinatários cadastrados via PhoneMappingService.
   const thresholds: UserThresholds = {
@@ -54,27 +43,77 @@ async function main() {
   };
   const alertRecipients = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
 
-  const monitor = new Monitor(
+  const voiceClient = createTwilioVoiceClient({
+    accountSid: requireEnv("TWILIO_ACCOUNT_SID"),
+    authToken: requireEnv("TWILIO_AUTH_TOKEN"),
+    fromNumber: requireEnv("TWILIO_VOICE_NUMBER"),
+    gatherActionUrl: `${requireEnv("PUBLIC_BASE_URL")}/webhooks/twilio/gather`,
+  });
+
+  const pinStore: PinStore = new Map();
+
+  const dispatchAlert = async (event: DetectionEvent) => {
+    const alertId = randomUUID();
+    const pending: PendingPin = generatePin(alertId);
+    pinStore.set(alertId, pending);
+
+    console.log(`[alerta] disparando ${event.kind} (alertId=${alertId})`);
+
+    // Demo manda o PIN por log - em produção isto vai por WhatsApp/SMS
+    // separado do canal de voz, nunca junto da mesma ligação.
+    console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
+
+    await voiceClient.placeAlertCall({ toNumbers: alertRecipients, event, alertId });
+  };
+
+  // --- Monitor principal: Tempo, com extensão TransferBlocked ---
+  const tempoAdapter = new TempoAdapter({
+    rpcUrl: requireEnv("TEMPO_RPC_URL"),
+    chainId: Number(requireEnv("TEMPO_CHAIN_ID")),
+    minConfirmations: 3,
+    receivePolicyGuardAddress:
+      (process.env.TEMPO_RECEIVE_POLICY_GUARD_ADDRESS as Address | undefined) ??
+      RECEIVE_POLICY_GUARD_ADDRESS,
+  });
+
+  const tempoMonitor = new Monitor(
     tempoAdapter,
     {
       address: requireEnv("DEMO_WATCHED_ADDRESS") as Address,
       thresholds,
       pollIntervalMs: 15_000,
     },
-    async (event) => {
-      const alertId = randomUUID();
-      const pending: PendingPin = generatePin(alertId);
-      pinStore.set(alertId, pending);
-
-      console.log(`[alerta] disparando ${event.kind} (alertId=${alertId})`);
-
-      // Demo manda o PIN por log - em produção isto vai por WhatsApp/SMS
-      // separado do canal de voz, nunca junto da mesma ligação.
-      console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
-
-      await voiceClient.placeAlertCall({ toNumbers: alertRecipients, event, alertId });
-    },
+    dispatchAlert,
+    new TempoBlockedTransferExtension(tempoAdapter),
   );
+
+  const monitors = [tempoMonitor.start()];
+
+  // --- Monitor secundário opcional: Base, núcleo genérico, SEM extensão ---
+  // Prova em código a estratégia multi-track: zero linha de código específica
+  // de chain além da config de RPC. Só ativa se o endereço de demo da 2ª
+  // chain estiver configurado - não bloqueia quem só quer rodar Tempo.
+  if (process.env.DEMO_SECOND_CHAIN_ADDRESS) {
+    const baseAdapter = new EvmAdapter({
+      rpcUrl: resolveRpcUrl("base", process.env.BASE_RPC_URL),
+      chainId: 8453,
+      minConfirmations: 3,
+    });
+
+    const baseMonitor = new Monitor(
+      baseAdapter,
+      {
+        address: process.env.DEMO_SECOND_CHAIN_ADDRESS as Address,
+        thresholds,
+        pollIntervalMs: 15_000,
+      },
+      dispatchAlert,
+      // sem extensão - Base não tem TransferBlocked nem equivalente
+    );
+
+    console.log("[monitor] segundo monitor ativo na Base (núcleo genérico, sem extensão)");
+    monitors.push(baseMonitor.start());
+  }
 
   const webhookServer = createWebhookServer(
     {
@@ -91,7 +130,7 @@ async function main() {
   const port = Number(process.env.PORT ?? 3000);
   webhookServer.listen(port, () => console.log(`[webhook] escutando na porta ${port}`));
 
-  await monitor.start();
+  await Promise.all(monitors);
 }
 
 main().catch((err) => {

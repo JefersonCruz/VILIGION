@@ -1,24 +1,25 @@
 /**
- * Loop de monitoramento: observa um endereço na Tempo, roda as regras de
- * detecção contra os limiares do usuário, e dispara o pipeline de alerta
- * quando algo bate.
+ * Loop de monitoramento: observa um endereço em QUALQUER chain EVM, roda as
+ * regras de detecção genéricas (saldo) contra os limiares do usuário, e
+ * dispara o pipeline de alerta quando algo bate. Verificações específicas de
+ * protocolo (ex: TransferBlocked da Tempo) entram via uma extensão opcional
+ * - este arquivo não sabe nada sobre Tempo especificamente, prova em código
+ * o padrão "núcleo + adaptador" descrito em ARCHITECTURE.md.
  *
  * Usa polling (não assinatura via websocket) de propósito - é mais simples
  * de demonstrar de forma confiável num prazo curto, e a Indexer API da
  * Tempo é descrita pela própria doc oficial como "ainda evoluindo", então
- * preferimos o caminho mais previsível pro caminho crítico do alerta (ver
- * ARCHITECTURE.md).
+ * preferimos o caminho mais previsível pro caminho crítico do alerta.
  */
 
 import type { Address } from "viem";
-import type { TempoAdapter } from "./engine/chains/tempo.adapter.js";
+import type { EvmAdapter, BalanceSnapshot } from "./engine/chains/evm-adapter.js";
+import type { ChainExtension } from "./engine/chain-extension.js";
 import {
   checkBalanceDrop,
-  checkBlockedTransfer,
   type DetectionEvent,
   type UserThresholds,
 } from "./engine/rules/detection-rules.js";
-import type { BalanceSnapshot } from "./engine/chains/evm-adapter.js";
 
 export interface MonitorConfig {
   address: Address;
@@ -34,9 +35,11 @@ export class Monitor {
   private running = false;
 
   constructor(
-    private readonly adapter: TempoAdapter,
+    private readonly adapter: EvmAdapter,
     private readonly config: MonitorConfig,
     private readonly dispatchAlert: AlertDispatcher,
+    /** Opcional - só chains com particularidade de protocolo (ex: Tempo) passam uma */
+    private readonly extension?: ChainExtension,
   ) {}
 
   async start(): Promise<void> {
@@ -65,14 +68,16 @@ export class Monitor {
     }
     this.previousSnapshot = current;
 
-    const confirmedBlock = await this.adapter.getConfirmedBlockNumber();
-    if (confirmedBlock > this.lastCheckedBlock) {
-      const blocked = await this.adapter.getBlockedTransfers(this.lastCheckedBlock + 1n);
-      for (const transfer of blocked) {
-        const event = checkBlockedTransfer(transfer, this.config.thresholds);
-        if (event) await this.dispatchAlert(event);
+    if (this.extension) {
+      const confirmedBlock = await this.adapter.getConfirmedBlockNumber();
+      if (confirmedBlock > this.lastCheckedBlock) {
+        const extraEvents = await this.extension.checkExtra(
+          this.lastCheckedBlock + 1n,
+          this.config.thresholds,
+        );
+        for (const event of extraEvents) await this.dispatchAlert(event);
+        this.lastCheckedBlock = confirmedBlock;
       }
-      this.lastCheckedBlock = confirmedBlock;
     }
   }
 }
