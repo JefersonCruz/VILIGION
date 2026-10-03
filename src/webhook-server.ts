@@ -18,19 +18,39 @@ export interface WebhookServerConfig {
 
 export type PinStore = Map<string, PendingPin>;
 
+/**
+ * Tenta tratar a requisição como webhook da Twilio. Devolve `true` se o path
+ * bateu (independente do resultado - inválido ainda conta como "tratado",
+ * já respondeu 4xx), `false` se não é rota de webhook - permite compor com
+ * outro handler (ver dashboard/server.ts#createDashboardRequestHandler e o
+ * servidor combinado em index.ts) sem duplicar porta/domínio público.
+ */
+export async function handleWebhookRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: WebhookServerConfig,
+  pinStore: PinStore,
+  onPinResult: (alertId: string, result: ReturnType<typeof checkPin>) => void,
+): Promise<boolean> {
+  if (req.method === "POST" && req.url?.startsWith("/webhooks/twilio/gather")) {
+    await handleGather(req, res, config, pinStore, onPinResult);
+    return true;
+  }
+  return false;
+}
+
+/** Servidor standalone, só webhook - usado quando não há servidor combinado (ex: testes isolados). */
 export function createWebhookServer(
   config: WebhookServerConfig,
   pinStore: PinStore,
   onPinResult: (alertId: string, result: ReturnType<typeof checkPin>) => void,
 ) {
   return createServer(async (req, res) => {
-    if (req.method === "POST" && req.url?.startsWith("/webhooks/twilio/gather")) {
-      await handleGather(req, res, config, pinStore, onPinResult);
-      return;
+    const handled = await handleWebhookRequest(req, res, config, pinStore, onPinResult);
+    if (!handled) {
+      res.writeHead(404);
+      res.end();
     }
-
-    res.writeHead(404);
-    res.end();
   });
 }
 

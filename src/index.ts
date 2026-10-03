@@ -17,6 +17,7 @@
  */
 
 import "dotenv/config";
+import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { Address } from "viem";
 import { Pool } from "pg";
@@ -30,8 +31,8 @@ import { Monitor } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { createEmailNotifier } from "./alerts/email-notifier.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
-import { createWebhookServer, type PinStore } from "./webhook-server.js";
-import { createDashboardServer, type DashboardServerDeps } from "./dashboard/server.js";
+import { handleWebhookRequest, type PinStore, type WebhookServerConfig } from "./webhook-server.js";
+import { createDashboardRequestHandler, type DashboardServerDeps } from "./dashboard/server.js";
 import {
   InMemoryAccountDetailsRepository,
   InMemoryAlertLog,
@@ -98,19 +99,33 @@ function buildEmailNotifierIfConfigured() {
   });
 }
 
-/** Levanta o servidor de webhook (confirmação de PIN da Twilio) - igual nos dois modos. */
-function startWebhookServer(pinStore: PinStore, onPinResult: (alertId: string, result: string) => void) {
+/**
+ * Webhook da Twilio + painel na MESMA porta/domínio público, de propósito:
+ * a maioria dos hosts gratuitos/baratos (Railway incluso - confirmado na
+ * prática) só libera um domínio público por serviço. Antes disso eram dois
+ * `http.Server` em portas separadas (`PORT`/`DASHBOARD_PORT`); agora é um
+ * só, tentando a rota de webhook primeiro e caindo pro painel - ver
+ * webhook-server.ts#handleWebhookRequest e dashboard/server.ts#createDashboardRequestHandler.
+ */
+function startCombinedServer(
+  pinStore: PinStore,
+  onPinResult: (alertId: string, result: string) => void,
+  dashboardDeps: DashboardServerDeps,
+) {
   const port = Number(process.env.PORT ?? 3000);
-  const webhookServer = createWebhookServer(
-    {
-      port,
-      authToken: process.env.TWILIO_AUTH_TOKEN ?? "dev-sem-twilio",
-      publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
-    },
-    pinStore,
-    onPinResult,
-  );
-  webhookServer.listen(port, () => console.log(`[webhook] escutando na porta ${port}`));
+  const webhookConfig: WebhookServerConfig = {
+    port,
+    authToken: process.env.TWILIO_AUTH_TOKEN ?? "dev-sem-twilio",
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
+  };
+  const dashboardHandler = createDashboardRequestHandler(dashboardDeps);
+
+  const server = createServer(async (req, res) => {
+    const handledByWebhook = await handleWebhookRequest(req, res, webhookConfig, pinStore, onPinResult);
+    if (!handledByWebhook) await dashboardHandler(req, res);
+  });
+
+  server.listen(port, () => console.log(`[servidor] painel + webhook escutando na porta ${port}`));
   return port;
 }
 
@@ -206,11 +221,6 @@ async function mainDemo() {
     monitors.push(baseMonitor.start());
   }
 
-  startWebhookServer(pinStore, (alertId, result) => {
-    alertLog.updatePinStatus(alertId, result);
-    console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
-  });
-
   const users = new InMemoryUserRepository();
   const accounts = new InMemoryAccountDetailsRepository(watchedAddress, alertLog, async () => (await tempoAdapter.getBalance(watchedAddress)).raw);
   const monitoredAccounts = new InMemoryMonitoredAccountsRepository();
@@ -227,7 +237,14 @@ async function mainDemo() {
   console.log(`Configure o TOTP no autenticador com: ${demoCredentials.otpAuthUri}`);
   console.log("===================================================================\n");
 
-  startDashboard({ users, accounts, monitoredAccounts, thresholds: thresholdsRepo, alertHistory: alertLog, signup: signupService });
+  startCombinedServer(
+    pinStore,
+    (alertId, result) => {
+      alertLog.updatePinStatus(alertId, result);
+      console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
+    },
+    { users, accounts, monitoredAccounts, thresholds: thresholdsRepo, alertHistory: alertLog, signup: signupService },
+  );
 
   await Promise.all(monitors);
 }
@@ -305,11 +322,6 @@ async function mainWithDatabase(databaseUrl: string) {
 
   const monitors = allAccounts.map((account) => startMonitorForAccount(account, thresholdsRepo, makeDispatcher(account.userId, sharedAlertPhoneNumbers, sharedAlertEmails)));
 
-  startWebhookServer(pinStore, (alertId, result) => {
-    alertLog.updatePinStatus(alertId, result).catch((err) => console.error("[webhook] falha ao gravar pin_status:", err));
-    console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
-  });
-
   const accountsDetailsRepo = {
     async getDetails(userId: string) {
       const userAccounts = await monitoredAccounts.listForUser(userId);
@@ -334,14 +346,21 @@ async function mainWithDatabase(databaseUrl: string) {
     },
   };
 
-  startDashboard({
-    users: dashboardUsers,
-    accounts: accountsDetailsRepo,
-    monitoredAccounts,
-    thresholds: thresholdsRepo,
-    alertHistory: alertLog,
-    signup: signupService,
-  });
+  startCombinedServer(
+    pinStore,
+    (alertId, result) => {
+      alertLog.updatePinStatus(alertId, result).catch((err) => console.error("[webhook] falha ao gravar pin_status:", err));
+      console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
+    },
+    {
+      users: dashboardUsers,
+      accounts: accountsDetailsRepo,
+      monitoredAccounts,
+      thresholds: thresholdsRepo,
+      alertHistory: alertLog,
+      signup: signupService,
+    },
+  );
 
   await Promise.all(monitors.map((m) => m.run));
 }
@@ -394,12 +413,6 @@ function startMonitorForAccount(
   return { run };
 }
 
-function startDashboard(deps: DashboardServerDeps) {
-  const dashboardServer = createDashboardServer(deps);
-  const webhookPort = Number(process.env.PORT ?? 3000);
-  const dashboardPort = Number(process.env.DASHBOARD_PORT ?? webhookPort + 1);
-  dashboardServer.listen(dashboardPort, () => console.log(`[painel] escutando na porta ${dashboardPort}`));
-}
 
 main().catch((err) => {
   console.error("[fatal]", err);

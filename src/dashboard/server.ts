@@ -85,11 +85,18 @@ export interface DashboardServerDeps {
 
 const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
 
-export function createDashboardServer(deps: DashboardServerDeps) {
+/**
+ * Cria o handler de requisição (sem subir servidor) - usado tanto pelo
+ * servidor standalone abaixo quanto pelo servidor combinado em index.ts, que
+ * junta painel + webhook da Twilio numa porta/domínio público só (ver nota
+ * em webhook-server.ts#handleWebhookRequest sobre por quê: hospedagem
+ * gratuita costuma liberar só um domínio público por serviço).
+ */
+export function createDashboardRequestHandler(deps: DashboardServerDeps) {
   const loginLimiter = new RateLimiter(5, 15 * 60_000); // 5 tentativas / 15 min por identificador
   const sessions = new SessionStore();
 
-  return createServer(async (req, res) => {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
       await route(req, res, deps, loginLimiter, sessions);
     } catch (err) {
@@ -99,7 +106,12 @@ export function createDashboardServer(deps: DashboardServerDeps) {
         res.end("Erro interno.");
       }
     }
-  });
+  };
+}
+
+/** Servidor standalone, só painel - usado quando não há servidor combinado (ex: o smoke test manual). */
+export function createDashboardServer(deps: DashboardServerDeps) {
+  return createServer(createDashboardRequestHandler(deps));
 }
 
 async function route(

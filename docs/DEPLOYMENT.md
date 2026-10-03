@@ -4,11 +4,7 @@
 
 ## Antes de começar — o que o sistema expõe
 
-O processo sobe **dois servidores HTTP** ao mesmo tempo, em portas diferentes:
-- **Webhook** (`PORT`, default 3000) — recebe a confirmação de PIN da Twilio. Precisa ser público.
-- **Painel** (`DASHBOARD_PORT`, default `PORT+1`) — cadastro, login, dashboard. Precisa ser público.
-
-Confirmei que a Railway suporta isso sem nenhuma mudança de código: dá pra gerar **dois domínios públicos no mesmo serviço**, cada um apontando pra uma porta interna diferente ("Target Ports"/"Magic Ports", disponível no runtime V2). Não precisa separar em dois serviços.
+O processo sobe **um único servidor HTTP** (`PORT`, default 3000) atendendo webhook da Twilio e painel juntos — tentando a rota de webhook primeiro, caindo pro painel se não bater (ver `webhook-server.ts#handleWebhookRequest` e `dashboard/server.ts#createDashboardRequestHandler`). Isso foi uma correção deliberada: a versão original rodava dois `http.Server` em portas separadas, mas a Railway (confirmado na prática, não só na doc) só libera **um domínio público por serviço** via `railway domain` — então uma porta e um domínio é o que de fato funciona sem truque.
 
 ## Passo 1 — Criar o projeto e o banco na Railway
 
@@ -39,20 +35,16 @@ ENCRYPTION_KEY_KMS_ARN=<gerar com: node -e "console.log(require('crypto').random
 
 # App
 PORT=3000
-DASHBOARD_PORT=3001
-PUBLIC_BASE_URL=https://<domínio público do webhook, ver Passo 5>
+PUBLIC_BASE_URL=https://<domínio público gerado no Passo 5>
 
 # Twilio e SMTP - opcionais (ver ARCHITECTURE.md sobre por quê), preencher quando configurar
 ```
 
 `DATABASE_URL` não entra na lista — já veio do Passo 3.
 
-## Passo 5 — Gerar os dois domínios públicos
+## Passo 5 — Gerar o domínio público
 
-1. **Settings → Networking → Public Networking → Generate Domain.**
-2. A Railway pergunta qual porta — escolha `3000` (webhook). Anote o domínio gerado (ex: `viligion-production.up.railway.app`).
-3. Clique em **Generate Domain** de novo, desta vez escolha `3001` (painel). Fica um segundo domínio, só pro painel.
-4. Volte no Passo 4 e preencha `PUBLIC_BASE_URL` com `https://` + o domínio da porta 3000 (o webhook precisa saber sua própria URL pública pra Twilio assinar corretamente).
+**Settings → Networking → Public Networking → Generate Domain** (ou `railway domain --service <nome-do-serviço> --port 3000`). Anote o domínio gerado (ex: `viligion-app-production.up.railway.app`) e preencha `PUBLIC_BASE_URL` no Passo 4 com `https://` + esse domínio — tanto o webhook (assinatura da Twilio) quanto o painel ficam atrás dele.
 
 ## Passo 6 — Rodar a migration
 
@@ -69,7 +61,7 @@ railway run npm run migrate
 
 ## Passo 7 — Testar de verdade
 
-1. Abra `https://<domínio da porta 3001>/signup` no navegador.
+1. Abra `https://<domínio gerado no Passo 5>/signup` no navegador.
 2. Conecte uma carteira (MetaMask), assine a prova de propriedade, complete o cadastro.
 3. Configure o autenticador com o QR/código mostrado uma única vez.
 4. Faça login em `/login`, confira o painel em `/dashboard`.
