@@ -45,7 +45,7 @@ Detalhe técnico completo em [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Status
 
-Projeto em construção para o hackathon Crypto World's Fair (submissão até 13/10/2026). Ver [`GOVERNANCE.md`](./GOVERNANCE.md) para como decisões são tomadas nesta fase, e [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) para o plano de negócio e desenvolvimento por fase.
+Projeto em construção para o hackathon Crypto World's Fair (submissão até 13/10/2026). Ver [`GOVERNANCE.md`](./GOVERNANCE.md) para como decisões são tomadas nesta fase, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) para o plano de negócio e desenvolvimento por fase, e [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) para o roteiro dos vídeos de submissão.
 
 ## Licença
 
