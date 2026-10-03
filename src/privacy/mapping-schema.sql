@@ -18,6 +18,20 @@ CREATE TABLE phone_mappings (
 
 CREATE INDEX idx_phone_mappings_address_hash ON phone_mappings (address_hash);
 
+-- Credenciais de login do painel - chave primária é O MESMO UUID de
+-- phone_mappings.id (unifica a identidade: quem prova posse do endereço no
+-- cadastro é a mesma pessoa que loga no painel depois). Criado junto com a
+-- linha de phone_mappings, numa única transação de cadastro - ver
+-- privacy/signup-service.ts. Nunca guarda senha em claro (hashPassword já
+-- usa scrypt, ver dashboard/password.ts).
+CREATE TABLE dashboard_users (
+    user_id       UUID PRIMARY KEY REFERENCES phone_mappings (id),
+    username      TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    totp_secret   TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Limiares de detecção por usuário - PRIVADO, nunca versionado no código
 -- público (ver engine/rules/detection-rules.ts e ARCHITECTURE.md). Par de
 -- colunas "critical_*" decide o CANAL (ligação vs e-mail, ver

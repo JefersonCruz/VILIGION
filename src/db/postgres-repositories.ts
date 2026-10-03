@@ -9,9 +9,12 @@
  */
 
 import type { EncryptedPayload } from "../privacy/encryption.js";
+import type { DashboardUser, UserRepository } from "../dashboard/server.js";
+import type { UserThresholds } from "../engine/rules/detection-rules.js";
 
 export interface QueryResult<Row> {
   rows: Row[];
+  rowCount?: number | null;
 }
 
 export interface Queryable {
@@ -64,6 +67,92 @@ export class PostgresPhoneMappingRepository {
   }
 }
 
+export interface CreateDashboardUserInput {
+  userId: string;
+  username: string;
+  passwordHash: string;
+  totpSecret: string;
+}
+
+/**
+ * user_id é O MESMO UUID de phone_mappings.id - unifica a identidade de
+ * login do painel com quem provou posse do endereço no cadastro (ver
+ * privacy/signup-service.ts e a nota de design em docs/UI-SPEC.md).
+ */
+export class PostgresDashboardUserRepository implements UserRepository {
+  constructor(private readonly db: Queryable) {}
+
+  async findByUsername(username: string): Promise<DashboardUser | null> {
+    const result = await this.db.query<{ user_id: string; password_hash: string; totp_secret: string }>(
+      `SELECT user_id, password_hash, totp_secret FROM dashboard_users WHERE username = $1`,
+      [username],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { userId: row.user_id, passwordHash: row.password_hash, totpSecret: row.totp_secret };
+  }
+
+  async create(input: CreateDashboardUserInput): Promise<void> {
+    await this.db.query(
+      `INSERT INTO dashboard_users (user_id, username, password_hash, totp_secret) VALUES ($1, $2, $3, $4)`,
+      [input.userId, input.username, input.passwordHash, input.totpSecret],
+    );
+  }
+}
+
+export class PostgresThresholdsRepository {
+  constructor(private readonly db: Queryable) {}
+
+  async upsert(thresholds: UserThresholds): Promise<void> {
+    await this.db.query(
+      `INSERT INTO user_thresholds
+         (user_id, max_balance_drop_pct, critical_balance_drop_pct, window_minutes,
+          blocked_transfer_alert_threshold, critical_blocked_transfer_threshold)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO UPDATE SET
+         max_balance_drop_pct = EXCLUDED.max_balance_drop_pct,
+         critical_balance_drop_pct = EXCLUDED.critical_balance_drop_pct,
+         window_minutes = EXCLUDED.window_minutes,
+         blocked_transfer_alert_threshold = EXCLUDED.blocked_transfer_alert_threshold,
+         critical_blocked_transfer_threshold = EXCLUDED.critical_blocked_transfer_threshold`,
+      [
+        thresholds.userId,
+        thresholds.maxBalanceDropPct,
+        thresholds.criticalBalanceDropPct,
+        thresholds.windowMinutes,
+        thresholds.blockedTransferAlertThreshold.toString(),
+        thresholds.criticalBlockedTransferThreshold.toString(),
+      ],
+    );
+  }
+
+  async get(userId: string): Promise<UserThresholds | null> {
+    const result = await this.db.query<{
+      user_id: string;
+      max_balance_drop_pct: string;
+      critical_balance_drop_pct: string;
+      window_minutes: number;
+      blocked_transfer_alert_threshold: string;
+      critical_blocked_transfer_threshold: string;
+    }>(
+      `SELECT user_id, max_balance_drop_pct, critical_balance_drop_pct, window_minutes,
+              blocked_transfer_alert_threshold, critical_blocked_transfer_threshold
+       FROM user_thresholds WHERE user_id = $1`,
+      [userId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      maxBalanceDropPct: Number(row.max_balance_drop_pct),
+      criticalBalanceDropPct: Number(row.critical_balance_drop_pct),
+      windowMinutes: Number(row.window_minutes),
+      blockedTransferAlertThreshold: BigInt(row.blocked_transfer_alert_threshold),
+      criticalBlockedTransferThreshold: BigInt(row.critical_blocked_transfer_threshold),
+    };
+  }
+}
+
 export interface MonitoredAccountInput {
   userId: string;
   /** chave em engine/chains/known-chains.ts (ex: "tempo", "base") - validar com getKnownChain ANTES de chamar */
@@ -103,14 +192,49 @@ export class PostgresMonitoredAccountRepository {
       watched_address: string;
     }>(`SELECT id, user_id, chain_key, token_address, watched_address FROM monitored_accounts ORDER BY created_at`);
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      userId: row.user_id,
-      chainKey: row.chain_key,
-      tokenAddress: row.token_address,
-      watchedAddress: row.watched_address,
-    }));
+    return result.rows.map(mapAccountRow);
   }
+
+  /** Usado na tela "gerenciar contas" - só as contas do usuário logado. */
+  async listForUser(userId: string): Promise<MonitoredAccountRow[]> {
+    const result = await this.db.query<{
+      id: string;
+      user_id: string;
+      chain_key: string;
+      token_address: string;
+      watched_address: string;
+    }>(
+      `SELECT id, user_id, chain_key, token_address, watched_address FROM monitored_accounts
+       WHERE user_id = $1 ORDER BY created_at`,
+      [userId],
+    );
+    return result.rows.map(mapAccountRow);
+  }
+
+  /** Remove só se a conta pertencer ao usuário - nunca deixa um usuário apagar conta de outro. Retorna se de fato removeu algo. */
+  async remove(id: string, userId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `DELETE FROM monitored_accounts WHERE id = $1 AND user_id = $2`,
+      [id, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+}
+
+function mapAccountRow(row: {
+  id: string;
+  user_id: string;
+  chain_key: string;
+  token_address: string;
+  watched_address: string;
+}): MonitoredAccountRow {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    chainKey: row.chain_key,
+    tokenAddress: row.token_address,
+    watchedAddress: row.watched_address,
+  };
 }
 
 export interface AlertLogRecordInput {
@@ -143,5 +267,31 @@ export class PostgresAlertLog {
       [userId, limit],
     );
     return result.rows.map((row) => ({ kind: row.kind, createdAt: row.created_at }));
+  }
+
+  /** Versão completa pra tela de histórico (UI-SPEC.md item 4) - inclui severidade, canal e status do PIN. */
+  async detailedForUser(userId: string, limit = 50): Promise<
+    Array<{ alertId: string; kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: Date }>
+  > {
+    const result = await this.db.query<{
+      alert_id: string;
+      kind: string;
+      severity: string;
+      delivered_via: string;
+      pin_status: string | null;
+      created_at: Date;
+    }>(
+      `SELECT alert_id, kind, severity, delivered_via, pin_status, created_at
+       FROM alert_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [userId, limit],
+    );
+    return result.rows.map((row) => ({
+      alertId: row.alert_id,
+      kind: row.kind,
+      severity: row.severity,
+      deliveredVia: row.delivered_via,
+      pinStatus: row.pin_status,
+      createdAt: row.created_at,
+    }));
   }
 }
