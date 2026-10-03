@@ -72,5 +72,14 @@ Decisão: tratar como item de roadmap pós-hackathon junto com o push via PWA, n
 ## Limitações conhecidas (documentadas por honestidade, não escondidas)
 
 - Limiares calibrados em testnet (Moderato) não necessariamente generalizam para mainnet — comportamento de saldo em testnet é mais ruidoso (faucets, scripts de teste).
-- Dependência de disponibilidade da Twilio e do RPC da Tempo; health-check interno avisa a equipe se o pipeline de detecção parar.
+- Dependência de disponibilidade da Twilio e do RPC da Tempo.
 - Sandbox do WhatsApp (se usado em demo) é um número compartilhado publicamente conhecido da Twilio — válido apenas para demonstração, não para produção.
+
+## Lacunas de arquitetura (auditado em 2026-10-03, nenhuma escondida)
+
+Revisão do repositório encontrou peças descritas na documentação (ou já com lógica/schema prontos) mas que ainda não estão conectadas ponta a ponta:
+
+- **Sem persistência real**: `DATABASE_URL` existe no `.env.example` e `privacy/mapping-schema.sql` define o schema, mas não há dependência de cliente Postgres no `package.json` nem código de conexão. `InMemoryUserRepository`/`InMemoryAccountDetailsRepository`/`InMemoryAlertLog` (`dashboard/in-memory-repositories.ts`) são stand-ins de demo — qualquer reinício do processo apaga tudo. É o maior item pra sair de "demo de hackathon" pra produto operável.
+- **Cadastro (`PhoneMappingService.register`) existe mas não está exposto**: a lógica de prova de propriedade + criptografia está completa e testada (`privacy/phone-mapping.ts`, `privacy/ownership-proof.ts`), mas nenhuma rota em `dashboard/server.ts` chama isso — hoje não tem como um usuário real se cadastrar pelo sistema.
+- **`TempoAdapter.classifyBalanceDelta` é um stub não conectado**: existe, mas (a) sempre retorna `"value-transfer"` (nunca filtra fee), e (b) `monitor.ts` nem chama essa função antes de `checkBalanceDrop` — ou seja, hoje uma dedução de fee de rotina (lembrando: Tempo não tem gas token nativo, a fee sai do mesmo TIP-20 monitorado) pode disparar falso positivo de "queda de saldo". Risco real de ruído na demo se o endereço observado fizer transações no meio da gravação.
+- **Sem health-check do próprio monitor**: se o loop em `monitor.ts` parar de progredir (RPC fora do ar, erro não tratado), hoje só aparece no log local — nada avisa a equipe ativamente. A linha anterior deste documento afirmava que isso existia; não existe, corrigido aqui.

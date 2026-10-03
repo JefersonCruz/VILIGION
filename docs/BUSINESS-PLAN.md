@@ -52,10 +52,10 @@ Unit economics favorável: custo marginal desprezível, custo fixo baixo — qua
 ### Fase 0 — Hackathon (agora → 12/10/2026 23:59 PT)
 Objetivo único: submissão completa e defensável. Nesta ordem de prioridade:
 
-1. **Testar contra a rede real da Tempo** (testnet Moderato no mínimo) — maior risco de execução aberto. Sem isso, o critério "Functionality" fica vulnerável.
-2. **Gravar os dois vídeos obrigatórios** (apresentação 2–3min, demo de produto até 3min).
-3. **Criar a submissão no portal da Colosseum** — ainda não existe (confirmado via API: `projects: []` no perfil).
-4. **Corrigir o deck de pitch** (`docs/VILIGION-apresentacao-time.pdf`) — remover a claim de decodificador inédito, substituir pela posição correta (compõe com `ox/tempo`, peça oficial do ecossistema).
+1. ~~Testar contra a rede real da Tempo~~ — **feito** (`scripts/verify-testnet.ts`), confirmado contra testnet Moderato com eventos reais; achou e corrigiu um bug real de leitura de saldo no processo.
+2. **Gravar os dois vídeos obrigatórios** (apresentação 2–3min, demo de produto até 3min) — roteiro pronto em `docs/VIDEO-SCRIPT.md`.
+3. **Criar a submissão no portal da Colosseum** — ainda não existe (confirmado via API: `projects: []` no perfil). Só o dono da conta consegue fazer isso.
+4. **Corrigir o deck de pitch** (`docs/VILIGION-apresentacao-time.pdf`) — remover a claim de decodificador inédito, substituir pela posição correta (compõe com `ox/tempo`, peça oficial do ecossistema). Ainda pendente — é PDF, não editável por aqui.
 5. Stretch goal, só se sobrar tempo: replicar o motor pra uma 2ª chain EVM (Base/Arbitrum) pra reforçar estratégia multi-track.
 
 ### Fase 1 — Validação pós-hackathon (outubro–dezembro 2026)
@@ -80,9 +80,10 @@ Uma empresa grande teria times dedicados de compliance, jurídico, vendas e segu
 | Jurídico/compliance | Stablecorp (parceria já confirmada no hub da Colosseum) pra formação de empresa e banking — não resolve questões regulatórias específicas de cada mercado onde vender, mas resolve o básico de existir como empresa |
 | Segurança/auditoria | Os 36+ testes automatizados e o `SECURITY.md` já documentado são a base; uma auditoria externa de verdade (não um teste de cliente/binário compilado) só faz sentido com tração real, é caro demais pro estágio atual |
 | Vendas/GTM | Founder solo faz as primeiras 10–15 entrevistas de validação pessoalmente — não terceirizar isso, é a parte que mais ensina |
-| Engenharia adicional | Não contratar ainda; o gargalo agora é validação de mercado, não capacidade técnica |
+| Agente de P&D (ver `GOVERNANCE.md`) | Não contratar ainda — founder solo absorve isso por enquanto, mas o papel está definido: manter as premissas sobre a Tempo em dia (RPC, ABI, endereços), re-verificando periodicamente contra doc oficial e rede real |
+| Cientista de Dados (ver `GOVERNANCE.md`) | Não contratar ainda — mas é o dono natural da lacuna real já identificada (`classifyBalanceDelta` nunca filtra fee de valor real). Primeiro gatilho pra trazer alguém: quando houver dado real de uso (não só testnet) pra calibrar isso de verdade |
 
-**Quando buscar cofounder ou primeira contratação**: depois da Fase 1, se a validação confirmar demanda real — e preferencialmente alguém que cubra uma lacuna hoje inexistente (GTM/vendas, já que a parte técnica está coberta).
+**Quando buscar cofounder ou primeira contratação**: depois da Fase 1, se a validação confirmar demanda real. Prioridade de contratação, nessa ordem: (1) GTM/vendas — hoje é a lacuna mais crítica; (2) Cientista de Dados — só faz sentido com volume real de transações pra calibrar; (3) Agente de P&D — papel que o founder consegue sustentar sozinho por mais tempo, já que é o mesmo tipo de trabalho feito nesta própria investigação.
 
 ## 4. Riscos e mitigação
 

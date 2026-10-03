@@ -19,12 +19,17 @@ CREATE TABLE phone_mappings (
 CREATE INDEX idx_phone_mappings_address_hash ON phone_mappings (address_hash);
 
 -- Limiares de detecção por usuário - PRIVADO, nunca versionado no código
--- público (ver engine/rules/detection-rules.ts e ARCHITECTURE.md).
+-- público (ver engine/rules/detection-rules.ts e ARCHITECTURE.md). Par de
+-- colunas "critical_*" decide o CANAL (ligação vs e-mail, ver
+-- alerts/email-notifier.ts e alerts/twilio-voice.ts) - abaixo do limiar
+-- crítico mas acima do normal, o alerta sai por e-mail.
 CREATE TABLE user_thresholds (
-    user_id                          UUID PRIMARY KEY REFERENCES phone_mappings (id),
-    max_balance_drop_pct             NUMERIC NOT NULL,
-    window_minutes                   INTEGER NOT NULL,
-    blocked_transfer_alert_threshold NUMERIC NOT NULL
+    user_id                            UUID PRIMARY KEY REFERENCES phone_mappings (id),
+    max_balance_drop_pct               NUMERIC NOT NULL,
+    critical_balance_drop_pct          NUMERIC NOT NULL,
+    window_minutes                     INTEGER NOT NULL,
+    blocked_transfer_alert_threshold   NUMERIC NOT NULL,
+    critical_blocked_transfer_threshold NUMERIC NOT NULL
 );
 
 -- Log de alertas disparados - útil pra auditoria e pra detectar TDoS
@@ -35,7 +40,8 @@ CREATE TABLE alert_log (
     alert_id    TEXT NOT NULL UNIQUE,
     user_id     UUID NOT NULL REFERENCES phone_mappings (id),
     kind        TEXT NOT NULL,
-    delivered_via TEXT NOT NULL, -- 'voice' | 'whatsapp'
-    pin_status  TEXT, -- 'valid' | 'invalid' | 'expired' | 'already-consumed' | NULL (sem resposta)
+    severity      TEXT NOT NULL, -- 'normal' | 'critical' - decide delivered_via (ver detection-rules.ts)
+    delivered_via TEXT NOT NULL, -- 'voice' | 'email'
+    pin_status  TEXT, -- 'valid' | 'invalid' | 'expired' | 'already-consumed' | NULL (sem resposta, ou N/A pra e-mail)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
