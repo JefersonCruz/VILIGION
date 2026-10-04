@@ -110,6 +110,8 @@ export interface DashboardServerDeps {
   signup: SignupPort;
   recipients: RecipientsPort;
   monitorControl: MonitorControlPort;
+  /** Dispara um alerta crítico sintético pro usuário (ligação + PIN) - botão de teste em /recipients. */
+  testAlert?: (userId: string) => Promise<void>;
 }
 
 const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
@@ -184,6 +186,7 @@ async function route(
   if (req.method === "POST" && url === "/thresholds") return withSession(req, res, sessions, (userId) => handleUpdateThresholds(req, res, deps, userId));
   if (req.method === "GET" && url === "/recipients") return withSession(req, res, sessions, (userId) => renderRecipients(res, deps, userId));
   if (req.method === "POST" && url === "/recipients") return withSession(req, res, sessions, (userId) => handleAddRecipient(req, res, deps, userId));
+  if (req.method === "POST" && url === "/recipients/test") return withSession(req, res, sessions, (userId) => handleTestAlert(res, deps, userId));
   if (req.method === "POST" && recipientDeleteMatch) {
     const recipientId = recipientDeleteMatch[1] as string;
     return withSession(req, res, sessions, (userId) => handleDeleteRecipient(res, deps, userId, recipientId));
@@ -399,9 +402,33 @@ function parseThresholdsForm(userId: string, body: Record<string, string>): User
 
 // --- Destinatários de alerta ---
 
-async function renderRecipients(res: ServerResponse, deps: DashboardServerDeps, userId: string, error?: string): Promise<void> {
+async function renderRecipients(
+  res: ServerResponse,
+  deps: DashboardServerDeps,
+  userId: string,
+  error?: string,
+  notice?: string,
+): Promise<void> {
   const recipients = await deps.recipients.listForUser(userId);
-  send(res, 200, recipientsPage({ recipients, error }));
+  send(res, 200, recipientsPage({ recipients, error, notice, canTest: Boolean(deps.testAlert) }));
+}
+
+const TEST_ALERT_COOLDOWN_MS = 60_000; // ligação custa dinheiro e incomoda - evita spam acidental ou abusivo
+const lastTestAlertAt = new Map<string, number>();
+
+async function handleTestAlert(res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
+  if (!deps.testAlert) return renderRecipients(res, deps, userId, "Alerta de teste indisponível neste ambiente.");
+  const last = lastTestAlertAt.get(userId) ?? 0;
+  if (Date.now() - last < TEST_ALERT_COOLDOWN_MS) {
+    return renderRecipients(res, deps, userId, "Aguarde 1 minuto entre alertas de teste.");
+  }
+  const recipients = await deps.recipients.listForUser(userId);
+  if (!recipients.some((r) => r.kind === "phone")) {
+    return renderRecipients(res, deps, userId, "Cadastre pelo menos um telefone antes de testar.");
+  }
+  lastTestAlertAt.set(userId, Date.now());
+  await deps.testAlert(userId);
+  return renderRecipients(res, deps, userId, undefined, "Alerta de teste disparado: a ligação deve tocar em instantes e o código chega por WhatsApp.");
 }
 
 async function handleAddRecipient(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {

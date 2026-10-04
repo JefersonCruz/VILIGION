@@ -276,7 +276,17 @@ async function mainDemo() {
       alertLog.updatePinStatus(alertId, result);
       console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
     },
-    { users, accounts, monitoredAccounts, thresholds: thresholdsRepo, alertHistory: alertLog, signup: signupService, recipients, monitorControl },
+    {
+      users,
+      accounts,
+      monitoredAccounts,
+      thresholds: thresholdsRepo,
+      alertHistory: alertLog,
+      signup: signupService,
+      recipients,
+      monitorControl,
+      testAlert: () => dispatchAlert({ kind: "balance-drop", userId: thresholds.userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
+    },
   );
 
   await Promise.all(monitors);
@@ -415,6 +425,8 @@ async function mainWithDatabase(databaseUrl: string) {
       signup: signupService,
       recipients: recipientsRepo,
       monitorControl,
+      testAlert: (userId) =>
+        makeDispatcher(userId)({ kind: "balance-drop", userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
     },
   );
 }

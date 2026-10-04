@@ -375,6 +375,8 @@ export function thresholdsPage(params: {
 export function recipientsPage(params: {
   recipients: Array<{ id: string; kind: string; value: string }>;
   error?: string;
+  notice?: string;
+  canTest?: boolean;
 }): string {
   const rows =
     params.recipients.length === 0
@@ -412,8 +414,17 @@ export function recipientsPage(params: {
 
     <button type="submit">Adicionar</button>
   </form>
-</div>`;
-  return layout({ title: "Destinatários de alerta", body, authed: true, error: params.error });
+</div>${
+    params.canTest
+      ? `
+<div class="card">
+  <p class="muted">Testar o canal crítico</p>
+  <p class="muted" style="margin-bottom:10px;">Dispara agora um alerta crítico de teste: liga pros telefones cadastrados e manda o código de confirmação por WhatsApp. Confira em <a class="link" href="/alerts">histórico</a> se o código foi confirmado.</p>
+  <form method="POST" action="/recipients/test"><button type="submit">Enviar alerta de teste</button></form>
+</div>`
+      : ""
+  }`;
+  return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="card"><p>${escapeHtml(params.notice)}</p></div>${body}` : body, authed: true, error: params.error });
 }
 
 export function alertsHistoryPage(params: {
