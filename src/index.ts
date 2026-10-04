@@ -80,7 +80,9 @@ function buildVoiceClientIfConfigured() {
     authToken,
     fromNumber,
     gatherActionUrl: `${publicBaseUrl}/webhooks/twilio/gather`,
+    twimlUrl: `${publicBaseUrl}/webhooks/twilio/voice`,
     whatsappFromNumber: process.env.TWILIO_WHATSAPP_NUMBER,
+    whatsappContentSid: process.env.TWILIO_WHATSAPP_CONTENT_SID,
   });
 }
 

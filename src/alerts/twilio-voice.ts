@@ -41,12 +41,40 @@ const NO_CODE_FALLBACK: Record<AlertLocale, string> = {
   pt: "Nenhum código recebido. Acesse o painel para ver os detalhes.",
 };
 
+const TWIML_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * TwiML pendente por alertId, servido por GET/POST /webhooks/twilio/voice.
+ * Contas trial da Twilio rejeitam o parâmetro `twiml` inline em calls.create
+ * (erro 400/0), mas aceitam `url` - então o script da ligação é hospedado
+ * pelo próprio app. Em memória, igual ao pinStore (vida curta, só vale durante o alerta).
+ */
+const twimlStore = new Map<string, { twiml: string; expiresAt: number }>();
+
+export function getPendingTwiml(alertId: string): string | undefined {
+  const entry = twimlStore.get(alertId);
+  if (!entry) return undefined;
+  if (entry.expiresAt < Date.now()) {
+    twimlStore.delete(alertId);
+    return undefined;
+  }
+  return entry.twiml;
+}
+
 export interface TwilioVoiceConfig {
   accountSid: string;
   authToken: string;
   fromNumber: string;
   /** URL pública (webhook) que recebe a resposta do <Gather> - precisa de validação de assinatura */
   gatherActionUrl: string;
+  /** URL pública que a Twilio busca pra obter o TwiML da ligação (ex: https://app/webhooks/twilio/voice) */
+  twimlUrl: string;
+  /**
+   * ContentSid (HX...) de um template de WhatsApp aprovado com o PIN na variável {{1}}.
+   * Obrigatório na prática pra mensagens iniciadas pelo negócio (fora da janela de 24h
+   * a Twilio responde erro 21654 a `body` livre). Sem isto, tenta `body` livre.
+   */
+  whatsappContentSid?: string;
   /**
    * Número "from" pro envio do PIN via WhatsApp (formato E.164, ex:
    * "+14155238886" - prefixo "whatsapp:" é adicionado internamente).
@@ -58,8 +86,12 @@ export interface TwilioVoiceConfig {
 
 /** Só o que este módulo realmente usa do client da Twilio - injetável pra testar sem SDK/rede de verdade (mesmo padrão de `Transporter` em email-notifier.ts). */
 export interface TwilioLikeClient {
-  calls: { create(params: { to: string; from: string; twiml: string }): Promise<unknown> };
-  messages: { create(params: { to: string; from: string; body: string }): Promise<unknown> };
+  calls: { create(params: { to: string; from: string; url: string; method: "POST" }): Promise<unknown> };
+  messages: {
+    create(
+      params: { to: string; from: string } & ({ body: string } | { contentSid: string; contentVariables: string }),
+    ): Promise<unknown>;
+  };
 }
 
 export function createTwilioVoiceClient(config: TwilioVoiceConfig, client?: TwilioLikeClient) {
@@ -93,16 +125,21 @@ export function createTwilioVoiceClient(config: TwilioVoiceConfig, client?: Twil
         actionUrl: `${config.gatherActionUrl}?alertId=${encodeURIComponent(params.alertId)}`,
       });
 
+      twimlStore.set(params.alertId, { twiml, expiresAt: Date.now() + TWIML_TTL_MS });
+      const url = `${config.twimlUrl}?alertId=${encodeURIComponent(params.alertId)}`;
+
       const callResults = await Promise.allSettled(
-        params.toNumbers.map((to) => twilioClient.calls.create({ to, from: config.fromNumber, twiml })),
+        params.toNumbers.map((to) => twilioClient.calls.create({ to, from: config.fromNumber, url, method: "POST" })),
       );
 
       let whatsappResults: PromiseSettledResult<unknown>[] = [];
       if (config.whatsappFromNumber) {
-        const body = WHATSAPP_PIN_MESSAGE[locale](params.pin);
         const fromWhatsApp = toWhatsAppAddress(config.whatsappFromNumber);
+        const content = config.whatsappContentSid
+          ? { contentSid: config.whatsappContentSid, contentVariables: JSON.stringify({ "1": params.pin }) }
+          : { body: WHATSAPP_PIN_MESSAGE[locale](params.pin) };
         whatsappResults = await Promise.allSettled(
-          params.toNumbers.map((to) => twilioClient.messages.create({ to: toWhatsAppAddress(to), from: fromWhatsApp, body })),
+          params.toNumbers.map((to) => twilioClient.messages.create({ to: toWhatsAppAddress(to), from: fromWhatsApp, ...content })),
         );
       }
 

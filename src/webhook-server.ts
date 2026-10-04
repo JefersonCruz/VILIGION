@@ -8,6 +8,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { assertValidTwilioWebhook } from "./alerts/twilio-webhook-validator.js";
 import { checkPin, type PendingPin } from "./alerts/pin.js";
+import { getPendingTwiml } from "./alerts/twilio-voice.js";
 
 export interface WebhookServerConfig {
   port: number;
@@ -36,7 +37,42 @@ export async function handleWebhookRequest(
     await handleGather(req, res, config, pinStore, onPinResult);
     return true;
   }
+  if ((req.method === "POST" || req.method === "GET") && req.url?.startsWith("/webhooks/twilio/voice")) {
+    await handleVoiceTwiml(req, res, config);
+    return true;
+  }
   return false;
+}
+
+async function handleVoiceTwiml(req: IncomingMessage, res: ServerResponse, config: WebhookServerConfig): Promise<void> {
+  const body = req.method === "POST" ? await readBody(req) : "";
+  const params = Object.fromEntries(new URLSearchParams(body));
+  const fullUrl = new URL(req.url ?? "", config.publicBaseUrl).toString();
+  const signatureHeader = req.headers["x-twilio-signature"];
+
+  try {
+    assertValidTwilioWebhook({
+      authToken: config.authToken,
+      fullUrl,
+      signatureHeader: Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader,
+      params,
+    });
+  } catch (err) {
+    console.error("[webhook] assinatura Twilio inválida em /voice - requisição rejeitada:", err);
+    res.writeHead(403);
+    res.end();
+    return;
+  }
+
+  const alertId = new URL(fullUrl).searchParams.get("alertId");
+  const twiml = alertId ? getPendingTwiml(alertId) : undefined;
+  if (!twiml) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  res.writeHead(200, { "Content-Type": "text/xml" });
+  res.end(twiml);
 }
 
 /** Servidor standalone, só webhook - usado quando não há servidor combinado (ex: testes isolados). */

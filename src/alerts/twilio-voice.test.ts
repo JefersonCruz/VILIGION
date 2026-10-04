@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTwilioVoiceClient, type TwilioLikeClient } from "./twilio-voice.js";
+import { createTwilioVoiceClient, getPendingTwiml, type TwilioLikeClient } from "./twilio-voice.js";
 import type { DetectionEvent } from "../engine/rules/detection-rules.js";
 
 const normalEvent: DetectionEvent = {
@@ -22,6 +22,7 @@ const baseConfig = {
   authToken: "token",
   fromNumber: "+15550000000",
   gatherActionUrl: "https://example.com/webhooks/twilio/gather",
+  twimlUrl: "https://example.com/webhooks/twilio/voice",
 };
 
 describe("createTwilioVoiceClient - entrega do PIN", () => {
@@ -46,7 +47,7 @@ describe("createTwilioVoiceClient - entrega do PIN", () => {
     expect(call.to).toBe("whatsapp:+5511111111111");
     expect(call.body).toContain("1234");
 
-    const twiml = client.calls.create.mock.calls[0]?.[0].twiml as string;
+    const twiml = getPendingTwiml("a1") as string;
     expect(twiml).toMatch(/WhatsApp/);
     expect(twiml).not.toContain("1234"); // o PIN não é falado na ligação quando vai por WhatsApp
   });
@@ -58,7 +59,7 @@ describe("createTwilioVoiceClient - entrega do PIN", () => {
     await voice.placeAlertCall({ toNumbers: ["+5511111111111"], event: normalEvent, alertId: "a1", pin: "5678" });
 
     expect(client.messages.create).not.toHaveBeenCalled();
-    const twiml = client.calls.create.mock.calls[0]?.[0].twiml as string;
+    const twiml = getPendingTwiml("a1") as string;
     expect(twiml).not.toMatch(/WhatsApp/);
     expect(twiml).toContain("5 6 7 8"); // dígitos separados, pra TTS falar um por um
   });
@@ -69,8 +70,33 @@ describe("createTwilioVoiceClient - entrega do PIN", () => {
 
     await voice.placeAlertCall({ toNumbers: ["+5511111111111"], event: normalEvent, alertId: "a1", pin: "9999" });
 
-    const twiml = client.calls.create.mock.calls[0]?.[0].twiml as string;
+    const twiml = getPendingTwiml("a1") as string;
     expect(twiml).not.toMatch(/0x[a-fA-F0-9]{6,}/);
     expect(twiml).not.toMatch(/\$\s?\d/);
+  });
+
+  it("liga via url hospedada (contas trial rejeitam twiml inline) e o TwiML fica disponível por alertId", async () => {
+    const client = fakeClient();
+    const voice = createTwilioVoiceClient(baseConfig, client);
+
+    await voice.placeAlertCall({ toNumbers: ["+5511111111111"], event: normalEvent, alertId: "a-url", pin: "1111" });
+
+    const call = client.calls.create.mock.calls[0]?.[0];
+    expect(call.url).toBe("https://example.com/webhooks/twilio/voice?alertId=a-url");
+    expect(call.twiml).toBeUndefined();
+    expect(getPendingTwiml("a-url")).toContain("<Gather");
+    expect(getPendingTwiml("inexistente")).toBeUndefined();
+  });
+
+  it("com whatsappContentSid: envia template com o PIN em {{1}} em vez de body livre", async () => {
+    const client = fakeClient();
+    const voice = createTwilioVoiceClient({ ...baseConfig, whatsappFromNumber: "+14155238886", whatsappContentSid: "HXabc" }, client);
+
+    await voice.placeAlertCall({ toNumbers: ["+5511111111111"], event: normalEvent, alertId: "a1", pin: "4321" });
+
+    const call = client.messages.create.mock.calls[0]?.[0];
+    expect(call.contentSid).toBe("HXabc");
+    expect(JSON.parse(call.contentVariables)).toEqual({ "1": "4321" });
+    expect(call.body).toBeUndefined();
   });
 });
