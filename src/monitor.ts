@@ -63,7 +63,18 @@ export class Monitor {
     const current = await this.adapter.getBalance(this.config.address);
 
     if (this.previousSnapshot) {
-      const event = checkBalanceDrop(this.previousSnapshot, current, this.config.thresholds);
+      // Soma de volta qualquer dedução de taxa entre os dois blocos antes de
+      // comparar - sem isto, pagamento de taxa legítimo (ex: na Tempo, que
+      // não tem gas token nativo) pode parecer queda de saldo real. Default
+      // 0n pra chains sem essa particularidade (ver EvmAdapter.getFeeAdjustment).
+      const feeAdjustment = await this.adapter.getFeeAdjustment(
+        this.previousSnapshot.blockNumber,
+        current.blockNumber,
+        this.config.address,
+      );
+      const adjustedCurrent = { ...current, raw: current.raw + feeAdjustment };
+
+      const event = checkBalanceDrop(this.previousSnapshot, adjustedCurrent, this.config.thresholds);
       if (event) await this.dispatchAlert(event);
     }
     this.previousSnapshot = current;
@@ -71,8 +82,12 @@ export class Monitor {
     if (this.extension) {
       const confirmedBlock = await this.adapter.getConfirmedBlockNumber();
       if (confirmedBlock > this.lastCheckedBlock) {
+        // Passa o bloco confirmado que ACABAMOS de calcular, em vez de
+        // deixar a extensão perguntar de novo à RPC (achado de performance
+        // de 2026-10-03 - essa segunda chamada era pura duplicação).
         const extraEvents = await this.extension.checkExtra(
           this.lastCheckedBlock + 1n,
+          confirmedBlock,
           this.config.thresholds,
         );
         for (const event of extraEvents) await this.dispatchAlert(event);

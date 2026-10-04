@@ -96,6 +96,20 @@ export class EvmAdapter {
   }
 
   /**
+   * Quanto do delta de saldo bruto entre dois blocos é só dedução de taxa
+   * (não uma saída real de valor) - soma de volta pro saldo "ajustado" antes
+   * de checkBalanceDrop, pra não confundir pagamento de taxa legítimo com
+   * anomalia (ver monitor.ts#tick). Default genérico: 0 (nenhum ajuste) -
+   * correto pra qualquer chain EVM com moeda nativa de verdade (Base,
+   * Arbitrum, Ethereum L1), onde a taxa nunca sai do token monitorado.
+   * TempoAdapter sobrescreve isto - é a única chain suportada sem gas token
+   * nativo (ver ARCHITECTURE.md).
+   */
+  async getFeeAdjustment(_fromBlock: bigint, _toBlock: bigint, _address: Address): Promise<bigint> {
+    return 0n;
+  }
+
+  /**
    * Observa logs de um contrato específico entre dois blocos, já aplicando a
    * profundidade mínima de confirmação. Chains específicas usam isto como
    * base para decodificar eventos próprios (ex: ReceivePolicyGuard na Tempo).

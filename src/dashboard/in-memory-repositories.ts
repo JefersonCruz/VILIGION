@@ -19,7 +19,7 @@ import type {
   UserRepository,
 } from "./server.js";
 import type { DashboardUserStore, PhoneMappingStore, ThresholdsStore } from "../privacy/signup-service.js";
-import type { EncryptedPayload } from "../privacy/encryption.js";
+import type { EncryptedPayload, MappingEncryption } from "../privacy/encryption.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
 
 export interface DemoUserCredentials {
@@ -46,9 +46,16 @@ export class InMemoryUserRepository implements UserRepository, DashboardUserStor
     });
   }
 
-  /** Cria um usuário de demo com senha aleatória e segredo TOTP novo - devolve tudo pra exibir uma única vez. */
-  createDemoUser(username: string): DemoUserCredentials {
-    const userId = randomUUID();
+  /**
+   * Cria um usuário de demo com senha aleatória e segredo TOTP novo - devolve
+   * tudo pra exibir uma única vez. `userId` é injetável (default: novo UUID)
+   * pra poder bater com o userId já usado em thresholds/recipients no modo
+   * demo (ver index.ts#mainDemo) - sem isto, o login de demo tinha um userId
+   * diferente do "demo-user" fixo usado pro resto do estado, e todas as
+   * telas autenticadas (limiares, destinatários) apareciam vazias pro login
+   * de demo por não acharem nada sob o userId da sessão.
+   */
+  createDemoUser(username: string, userId: string = randomUUID()): DemoUserCredentials {
     const password = randomUUID().slice(0, 12);
     const totpSecret = generateBase32Secret();
 
@@ -158,6 +165,49 @@ export class InMemoryThresholdsRepository implements ThresholdsStore {
 
   async upsert(thresholds: UserThresholds): Promise<void> {
     this.byUser.set(thresholds.userId, thresholds);
+  }
+}
+
+export type RecipientKind = "phone" | "email";
+
+export interface AlertRecipient {
+  id: string;
+  userId: string;
+  kind: RecipientKind;
+  value: string;
+}
+
+/**
+ * Destinatários de alerta por usuário - equivalente em memória de
+ * db/postgres-repositories.ts#PostgresRecipientsRepository. Guarda o valor
+ * já criptografado (mesmo MappingEncryption injetado no resto do app), não
+ * em claro - mesmo caminho de código do modo com Postgres, pra um bug de
+ * criptografia aparecer já no modo demo, não só em produção.
+ */
+export class InMemoryRecipientsRepository {
+  private readonly recipients = new Map<string, { id: string; userId: string; kind: RecipientKind; payload: EncryptedPayload }>();
+
+  constructor(private readonly encryption: MappingEncryption) {}
+
+  async listForUser(userId: string): Promise<AlertRecipient[]> {
+    const mine = [...this.recipients.values()].filter((r) => r.userId === userId);
+    return Promise.all(
+      mine.map(async (r) => ({ id: r.id, userId: r.userId, kind: r.kind, value: await this.encryption.decrypt(r.payload) })),
+    );
+  }
+
+  async add(input: { userId: string; kind: RecipientKind; value: string }): Promise<string> {
+    const id = randomUUID();
+    const payload = await this.encryption.encrypt(input.value);
+    this.recipients.set(id, { id, userId: input.userId, kind: input.kind, payload });
+    return id;
+  }
+
+  async remove(id: string, userId: string): Promise<boolean> {
+    const recipient = this.recipients.get(id);
+    if (!recipient || recipient.userId !== userId) return false;
+    this.recipients.delete(id);
+    return true;
   }
 }
 

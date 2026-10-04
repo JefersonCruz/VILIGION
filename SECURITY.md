@@ -8,9 +8,9 @@ This project handles data that, if leaked or poorly designed, can expose users t
 
 | Threat | Mitigation |
 |---|---|
-| Database leak exposes the phone↔address link | Link stored encrypted (AES); key in managed KMS, never in the same environment as the database |
+| Database leak exposes which phone/email alerts about which on-chain address (`alert_recipients` joined with `monitored_accounts` by `user_id`) | Recipient value stored encrypted (AES, envelope encryption); key in managed KMS, never in the same environment as the database — same scheme as the signup identity record (`phone_mappings`) |
 | SIM swap / phone line interception | Alert content never reveals balance/address; a sensitive action is never authorized by voice/SMS PIN alone |
-| Someone registers another person's public address with their own phone number | Signature required (`signMessage`) proving control of the address at signup |
+| Someone claims another person's public address as their own at signup | Signature required (`signMessage`) proving control of the address at signup — identity (`phone_mappings`) is separate from alert recipients, registered later from an already-authenticated session (password + TOTP) |
 | Forging PIN confirmation via webhook | Mandatory `X-Twilio-Signature` header validation on every endpoint that receives a callback |
 | TDoS (flooding the alert line during a real attack) | Multiple configurable channels and recipients; no dependency on a single line |
 | Compromised Twilio account (vishing, smishing — has happened to Twilio itself in 2022 and 2024) | Minimal account permission scope, API key rotation, PIN always single-use and tied to a specific alert |

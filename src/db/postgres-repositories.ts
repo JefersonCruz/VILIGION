@@ -8,7 +8,7 @@
  * rodando (mesmo padrão de transporter injetável de alerts/email-notifier.ts).
  */
 
-import type { EncryptedPayload } from "../privacy/encryption.js";
+import type { EncryptedPayload, MappingEncryption } from "../privacy/encryption.js";
 import type { DashboardUser, UserRepository } from "../dashboard/server.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
 
@@ -235,6 +235,83 @@ function mapAccountRow(row: {
     tokenAddress: row.token_address,
     watchedAddress: row.watched_address,
   };
+}
+
+export type RecipientKind = "phone" | "email";
+
+export interface AlertRecipientInput {
+  userId: string;
+  kind: RecipientKind;
+  value: string;
+}
+
+export interface AlertRecipientRow extends AlertRecipientInput {
+  id: string;
+}
+
+/**
+ * Destinatários de alerta por usuário - ver alert_recipients em
+ * mapping-schema.sql. O destino (telefone/e-mail) é criptografado com o
+ * MESMO MappingEncryption usado pra phone_mappings (achado da auditoria de
+ * 2026-10-03: guardar em texto puro, com user_id referenciando
+ * phone_mappings, recriaria exatamente o vínculo que a criptografia do
+ * cadastro existe pra evitar - ver SECURITY.md).
+ */
+export class PostgresRecipientsRepository {
+  constructor(
+    private readonly db: Queryable,
+    private readonly encryption: MappingEncryption,
+  ) {}
+
+  async add(input: AlertRecipientInput): Promise<string> {
+    const payload = await this.encryption.encrypt(input.value);
+    const result = await this.db.query<{ id: string }>(
+      `INSERT INTO alert_recipients (user_id, kind, encrypted_data_key, iv, auth_tag, ciphertext)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [input.userId, input.kind, payload.encryptedDataKey, payload.iv, payload.authTag, payload.ciphertext],
+    );
+
+    const id = result.rows[0]?.id;
+    if (!id) throw new Error("Falha ao registrar destinatário - nenhum id retornado.");
+    return id;
+  }
+
+  async listForUser(userId: string): Promise<AlertRecipientRow[]> {
+    const result = await this.db.query<{
+      id: string;
+      user_id: string;
+      kind: string;
+      encrypted_data_key: Buffer;
+      iv: Buffer;
+      auth_tag: Buffer;
+      ciphertext: Buffer;
+    }>(
+      `SELECT id, user_id, kind, encrypted_data_key, iv, auth_tag, ciphertext
+       FROM alert_recipients WHERE user_id = $1 ORDER BY created_at`,
+      [userId],
+    );
+
+    return Promise.all(
+      result.rows.map(async (row) => ({
+        id: row.id,
+        userId: row.user_id,
+        kind: row.kind as RecipientKind,
+        value: await this.encryption.decrypt({
+          encryptedDataKey: row.encrypted_data_key,
+          iv: row.iv,
+          authTag: row.auth_tag,
+          ciphertext: row.ciphertext,
+        }),
+      })),
+    );
+  }
+
+  /** Remove só se o destinatário pertencer ao usuário - mesmo cuidado de MonitoredAccountRepository.remove. */
+  async remove(id: string, userId: string): Promise<boolean> {
+    const result = await this.db.query(`DELETE FROM alert_recipients WHERE id = $1 AND user_id = $2`, [id, userId]);
+    return (result.rowCount ?? 0) > 0;
+  }
 }
 
 export interface AlertLogRecordInput {

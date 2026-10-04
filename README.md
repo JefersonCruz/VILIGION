@@ -15,7 +15,7 @@ At the same time, linking a phone number to an on-chain balance creates a real, 
 1. **Monitors** TIP-20 addresses on Tempo (balance, `ReceivePolicyGuard`/TIP-403 events, transfer patterns) via direct RPC (Viem) as the primary source.
 2. **Detects** anomalies against per-user configurable thresholds (private, never hardcoded).
 3. **Alerts** through two channels, chosen by severity: a critical anomaly goes out by **real phone call** (Twilio Programmable Voice); a normal anomaly goes out by **email** (no per-message cost, no carrier call-log retention problem — see `SECURITY.md`). Content is **always generic** on both channels — never reveals balance or address.
-4. **Protects the owner's identity**: dedicated virtual phone number (never the owner's personal one), phone↔address link stored encrypted via managed KMS, proof of address ownership required at signup (EIP-191 signature).
+4. **Protects the owner's identity**: proof of address ownership required at signup (EIP-191 signature); alert recipients (dedicated virtual phone numbers, never the owner's personal one, plus email) are registered separately, after login, and stored encrypted via managed KMS — never in plaintext alongside the monitored address.
 5. Full details (real balance, history) are only visible after dashboard authentication — never through the alert channel.
 
 ## What this project **doesn't** do (by security decision, not lack of time)
@@ -45,7 +45,7 @@ Full technical detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Status
 
-Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, and [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script, [`docs/UI-SPEC.md`](./docs/UI-SPEC.md) for the portal/dashboard structure, and [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for how to host it.
+Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script, [`docs/UI-SPEC.md`](./docs/UI-SPEC.md) for the portal/dashboard structure, [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for how to host it, and [`TERMS-OF-USE.md`](./TERMS-OF-USE.md) for the service's terms (draft, pending legal review — see the notice at the top of that file).
 
 ## License
 

@@ -43,7 +43,6 @@ describe("SignupService", () => {
 
     const result = await service.signup({
       address: ADDR,
-      virtualPhoneNumber: "+15555550123",
       nonce: "n1",
       signature: "0xsig",
       username: "dono",
@@ -67,7 +66,6 @@ describe("SignupService", () => {
     await expect(
       service.signup({
         address: ADDR,
-        virtualPhoneNumber: "+15555550123",
         nonce: "n1",
         signature: "0xsig",
         username: "dono",
@@ -84,7 +82,6 @@ describe("SignupService", () => {
     await expect(
       service.signup({
         address: ADDR,
-        virtualPhoneNumber: "+15555550123",
         nonce: "n1",
         signature: "0xsig-invalida",
         username: "dono",

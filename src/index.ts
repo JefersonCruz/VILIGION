@@ -38,6 +38,7 @@ import {
   InMemoryAlertLog,
   InMemoryMonitoredAccountsRepository,
   InMemoryPhoneMappingRepository,
+  InMemoryRecipientsRepository,
   InMemoryThresholdsRepository,
   InMemoryUserRepository,
 } from "./dashboard/in-memory-repositories.js";
@@ -46,6 +47,7 @@ import {
   PostgresDashboardUserRepository,
   PostgresMonitoredAccountRepository,
   PostgresPhoneMappingRepository,
+  PostgresRecipientsRepository,
   PostgresThresholdsRepository,
   type MonitoredAccountRow,
 } from "./db/postgres-repositories.js";
@@ -78,6 +80,7 @@ function buildVoiceClientIfConfigured() {
     authToken,
     fromNumber,
     gatherActionUrl: `${publicBaseUrl}/webhooks/twilio/gather`,
+    whatsappFromNumber: process.env.TWILIO_WHATSAPP_NUMBER,
   });
 }
 
@@ -151,9 +154,22 @@ async function mainDemo() {
     blockedTransferAlertThreshold: 1_000_000n,
     criticalBlockedTransferThreshold: 10_000_000n,
   };
-  const alertPhoneNumbers = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
-  const alertEmails = (process.env.DEMO_ALERT_EMAILS ?? "").split(",").filter(Boolean);
   const watchedAddress = requireEnv("DEMO_WATCHED_ADDRESS") as Address;
+  const encryption = new MappingEncryption(new LocalDevKeyProvider());
+
+  // Destinatários cadastrados no painel (/recipients) - as env vars abaixo
+  // só semeiam o estado inicial da demo, pra manter o comportamento de antes
+  // sem precisar configurar nada na primeira execução; dali em diante, o
+  // dispatcher consulta o repositório a cada alerta, não um array fixo
+  // capturado no boot (ver ARCHITECTURE.md/UI-SPEC.md - gap agora fechado).
+  // Criptografado com o mesmo esquema de phone_mappings (ver mapping-schema.sql).
+  const recipients = new InMemoryRecipientsRepository(encryption);
+  for (const value of (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean)) {
+    await recipients.add({ userId: thresholds.userId, kind: "phone", value });
+  }
+  for (const value of (process.env.DEMO_ALERT_EMAILS ?? "").split(",").filter(Boolean)) {
+    await recipients.add({ userId: thresholds.userId, kind: "email", value });
+  }
 
   const voiceClient = buildVoiceClientIfConfigured();
   const emailNotifier = buildEmailNotifierIfConfigured();
@@ -174,7 +190,8 @@ async function mainDemo() {
       console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
 
       if (voiceClient) {
-        await voiceClient.placeAlertCall({ toNumbers: alertPhoneNumbers, event, alertId });
+        const toNumbers = (await recipients.listForUser(thresholds.userId)).filter((r) => r.kind === "phone").map((r) => r.value);
+        await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
       } else {
         console.log("[alerta] ligação NÃO disparada - Twilio ainda não configurado (ver .env.example)");
       }
@@ -183,7 +200,8 @@ async function mainDemo() {
 
     alertLog.record({ alertId, userId: thresholds.userId, kind: event.kind, severity: "normal", deliveredVia: "email" });
     if (emailNotifier) {
-      await emailNotifier.sendAlertEmail({ toAddresses: alertEmails, event });
+      const toAddresses = (await recipients.listForUser(thresholds.userId)).filter((r) => r.kind === "email").map((r) => r.value);
+      await emailNotifier.sendAlertEmail({ toAddresses, event });
     } else {
       console.log("[alerta] e-mail NÃO enviado - SMTP ainda não configurado (ver .env.example)");
     }
@@ -227,15 +245,28 @@ async function mainDemo() {
   const thresholdsRepo = new InMemoryThresholdsRepository();
   await thresholdsRepo.upsert(thresholds);
   const phoneMappingRepo = new InMemoryPhoneMappingRepository();
-  const encryption = new MappingEncryption(new LocalDevKeyProvider());
   const signupService = new SignupService(new PhoneMappingService(encryption), phoneMappingRepo, users, thresholdsRepo);
 
-  const demoCredentials = users.createDemoUser(process.env.DEMO_DASHBOARD_USERNAME ?? "demo");
+  const demoCredentials = users.createDemoUser(process.env.DEMO_DASHBOARD_USERNAME ?? "demo", thresholds.userId);
   console.log("\n=== Credenciais de demo do painel (válidas só nesta execução) ===");
   console.log(`Usuário: ${demoCredentials.username}`);
   console.log(`Senha: ${demoCredentials.password}`);
   console.log(`Configure o TOTP no autenticador com: ${demoCredentials.otpAuthUri}`);
   console.log("===================================================================\n");
+
+  // No-op documentado: no modo demo, "/accounts" sempre foi só uma lista de
+  // bookkeeping (InMemoryMonitoredAccountsRepository) nunca conectada a um
+  // monitor de verdade - o único monitor real do modo demo é o fixo (Tempo,
+  // via DEMO_WATCHED_ADDRESS) + o opcional da Base, ambos já subidos acima.
+  // Diferente do modo com Postgres (ver mainWithDatabase), onde isto agora
+  // sobe/para um Monitor de verdade em tempo real (achado de capacidade de
+  // 2026-10-04).
+  const monitorControl: DashboardServerDeps["monitorControl"] = {
+    async start() {
+      console.log("[monitor] modo demo não sobe monitor dinâmico - só a conta fixa de DEMO_WATCHED_ADDRESS é monitorada de verdade.");
+    },
+    async stop() {},
+  };
 
   startCombinedServer(
     pinStore,
@@ -243,7 +274,7 @@ async function mainDemo() {
       alertLog.updatePinStatus(alertId, result);
       console.log(`[webhook] alertId=${alertId} resultado do PIN: ${result}`);
     },
-    { users, accounts, monitoredAccounts, thresholds: thresholdsRepo, alertHistory: alertLog, signup: signupService },
+    { users, accounts, monitoredAccounts, thresholds: thresholdsRepo, alertHistory: alertLog, signup: signupService, recipients, monitorControl },
   );
 
   await Promise.all(monitors);
@@ -276,6 +307,8 @@ async function mainWithDatabase(databaseUrl: string) {
   }
   const encryption = new MappingEncryption(new LocalDevKeyProvider(process.env.ENCRYPTION_KEY_KMS_ARN));
   const signupService = new SignupService(new PhoneMappingService(encryption), phoneMappingRepo, dashboardUsers, thresholdsRepo);
+  // Mesmo MappingEncryption de phone_mappings - ver nota em mapping-schema.sql sobre por que o destino não fica em texto puro.
+  const recipientsRepo = new PostgresRecipientsRepository(pool, encryption);
 
   const voiceClient = buildVoiceClientIfConfigured();
   const emailNotifier = buildEmailNotifierIfConfigured();
@@ -284,7 +317,8 @@ async function mainWithDatabase(databaseUrl: string) {
 
   const pinStore: PinStore = new Map();
 
-  function makeDispatcher(userId: string, alertPhoneNumbers: string[], alertEmails: string[]) {
+  /** Destinatários lidos do banco A CADA alerta (não capturados no boot) - cadastrados por usuário via /recipients. */
+  function makeDispatcher(userId: string) {
     return async (event: DetectionEvent) => {
       const alertId = randomUUID();
       const deliveredVia = event.severity === "critical" ? "voice" : "email";
@@ -295,7 +329,8 @@ async function mainWithDatabase(databaseUrl: string) {
         const pending: PendingPin = generatePin(alertId);
         pinStore.set(alertId, pending);
         if (voiceClient) {
-          await voiceClient.placeAlertCall({ toNumbers: alertPhoneNumbers, event, alertId });
+          const toNumbers = (await recipientsRepo.listForUser(userId)).filter((r) => r.kind === "phone").map((r) => r.value);
+          await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
         } else {
           console.log("[alerta] ligação NÃO disparada - Twilio ainda não configurado");
         }
@@ -303,24 +338,41 @@ async function mainWithDatabase(databaseUrl: string) {
       }
 
       if (emailNotifier) {
-        await emailNotifier.sendAlertEmail({ toAddresses: alertEmails, event });
+        const toAddresses = (await recipientsRepo.listForUser(userId)).filter((r) => r.kind === "email").map((r) => r.value);
+        await emailNotifier.sendAlertEmail({ toAddresses, event });
       } else {
         console.log("[alerta] e-mail NÃO enviado - SMTP ainda não configurado");
       }
     };
   }
 
-  // TODO: números/e-mails de alerta e limiares por usuário ainda vêm de
-  // env vars compartilhadas (DEMO_ALERT_NUMBERS/DEMO_ALERT_EMAILS) - cadastro
-  // real desses destinatários por usuário é o próximo passo depois do
-  // cadastro em si (ver docs/UI-SPEC.md, item fora do escopo desta etapa).
-  const sharedAlertPhoneNumbers = (process.env.DEMO_ALERT_NUMBERS ?? "").split(",").filter(Boolean);
-  const sharedAlertEmails = (process.env.DEMO_ALERT_EMAILS ?? "").split(",").filter(Boolean);
+  // Registro das instâncias de Monitor vivas por accountId - permite subir
+  // ou parar uma conta em tempo real (via monitorControl, usado pelo
+  // painel) sem precisar reiniciar o processo inteiro. Antes, `/accounts`
+  // só gravava no banco; a conta só passava a ser monitorada no próximo
+  // boot (ver docs/DEPLOYMENT.md, nota "O monitor só lê contas novas no
+  // boot" - comportamento agora restrito ao modo demo, ver mainDemo abaixo).
+  const liveMonitors = new Map<string, Monitor>();
+
+  async function bootMonitor(account: MonitoredAccountRow): Promise<void> {
+    const monitor = await startMonitorForAccount(account, thresholdsRepo, makeDispatcher(account.userId));
+    liveMonitors.set(account.id, monitor);
+    monitor.start().catch((err) => console.error(`[monitor] erro fatal na conta ${account.id}:`, err));
+  }
+
+  const monitorControl: DashboardServerDeps["monitorControl"] = {
+    start: bootMonitor,
+    async stop(accountId) {
+      const monitor = liveMonitors.get(accountId);
+      if (!monitor) return;
+      monitor.stop();
+      liveMonitors.delete(accountId);
+    },
+  };
 
   const allAccounts = await monitoredAccounts.listAll();
   console.log(`[boot] ${allAccounts.length} conta(s) monitorada(s) encontrada(s) no banco.`);
-
-  const monitors = allAccounts.map((account) => startMonitorForAccount(account, thresholdsRepo, makeDispatcher(account.userId, sharedAlertPhoneNumbers, sharedAlertEmails)));
+  await Promise.all(allAccounts.map(bootMonitor));
 
   const accountsDetailsRepo = {
     async getDetails(userId: string) {
@@ -359,58 +411,59 @@ async function mainWithDatabase(databaseUrl: string) {
       thresholds: thresholdsRepo,
       alertHistory: alertLog,
       signup: signupService,
+      recipients: recipientsRepo,
+      monitorControl,
     },
   );
-
-  await Promise.all(monitors.map((m) => m.run));
 }
 
-function startMonitorForAccount(
+/**
+ * Constrói e sobe o Monitor de uma conta - devolve a instância (não só a
+ * promise de execução) pra quem chamar poder parar depois (`monitor.stop()`)
+ * sem precisar reiniciar o processo. Antes disto era uma IIFE que só
+ * devolvia `{ run }`, sem expor o Monitor - correto pro boot (que nunca
+ * precisava parar nada), mas incompatível com registrar/remover conta em
+ * tempo real via `/accounts` (achado de capacidade de 2026-10-04).
+ */
+async function startMonitorForAccount(
   account: MonitoredAccountRow,
   thresholdsRepo: PostgresThresholdsRepository,
   dispatchAlert: (event: DetectionEvent) => Promise<void>,
-) {
+): Promise<Monitor> {
   const chain = getKnownChain(account.chainKey);
   const rpcUrl = resolveRpcUrl(account.chainKey, undefined);
-  const thresholdsPromise = thresholdsRepo.get(account.userId);
+  const thresholds =
+    (await thresholdsRepo.get(account.userId)) ?? {
+      userId: account.userId,
+      maxBalanceDropPct: 20,
+      criticalBalanceDropPct: 50,
+      windowMinutes: 10,
+      blockedTransferAlertThreshold: 1_000_000n,
+      criticalBlockedTransferThreshold: 10_000_000n,
+    };
 
-  const run = (async () => {
-    const thresholds =
-      (await thresholdsPromise) ?? {
-        userId: account.userId,
-        maxBalanceDropPct: 20,
-        criticalBalanceDropPct: 50,
-        windowMinutes: 10,
-        blockedTransferAlertThreshold: 1_000_000n,
-        criticalBlockedTransferThreshold: 10_000_000n,
-      };
+  if (account.chainKey === "tempo") {
+    const adapter = new TempoAdapter({
+      rpcUrl,
+      chainId: chain.chainId,
+      minConfirmations: 3,
+      receivePolicyGuardAddress: RECEIVE_POLICY_GUARD_ADDRESS,
+      tokenAddress: account.tokenAddress as Address,
+    });
+    const monitor = new Monitor(
+      adapter,
+      { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
+      dispatchAlert,
+      new TempoBlockedTransferExtension(adapter),
+    );
+    console.log(`[monitor] ativo: usuário=${account.userId} chain=tempo token=${account.tokenAddress}`);
+    return monitor;
+  }
 
-    if (account.chainKey === "tempo") {
-      const adapter = new TempoAdapter({
-        rpcUrl,
-        chainId: chain.chainId,
-        minConfirmations: 3,
-        receivePolicyGuardAddress: RECEIVE_POLICY_GUARD_ADDRESS,
-        tokenAddress: account.tokenAddress as Address,
-      });
-      const monitor = new Monitor(
-        adapter,
-        { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
-        dispatchAlert,
-        new TempoBlockedTransferExtension(adapter),
-      );
-      console.log(`[monitor] ativo: usuário=${account.userId} chain=tempo token=${account.tokenAddress}`);
-      await monitor.start();
-      return;
-    }
-
-    const adapter = new EvmAdapter({ rpcUrl, chainId: chain.chainId, minConfirmations: 3, tokenAddress: account.tokenAddress as Address });
-    const monitor = new Monitor(adapter, { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 }, dispatchAlert);
-    console.log(`[monitor] ativo: usuário=${account.userId} chain=${account.chainKey} token=${account.tokenAddress}`);
-    await monitor.start();
-  })();
-
-  return { run };
+  const adapter = new EvmAdapter({ rpcUrl, chainId: chain.chainId, minConfirmations: 3, tokenAddress: account.tokenAddress as Address });
+  const monitor = new Monitor(adapter, { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 }, dispatchAlert);
+  console.log(`[monitor] ativo: usuário=${account.userId} chain=${account.chainKey} token=${account.tokenAddress}`);
+  return monitor;
 }
 
 

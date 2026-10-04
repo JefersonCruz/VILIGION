@@ -4,9 +4,18 @@
 
 Exigências oficiais ([h-faq-11](https://colosseum.com/hackathon#h-faq-11)): vídeo de apresentação de 2–3 minutos + vídeo de demo de produto de até 3 minutos. São dois arquivos separados.
 
-## O que dá pra gravar hoje (atualizado — agora com portal de verdade)
+## O que dá pra gravar hoje (atualizado 2026-10-04 — portal completo, canal crítico de verdade)
 
-O portal (`dashboard/views.ts` + `dashboard/server.ts`) foi construído em 2026-10-03: cadastro com assinatura de carteira real, login com MFA, painel, gerenciar contas, limiares, histórico de alertas — ver `docs/UI-SPEC.md`. A ligação ainda não está configurada (decisão consciente, ver `BUSINESS-PLAN.md`), mas agora dá pra mostrar **terminal + portal juntos**: o monitor rodando contra a rede real da Tempo no terminal, e o cadastro/painel funcionando de verdade no navegador — mais forte que só terminal, sem perder a prova de "roda contra chain real" que pesa no critério "Functionality".
+Desde a última revisão deste roteiro (03/10), o produto avançou bastante:
+
+- **Destinatários de alerta** (`/recipients`): o próprio usuário cadastra telefone/e-mail pelo painel, criptografados — não depende mais de variável de ambiente compartilhada.
+- **QR code de TOTP**: a tela de cadastro concluído mostra um QR escaneável, não só um texto longo pra copiar.
+- **Registro dinâmico de monitor**: adicionar uma conta em `/accounts` sobe o monitoramento na hora, sem precisar reiniciar nada — dá pra mostrar isso ao vivo (cadastra → já está monitorando).
+- **Tutorial inline**: `/signup`, `/accounts`, `/thresholds` e `/recipients` agora explicam o que cada campo faz antes de preencher.
+- **Canal crítico com entrega real do PIN**: a ligação toca e o código de confirmação chega por WhatsApp de verdade (antes, o script da ligação prometia isso mas nada enviava) — **só mostre isso no vídeo depois de validar com uma conta Twilio real configurada** (ver checklist no fim deste arquivo).
+- **139 testes automatizados**, CI verde.
+
+⚠️ **Antes de gravar**: o deploy do Railway está atrasado em relação a tudo isso. Redeploy + nova migration primeiro (ver `docs/DEPLOYMENT.md`), senão a demo ao vivo mostra a versão antiga.
 
 Dica pra deixar a demo visualmente impressionante: aponte `DEMO_WATCHED_ADDRESS` pro endereço que já confirmamos ter `TransferBlocked` real na testnet Moderato (`0x384314C543c3CBE50D3F148F7da97d5F8be928Ec`, bloco 37914998, achado via `scripts/verify-testnet.ts`) — o evento decodifica ao vivo na tela, não é mockado.
 
@@ -26,12 +35,12 @@ Este é o que os jurados veem primeiro. Foco: founder-market fit, insight, posic
 - **Diga isso explicitamente no vídeo.** Reconhecer concorrente de cabeça erguida pontua mais em "Insight" do que fingir que ninguém mais existe — e evita um jurado técnico derrubar a claim na primeira pergunta.
 
 **[0:55–1:30] O que o VILIGION faz diferente**
-- Monitora tesouraria TIP-20 na Tempo, detecta anomalia (queda de saldo real via `balanceOf`, e transferência bloqueada via `ReceivePolicyGuard`/TIP-403).
-- Alerta por severidade: crítico vai por ligação telefônica (quando configurada), normal vai por e-mail — decisão de produto, não limitação técnica (explique o porquê: nem toda anomalia justifica o custo e a exposição de uma ligação).
-- Privacidade desde a concepção: conteúdo do alerta nunca revela saldo/endereço, número virtual dedicado, prova de propriedade por assinatura, PIN de uso único.
+- Monitora tesouraria TIP-20 na Tempo, detecta anomalia (queda de saldo real via `balanceOf` — já filtrando taxa de transação, que na Tempo sai do próprio token monitorado — e transferência bloqueada via `ReceivePolicyGuard`/TIP-403).
+- Alerta por severidade: crítico vai por ligação telefônica + WhatsApp com o código de confirmação, normal vai por e-mail — decisão de produto, não limitação técnica (explique o porquê: nem toda anomalia justifica o custo e a exposição de uma ligação).
+- Privacidade desde a concepção: conteúdo do alerta nunca revela saldo/endereço, destinatários de alerta criptografados (o próprio usuário cadastra pelo painel), prova de propriedade por assinatura, PIN de uso único com limite de tentativas.
 
 **[1:30–2:00] Plano de negócio, resumido**
-- Modelo: SaaS por endereço monitorado + freemium (e-mail grátis, ligação paga).
+- Modelo: SaaS mensal por endereço monitorado + freemium (e-mail grátis, ligação paga) — sem compromisso anual por enquanto, dado o estágio de validação.
 - Unit economics: custo fixo ~US$10-11/mês, marginal por cliente é centavos — mencione que isso já foi validado com números reais de mercado, não estimativa solta.
 - Honestidade sobre o mercado: Tempo tem ~7 meses de existência: a aposta é ser infraestrutura de segurança nativa desde o início de um ecossistema que ainda está validando adoção.
 
@@ -42,37 +51,37 @@ Este é o que os jurados veem primeiro. Foco: founder-market fit, insight, posic
 
 ## Vídeo 2 — Demo do produto (até 3 min)
 
-Foco: provar que funciona contra dado real, não simulação.
+Foco: provar que funciona contra dado real, não simulação — e agora dá pra mostrar o produto inteiro, não só o motor.
 
-**[0:00–0:20] Contexto rápido**
+**[0:00–0:15] Contexto rápido**
 - "Isto é o VILIGION rodando contra a testnet Moderato da Tempo, rede real, não simulação."
 
-**[0:20–1:00] Suba o monitor ao vivo**
-- Terminal: `npm run dev` (com `.env` configurado: `TEMPO_RPC_URL`, `TEMPO_CHAIN_ID`, `DEMO_WATCHED_ADDRESS` apontando pro endereço com `TransferBlocked` real).
-- Mostre o log de startup: RPC conectado, canais de alerta (crítico/normal) reportando se estão ativos ou não configurados ainda.
+**[0:15–0:40] Cadastro de verdade**
+- Abra `/signup` — mostre o tutorial de 3 passos na tela, conecte uma carteira (MetaMask/outra), assine a prova de propriedade ao vivo.
+- Na tela de sucesso, mostre o **QR code** do TOTP sendo escaneado pelo autenticador do celular — mais visual que digitar um código manualmente.
 
-**[1:00–1:40] Mostre a detecção acontecendo**
-- Rode (ou já tenha rodado e mostre o output de) `npx tsx scripts/verify-testnet.ts` como prova adicional, lado a lado: endereço do `ReceivePolicyGuard` batendo com o oficial, bytecode confirmado, e principalmente — o evento `TransferBlocked` real decodificado na tela, com `blockedReason`, `kind`, `memo`, tudo via `ox/tempo`.
-- Narre o que a tela mostra: "isso não é dado inventado, é uma transferência real bloqueada por política de recebimento, decodificada ao vivo."
+**[0:40–1:10] Configure o monitoramento ao vivo**
+- Logado, vá em `/accounts` e adicione uma conta — narre: "o monitor começa a rodar agora, na hora, sem precisar reiniciar nada" (diferencial real: antes isso exigia redeploy manual).
+- Em `/recipients`, cadastre um telefone e um e-mail — narre que ficam criptografados, não em texto puro.
 
-**[1:40–2:10] Mostre o portal rodando**
-- Abra `localhost:<porta do painel>/signup` no navegador — conecte uma carteira (MetaMask/outra), assine a prova de propriedade ao vivo, complete o cadastro, mostre a tela de sucesso com o QR/código TOTP.
-- Faça login (com o autenticador já configurado) e mostre o painel: saldo, contas monitoradas, histórico de alertas.
-- Narre: "cadastro e login são de verdade — identidade do painel é a mesma que provou dono do endereço, banco de dados real por trás."
+**[1:10–1:45] Mostre a detecção acontecendo**
+- Rode (ou já tenha rodado e mostre o output de) `npx tsx scripts/verify-testnet.ts` como prova adicional: endereço do `ReceivePolicyGuard` batendo com o oficial, bytecode confirmado, e o evento `TransferBlocked` real decodificado na tela, com `blockedReason`, `kind`, `memo`, tudo via `ox/tempo`.
+- Narre: "isso não é dado inventado, é uma transferência real bloqueada por política de recebimento, decodificada ao vivo."
 
-**[2:00–2:40] Mostre o roteamento por severidade**
-- No log do `dispatchAlert`, aponte a linha mostrando severidade (`normal` ou `critical`) e qual canal seria usado.
-- Se o SMTP estiver configurado: mostre o e-mail chegando de verdade na caixa de entrada — conteúdo genérico, sem saldo/endereço.
-- Se Twilio não estiver configurado ainda: tudo bem narrar isso com transparência — "ligação é reservada pra severidade crítica; aqui está configurada como próximo passo, o sistema já loga que faria a chamada."
+**[1:45–2:30] Mostre o canal crítico de verdade (só se já validado — ver checklist)**
+- Force (ou aguarde) um alerta crítico disparar. Mostre a ligação tocando e o WhatsApp chegando com o código de confirmação. Digite o código na ligação, confirme.
+- Se o canal crítico ainda não estiver validado com conta Twilio real na hora da gravação: narre com transparência — "ligação é reservada pra severidade crítica; aqui o sistema já loga que faria a chamada e enviaria o código por WhatsApp" — e mostre o log do `dispatchAlert` com a severidade e o canal escolhido.
 
-**[2:40–3:00] Fechamento**
-- "Core testado — 63 testes automatizados, CI rodando a cada commit, repositório público." (Mostrar rapidamente o badge do GitHub Actions ou o terminal do `npx vitest run` passando é mais forte que só falar.)
+**[2:30–2:50] Fechamento**
+- "Core testado — 139 testes automatizados, CI rodando a cada commit, repositório público." (Mostrar rapidamente o terminal do `npx vitest run` passando é mais forte que só falar.)
 
 ---
 
 ## Checklist antes de gravar
 
-- [ ] `.env` preenchido com `TEMPO_RPC_URL`/`TEMPO_CHAIN_ID` reais (ver `.env.example`, valores confirmados em `scripts/verify-testnet.ts`)
+- [ ] Redeploy no Railway com o código mais recente + nova migration (schema de destinatários mudou) — ver `docs/DEPLOYMENT.md`
+- [ ] `.env`/variáveis do Railway preenchidas com `TEMPO_RPC_URL`/`TEMPO_CHAIN_ID` reais (ver `.env.example`, valores confirmados em `scripts/verify-testnet.ts`)
 - [ ] `DEMO_WATCHED_ADDRESS` apontando pro endereço com evento real já confirmado
 - [ ] Rodar `npx tsx scripts/verify-testnet.ts` uma vez antes de gravar, pra garantir que ainda há eventos recentes na janela de 10.000 blocos (se não houver, aumente a janela no script ou rode de novo mais perto da gravação)
+- [ ] Conta Twilio real configurada (voz + WhatsApp, sandbox já serve) e **testada com um alerta real disparado** antes de decidir se o vídeo mostra o canal crítico ao vivo ou só narrado
 - [ ] Decidir: grava com SMTP configurado (e-mail real chegando) ou só com o log explicando o canal

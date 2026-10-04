@@ -54,8 +54,9 @@ export type DetectionEvent =
 /**
  * Compara dois snapshots de saldo e decide se a queda ultrapassa o limiar
  * configurado do usuário. Não decide sozinho se é "fee" ou "valor real" —
- * isso é responsabilidade do adaptador de chain (ver TempoAdapter.classifyBalanceDelta),
- * que deve ser chamado ANTES desta função, filtrando deltas de fee.
+ * isso é responsabilidade do adaptador de chain (ver EvmAdapter.getFeeAdjustment,
+ * sobrescrito em TempoAdapter), já aplicado pelo chamador (monitor.ts#tick)
+ * ANTES desta função, somando de volta qualquer dedução de taxa ao saldo atual.
  */
 export function checkBalanceDrop(
   previous: BalanceSnapshot,

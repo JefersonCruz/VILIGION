@@ -8,11 +8,15 @@ const GUARD_ADDRESS = "0xB10C000000000000000000000000000000000000" as Address;
 
 /** TempoAdapter falso - devolve eventos TransferBlocked pré-programados, nunca toca rede. */
 class FakeTempoAdapter extends TempoAdapter {
+  /** Guarda os argumentos da última chamada - usado pra provar que checkExtra repassa fromBlock/toBlock, não recalcula nada. */
+  lastCall: { fromBlock: bigint; toBlock: bigint } | null = null;
+
   constructor(private readonly events: TransferBlockedEvent[]) {
     super({ rpcUrl: "http://localhost:1", chainId: 1, minConfirmations: 1, receivePolicyGuardAddress: GUARD_ADDRESS });
   }
 
-  async getBlockedTransfers(): Promise<TransferBlockedEvent[]> {
+  override async getBlockedTransfers(fromBlock: bigint, toBlock: bigint): Promise<TransferBlockedEvent[]> {
+    this.lastCall = { fromBlock, toBlock };
     return this.events;
   }
 }
@@ -57,7 +61,7 @@ describe("TempoBlockedTransferExtension", () => {
     const adapter = new FakeTempoAdapter([makeEvent(2_000_000n)]);
     const extension = new TempoBlockedTransferExtension(adapter);
 
-    const events = await extension.checkExtra(1n, thresholds);
+    const events = await extension.checkExtra(1n, 10n, thresholds);
 
     expect(events).toHaveLength(1);
     expect(events[0]?.kind).toBe("transfer-blocked");
@@ -67,7 +71,7 @@ describe("TempoBlockedTransferExtension", () => {
     const adapter = new FakeTempoAdapter([makeEvent(100n)]); // bem abaixo do limiar de 1_000_000n
     const extension = new TempoBlockedTransferExtension(adapter);
 
-    const events = await extension.checkExtra(1n, thresholds);
+    const events = await extension.checkExtra(1n, 10n, thresholds);
 
     expect(events).toHaveLength(0);
   });
@@ -76,8 +80,17 @@ describe("TempoBlockedTransferExtension", () => {
     const adapter = new FakeTempoAdapter([]);
     const extension = new TempoBlockedTransferExtension(adapter);
 
-    const events = await extension.checkExtra(1n, thresholds);
+    const events = await extension.checkExtra(1n, 10n, thresholds);
 
     expect(events).toHaveLength(0);
+  });
+
+  it("repassa fromBlock/toBlock pro adaptador tal como recebeu - não deixa o adaptador recalcular o bloco confirmado (achado de performance de 2026-10-03)", async () => {
+    const adapter = new FakeTempoAdapter([]);
+    const extension = new TempoBlockedTransferExtension(adapter);
+
+    await extension.checkExtra(5n, 42n, thresholds);
+
+    expect(adapter.lastCall).toEqual({ fromBlock: 5n, toBlock: 42n });
   });
 });

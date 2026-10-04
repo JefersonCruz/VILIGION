@@ -87,6 +87,7 @@ const NAV = `
   <a href="/dashboard">Painel</a>
   <a href="/accounts">Contas monitoradas</a>
   <a href="/thresholds">Limiares</a>
+  <a href="/recipients">Destinatários</a>
   <a href="/alerts">Histórico de alertas</a>
   <a href="/logout">Sair</a>
 </nav>`;
@@ -157,6 +158,15 @@ function authLayout(params: { title: string; subtitle?: string; body: string; er
 
 export function signupPage(params: { nonce: string; error?: string }): string {
   const body = `
+  <div class="card" style="margin-bottom:18px;">
+    <p class="muted" style="margin-bottom:10px;"><strong>Como funciona, em 3 passos:</strong></p>
+    <ol class="muted" style="margin:0 0 10px; padding-left:20px; line-height:1.7;">
+      <li>Você precisa de uma carteira cripto instalada no navegador (ex: <a class="link" href="https://metamask.io/download/" target="_blank" rel="noopener">MetaMask</a>, Rabby, Coinbase Wallet).</li>
+      <li>Vamos pedir uma <strong>assinatura</strong> — não é uma transação: não custa nada, não gasta gás, e não move nenhum fundo. Só prova que você controla o endereço.</li>
+      <li>Depois disso, você escolhe um usuário/senha pro painel e está pronto.</li>
+    </ol>
+    <p class="muted" style="margin:0;">Destinatários de alerta (telefone/e-mail) são cadastrados depois, já logado, em <code>/recipients</code>.</p>
+  </div>
   <p class="muted" id="status" style="margin-bottom:14px;">1. Conecte sua carteira pra assinar a prova de propriedade.</p>
   <button id="connectBtn" type="button">Conectar carteira</button>
 
@@ -164,9 +174,6 @@ export function signupPage(params: { nonce: string; error?: string }): string {
     <input type="hidden" name="nonce" value="${escapeHtml(params.nonce)}">
     <input type="hidden" name="address" id="addressField">
     <input type="hidden" name="signature" id="signatureField">
-
-    <label for="virtualPhoneNumber">Telefone virtual (formato internacional)</label>
-    <input type="tel" id="virtualPhoneNumber" name="virtualPhoneNumber" placeholder="+5511999999999" required>
 
     <label for="username">Usuário do painel</label>
     <input type="text" id="username" name="username" required>
@@ -185,7 +192,7 @@ export function signupPage(params: { nonce: string; error?: string }): string {
 
     connectBtn.addEventListener("click", async function () {
       if (!window.ethereum) {
-        statusEl.textContent = "Nenhuma carteira encontrada no navegador (ex: MetaMask).";
+        statusEl.innerHTML = "Nenhuma carteira encontrada no navegador. Instale a <a class=\\"link\\" href=\\"https://metamask.io/download/\\" target=\\"_blank\\" rel=\\"noopener\\">MetaMask</a> (ou outra carteira compatível) e recarregue esta página.";
         return;
       }
       try {
@@ -218,15 +225,17 @@ export function signupPage(params: { nonce: string; error?: string }): string {
   </script>`;
   return authLayout({
     title: "Criar conta",
-    subtitle: "Prova de posse do endereço, telefone de alerta e login do painel — tudo numa etapa.",
+    subtitle: "Prova de posse do endereço e login do painel — cadastre os destinatários de alerta depois, em /recipients.",
     body,
     error: params.error,
   });
 }
 
-export function signupSuccessPage(params: { username: string; otpAuthUri: string }): string {
+export function signupSuccessPage(params: { username: string; otpAuthUri: string; qrCodeSvg: string }): string {
   const body = `
-    <p class="muted" style="margin-bottom:14px;">Configure o autenticador (Google Authenticator, Authy, 1Password) com este código antes de fazer login — ele não será mostrado de novo:</p>
+    <p class="muted" style="margin-bottom:14px;">Escaneie o código abaixo com o autenticador (Google Authenticator, Authy, 1Password) antes de fazer login — ele não será mostrado de novo:</p>
+    <div style="background:#e5e7eb; border-radius:10px; padding:16px; display:flex; justify-content:center;">${params.qrCodeSvg}</div>
+    <p class="muted" style="margin-top:14px;">Não consegue escanear? Digite o código manualmente:</p>
     <p><code style="word-break:break-all; display:block; padding:12px;">${escapeHtml(params.otpAuthUri)}</code></p>
     <p class="muted">Usuário: <code>${escapeHtml(params.username)}</code></p>
     <a href="/login" style="text-decoration:none"><button type="button">Ir para o login</button></a>`;
@@ -308,7 +317,11 @@ export function accountsPage(params: {
   <tbody>${rows}</tbody></table>
 </div>
 <div class="card">
-  <p class="muted">Adicionar conta — qualquer chain EVM-compatível já suportada, qualquer token</p>
+  <p class="muted" style="margin-bottom:10px;"><strong>Dois endereços diferentes, não confunda:</strong></p>
+  <ol class="muted" style="margin:0 0 14px; padding-left:20px; line-height:1.7;">
+    <li><strong>Endereço do token</strong>: o contrato da stablecoin que você guarda (ex: PathUSD na Tempo) — é o mesmo pra todo mundo que usa esse token, não é sua carteira.</li>
+    <li><strong>Endereço monitorado</strong>: a sua carteira/tesouraria — o endereço cujo saldo desse token vai ser vigiado. Normalmente é o endereço que você assinou no cadastro.</li>
+  </ol>
   <form method="POST" action="/accounts">
     <label for="chainKey">Chain</label>
     <select id="chainKey" name="chainKey">${chainOptions}</select>
@@ -335,7 +348,8 @@ export function thresholdsPage(params: {
 }): string {
   const body = `
 <div class="card">
-  <p class="muted">Abaixo do limiar crítico, o alerta sai por e-mail; no limiar crítico ou acima, por ligação (ver SECURITY.md/ARCHITECTURE.md sobre por quê).</p>
+  <p class="muted" style="margin-bottom:10px;">Abaixo do limiar crítico, o alerta sai por e-mail; no limiar crítico ou acima, por ligação + WhatsApp com o PIN (ver <a class="link" href="/recipients">destinatários</a>, e SECURITY.md/ARCHITECTURE.md sobre o porquê da divisão por severidade).</p>
+  <p class="muted" style="margin:0 0 14px;"><strong>Exemplo prático:</strong> com os valores padrão (20% / 50%), uma queda de 15% não alerta nada; uma queda de 30% manda e-mail; uma queda de 55% liga por telefone. "Menor unidade do token" é o valor bruto (ex: um TIP-20 com 6 casas decimais → 1.000.000 = 1 token inteiro).</p>
   <form method="POST" action="/thresholds">
     <label for="maxBalanceDropPct">Queda de saldo que dispara alerta (%)</label>
     <input type="number" step="0.1" id="maxBalanceDropPct" name="maxBalanceDropPct" value="${params.maxBalanceDropPct}" required>
@@ -356,6 +370,50 @@ export function thresholdsPage(params: {
   </form>
 </div>`;
   return layout({ title: "Limiares de detecção", body, authed: true, error: params.error });
+}
+
+export function recipientsPage(params: {
+  recipients: Array<{ id: string; kind: string; value: string }>;
+  error?: string;
+}): string {
+  const rows =
+    params.recipients.length === 0
+      ? `<tr><td colspan="3" class="muted">Nenhum destinatário cadastrado ainda.</td></tr>`
+      : params.recipients
+          .map(
+            (r) => `<tr>
+        <td><span class="pill ${r.kind === "phone" ? "critical" : "normal"}">${r.kind === "phone" ? "Telefone (ligação)" : "E-mail"}</span></td>
+        <td><code>${escapeHtml(r.value)}</code></td>
+        <td><form method="POST" action="/recipients/${escapeHtml(r.id)}/delete" style="margin:0">
+          <button type="submit" class="secondary danger" style="margin-top:0">Remover</button>
+        </form></td>
+      </tr>`,
+          )
+          .join("");
+
+  const body = `
+<div class="card">
+  <p class="muted" style="margin-bottom:10px;">Alertas críticos (ex: queda forte de saldo) ligam pros números cadastrados aqui <strong>e também mandam o código de confirmação por WhatsApp</strong> pro mesmo número; alertas normais vão por e-mail — ver <a class="link" href="/thresholds">limiares</a> pra ajustar o que conta como crítico.</p>
+  <p class="muted" style="margin:0;">Pode cadastrar mais de um telefone e mais de um e-mail — todos recebem o alerta, não só o primeiro. Use um número com WhatsApp ativo, senão o código de confirmação não chega.</p>
+  <table><thead><tr><th>Canal</th><th>Destino</th><th></th></tr></thead>
+  <tbody>${rows}</tbody></table>
+</div>
+<div class="card">
+  <p class="muted">Adicionar destinatário</p>
+  <form method="POST" action="/recipients">
+    <label for="kind">Tipo</label>
+    <select id="kind" name="kind">
+      <option value="phone">Telefone (ligação + WhatsApp — severidade crítica)</option>
+      <option value="email">E-mail (severidade normal)</option>
+    </select>
+
+    <label for="value">Número no formato internacional (+5511999999999) ou e-mail</label>
+    <input type="text" id="value" name="value" required>
+
+    <button type="submit">Adicionar</button>
+  </form>
+</div>`;
+  return layout({ title: "Destinatários de alerta", body, authed: true, error: params.error });
 }
 
 export function alertsHistoryPage(params: {

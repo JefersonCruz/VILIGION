@@ -1,7 +1,8 @@
 /**
  * node:http não parseia cookie nem monta Set-Cookie - helper mínimo, só o
  * necessário pro cookie de sessão do painel (HttpOnly, nunca lido por JS no
- * cliente, mitiga roubo de token via XSS).
+ * cliente, mitiga roubo de token via XSS; Secure, nunca mandado por HTTP
+ * puro - achado de auditoria de 2026-10-04, faltava desde o início).
  */
 
 export function parseCookies(header: string | undefined): Record<string, string> {
@@ -18,9 +19,9 @@ export function parseCookies(header: string | undefined): Record<string, string>
 }
 
 export function buildSessionCookie(token: string, maxAgeSeconds: number): string {
-  return `viligion_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+  return `viligion_session=${encodeURIComponent(token)}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
 }
 
 export function buildExpiredSessionCookie(): string {
-  return `viligion_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`;
+  return `viligion_session=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`;
 }

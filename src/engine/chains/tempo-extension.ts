@@ -12,8 +12,8 @@ import { checkBlockedTransfer, type DetectionEvent, type UserThresholds } from "
 export class TempoBlockedTransferExtension implements ChainExtension {
   constructor(private readonly adapter: TempoAdapter) {}
 
-  async checkExtra(fromBlock: bigint, thresholds: UserThresholds): Promise<DetectionEvent[]> {
-    const blocked = await this.adapter.getBlockedTransfers(fromBlock);
+  async checkExtra(fromBlock: bigint, toBlock: bigint, thresholds: UserThresholds): Promise<DetectionEvent[]> {
+    const blocked = await this.adapter.getBlockedTransfers(fromBlock, toBlock);
     const events: DetectionEvent[] = [];
 
     for (const transfer of blocked) {

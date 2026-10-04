@@ -15,7 +15,9 @@ import { randomBytes } from "node:crypto";
 import type { Address } from "viem";
 import { verifyPassword } from "./password.js";
 import { verifyTotp } from "./totp.js";
+import { renderOtpQrSvg } from "./otp-qr.js";
 import { RateLimiter } from "./rate-limiter.js";
+import { isValidEmail, isValidPhone } from "./recipient-validation.js";
 import { SessionStore } from "./session.js";
 import { buildExpiredSessionCookie, buildSessionCookie, parseCookies } from "./cookies.js";
 import {
@@ -23,6 +25,7 @@ import {
   alertsHistoryPage,
   dashboardPage,
   loginPage,
+  recipientsPage,
   signupPage,
   signupSuccessPage,
   thresholdsPage,
@@ -58,9 +61,33 @@ export interface MonitoredAccountsPort {
   remove(id: string, userId: string): Promise<boolean>;
 }
 
+/**
+ * Sobe/para o Monitor de uma conta em tempo real, sem precisar reiniciar o
+ * processo - fecha o gap documentado em docs/DEPLOYMENT.md ("o monitor só lê
+ * contas novas no boot"), achado em auditoria de capacidade de 2026-10-04:
+ * sem isto, uma conta cadastrada por um usuário novo nunca era monitorada de
+ * verdade até alguém reiniciar o deploy manualmente. No modo demo (sem
+ * Postgres), onde a lista de contas nunca foi conectada a monitores de
+ * verdade (sempre foi um único endereço fixo via env var), a implementação é
+ * um no-op documentado - ver index.ts#mainDemo.
+ */
+export interface MonitorControlPort {
+  start(account: { id: string; userId: string; chainKey: string; tokenAddress: string; watchedAddress: string }): Promise<void>;
+  stop(accountId: string): Promise<void>;
+}
+
 export interface ThresholdsPort {
   get(userId: string): Promise<UserThresholds | null>;
   upsert(thresholds: UserThresholds): Promise<void>;
+}
+
+export type RecipientKind = "phone" | "email";
+
+/** Destinatários de alerta cadastrados pelo usuário - substitui as env vars compartilhadas DEMO_ALERT_NUMBERS/DEMO_ALERT_EMAILS (ver index.ts). */
+export interface RecipientsPort {
+  listForUser(userId: string): Promise<Array<{ id: string; kind: RecipientKind; value: string }>>;
+  add(input: { userId: string; kind: RecipientKind; value: string }): Promise<string>;
+  remove(id: string, userId: string): Promise<boolean>;
 }
 
 export interface AlertHistoryPort {
@@ -81,6 +108,8 @@ export interface DashboardServerDeps {
   thresholds: ThresholdsPort;
   alertHistory: AlertHistoryPort;
   signup: SignupPort;
+  recipients: RecipientsPort;
+  monitorControl: MonitorControlPort;
 }
 
 const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
@@ -123,6 +152,7 @@ async function route(
 ): Promise<void> {
   const url = req.url ?? "";
   const deleteMatch = url.match(/^\/accounts\/([^/]+)\/delete$/);
+  const recipientDeleteMatch = url.match(/^\/recipients\/([^/]+)\/delete$/);
 
   // --- API JSON original - inalterada ---
   if (req.method === "POST" && url === "/login") return handleJsonLogin(req, res, deps.users, loginLimiter, sessions);
@@ -152,6 +182,12 @@ async function route(
   }
   if (req.method === "GET" && url === "/thresholds") return withSession(req, res, sessions, (userId) => renderThresholds(res, deps, userId));
   if (req.method === "POST" && url === "/thresholds") return withSession(req, res, sessions, (userId) => handleUpdateThresholds(req, res, deps, userId));
+  if (req.method === "GET" && url === "/recipients") return withSession(req, res, sessions, (userId) => renderRecipients(res, deps, userId));
+  if (req.method === "POST" && url === "/recipients") return withSession(req, res, sessions, (userId) => handleAddRecipient(req, res, deps, userId));
+  if (req.method === "POST" && recipientDeleteMatch) {
+    const recipientId = recipientDeleteMatch[1] as string;
+    return withSession(req, res, sessions, (userId) => handleDeleteRecipient(res, deps, userId, recipientId));
+  }
   if (req.method === "GET" && url === "/alerts") return withSession(req, res, sessions, (userId) => renderAlerts(res, deps, userId));
 
   res.writeHead(404, { "Content-Type": "text/plain" });
@@ -196,9 +232,9 @@ function renderSignupPage(res: ServerResponse): void {
 
 async function handleSignup(req: IncomingMessage, res: ServerResponse, signup: SignupPort): Promise<void> {
   const body = await readFormBody(req);
-  const { address, nonce, signature, virtualPhoneNumber, username, password } = body;
+  const { address, nonce, signature, username, password } = body;
 
-  if (!address || !nonce || !signature || !virtualPhoneNumber || !username || !password) {
+  if (!address || !nonce || !signature || !username || !password) {
     return send(res, 400, signupPage({ nonce: nonce ?? randomBytes(16).toString("hex"), error: "Preencha todos os campos e assine com a carteira." }));
   }
 
@@ -207,11 +243,11 @@ async function handleSignup(req: IncomingMessage, res: ServerResponse, signup: S
       address: address as Address,
       nonce,
       signature: signature as `0x${string}`,
-      virtualPhoneNumber,
       username,
       password,
     });
-    send(res, 200, signupSuccessPage({ username: result.username, otpAuthUri: result.otpAuthUri }));
+    const qrCodeSvg = await renderOtpQrSvg(result.otpAuthUri);
+    send(res, 200, signupSuccessPage({ username: result.username, otpAuthUri: result.otpAuthUri, qrCodeSvg }));
   } catch (err) {
     send(res, 400, signupPage({ nonce, error: err instanceof Error ? err.message : "Cadastro falhou." }));
   }
@@ -295,12 +331,16 @@ async function handleAddAccount(req: IncomingMessage, res: ServerResponse, deps:
     return renderAccounts(res, deps, userId, `Chain desconhecida: "${chainKey}".`);
   }
 
-  await deps.monitoredAccounts.add({ userId, chainKey, tokenAddress, watchedAddress });
+  const id = await deps.monitoredAccounts.add({ userId, chainKey, tokenAddress, watchedAddress });
+  // Sobe o monitor AGORA, sem esperar um restart do processo (achado de
+  // capacidade de 2026-10-04 - ver nota em MonitorControlPort).
+  await deps.monitorControl.start({ id, userId, chainKey, tokenAddress, watchedAddress });
   redirect(res, "/accounts");
 }
 
 async function handleDeleteAccount(res: ServerResponse, deps: DashboardServerDeps, userId: string, accountId: string): Promise<void> {
-  await deps.monitoredAccounts.remove(accountId, userId);
+  const removed = await deps.monitoredAccounts.remove(accountId, userId);
+  if (removed) await deps.monitorControl.stop(accountId); // só para o monitor se a conta era mesmo do usuário logado
   redirect(res, "/accounts");
 }
 
@@ -355,6 +395,41 @@ function parseThresholdsForm(userId: string, body: Record<string, string>): User
   } catch {
     return null; // BigInt() lança se a string não for inteiro válido
   }
+}
+
+// --- Destinatários de alerta ---
+
+async function renderRecipients(res: ServerResponse, deps: DashboardServerDeps, userId: string, error?: string): Promise<void> {
+  const recipients = await deps.recipients.listForUser(userId);
+  send(res, 200, recipientsPage({ recipients, error }));
+}
+
+async function handleAddRecipient(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
+  const body = await readFormBody(req);
+  const { kind, value } = body;
+
+  if (kind !== "phone" && kind !== "email") {
+    return renderRecipients(res, deps, userId, "Tipo de destinatário inválido.");
+  }
+  if (!value) {
+    return renderRecipients(res, deps, userId, "Informe o número de telefone ou e-mail.");
+  }
+  // Pega erro de digitação agora, não só quando o Twilio/SMTP rejeitar na
+  // hora de um alerta real (achado de auditoria de 2026-10-04).
+  if (kind === "phone" && !isValidPhone(value)) {
+    return renderRecipients(res, deps, userId, "Telefone inválido - use o formato internacional, ex: +5511999999999.");
+  }
+  if (kind === "email" && !isValidEmail(value)) {
+    return renderRecipients(res, deps, userId, "E-mail inválido.");
+  }
+
+  await deps.recipients.add({ userId, kind, value: value.trim() });
+  redirect(res, "/recipients");
+}
+
+async function handleDeleteRecipient(res: ServerResponse, deps: DashboardServerDeps, userId: string, recipientId: string): Promise<void> {
+  await deps.recipients.remove(recipientId, userId);
+  redirect(res, "/recipients");
 }
 
 // --- Histórico de alertas ---

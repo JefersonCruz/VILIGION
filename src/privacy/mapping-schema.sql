@@ -85,3 +85,33 @@ CREATE TABLE alert_log (
     pin_status  TEXT, -- 'valid' | 'invalid' | 'expired' | 'already-consumed' | NULL (sem resposta, ou N/A pra e-mail)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Destinatários de alerta cadastrados pelo próprio usuário no painel
+-- (/recipients) - fecha a lacuna que estava documentada em ARCHITECTURE.md e
+-- docs/UI-SPEC.md: antes, os números/e-mails vinham só de env var
+-- compartilhada (DEMO_ALERT_NUMBERS/DEMO_ALERT_EMAILS), igual pra todo
+-- usuário. `kind` decide o dispatcher (voice vs email, ver
+-- index.ts#makeDispatcher): 'phone' recebe ligação em alerta crítico,
+-- 'email' recebe alerta normal.
+--
+-- O destino (telefone/e-mail) é criptografado com o MESMO esquema de
+-- phone_mappings (encryption.ts), não guardado em texto puro - achado da
+-- auditoria de 2026-10-03: um leak desta tabela, feito JOIN com
+-- monitored_accounts por user_id, revelaria exatamente o vínculo
+-- "este telefone recebe alerta sobre este endereço on-chain" que a
+-- criptografia do cadastro existe pra evitar (ver SECURITY.md, linha sobre
+-- wrench attack). Sem UNIQUE por valor em claro - como cada criptografia usa
+-- IV/DEK novos, duplicar o mesmo destino não é detectável no banco; aceito
+-- (o próprio usuário vê e remove duplicata na tela /recipients).
+CREATE TABLE alert_recipients (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID NOT NULL REFERENCES phone_mappings (id),
+    kind                TEXT NOT NULL CHECK (kind IN ('phone', 'email')),
+    encrypted_data_key  BYTEA NOT NULL,
+    iv                  BYTEA NOT NULL,
+    auth_tag            BYTEA NOT NULL,
+    ciphertext          BYTEA NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_alert_recipients_user ON alert_recipients (user_id);

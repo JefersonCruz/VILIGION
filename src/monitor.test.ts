@@ -26,12 +26,25 @@ class FakeAdapter extends EvmAdapter {
   }
 }
 
+/** Como FakeAdapter, mas simula uma chain sem gas token nativo (Tempo): toda a queda observada é taxa, não valor real. */
+class FakeFeeChargingAdapter extends FakeAdapter {
+  constructor(balances: bigint[], private readonly feeAmount: bigint) {
+    super(balances);
+  }
+
+  override async getFeeAdjustment(): Promise<bigint> {
+    return this.feeAmount;
+  }
+}
+
 class FakeExtension implements ChainExtension {
   calls = 0;
+  lastCall: { fromBlock: bigint; toBlock: bigint } | null = null;
   constructor(private readonly events: DetectionEvent[]) {}
 
-  async checkExtra(): Promise<DetectionEvent[]> {
+  async checkExtra(fromBlock: bigint, toBlock: bigint): Promise<DetectionEvent[]> {
     this.calls++;
+    this.lastCall = { fromBlock, toBlock };
     return this.events;
   }
 }
@@ -80,6 +93,44 @@ describe("Monitor", () => {
     expect(dispatched.some((e) => e.kind === "balance-drop")).toBe(true);
   });
 
+  it("não dispara falso positivo quando a queda observada é só taxa (ex: Tempo, sem gas token nativo)", async () => {
+    // mesma sequência de saldo do teste anterior (queda de 30%, dispararia alerta sem o ajuste)
+    const adapter = new FakeFeeChargingAdapter([1000n, 1000n, 700n], 300n); // delta de 300 é inteiramente taxa
+    const dispatched: DetectionEvent[] = [];
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async (e) => { dispatched.push(e); },
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 40));
+    monitor.stop();
+    await run;
+
+    expect(dispatched.some((e) => e.kind === "balance-drop")).toBe(false);
+  });
+
+  it("com ajuste de taxa parcial, ainda detecta a parte real da queda acima do limiar", async () => {
+    // saldo cai 1000 -> 700 (30%), mas só 50 disso é taxa - os outros 250 (25%) são saída real, ainda acima do limiar de 20%
+    const adapter = new FakeFeeChargingAdapter([1000n, 1000n, 700n], 50n);
+    const dispatched: DetectionEvent[] = [];
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async (e) => { dispatched.push(e); },
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 40));
+    monitor.stop();
+    await run;
+
+    const event = dispatched.find((e) => e.kind === "balance-drop");
+    expect(event).toBeDefined();
+    expect(event && "pctDropped" in event ? event.pctDropped : null).toBeCloseTo(25, 1);
+  });
+
   it("com extensão: chama checkExtra e despacha os eventos extras", async () => {
     const adapter = new FakeAdapter([1000n, 1000n]);
     const extraEvent: DetectionEvent = {
@@ -104,6 +155,29 @@ describe("Monitor", () => {
     await run;
 
     expect(dispatched).toContainEqual(extraEvent);
+  });
+
+  it("repassa pra extensão o bloco confirmado que ACABOU de calcular, em vez de deixá-la recalcular (achado de performance de 2026-10-03)", async () => {
+    class FakeAdapterAtBlock99 extends FakeAdapter {
+      override async getConfirmedBlockNumber(): Promise<bigint> {
+        return 99n;
+      }
+    }
+    const adapter = new FakeAdapterAtBlock99([1000n, 1000n]);
+    const extension = new FakeExtension([]);
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async () => {},
+      extension,
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 15));
+    monitor.stop();
+    await run;
+
+    expect(extension.lastCall).toEqual({ fromBlock: 1n, toBlock: 99n });
   });
 
   it("extensão só é consultada uma vez por bloco confirmado novo, não a cada ciclo de poll", async () => {

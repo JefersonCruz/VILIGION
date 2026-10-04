@@ -4,10 +4,11 @@ import {
   PostgresDashboardUserRepository,
   PostgresMonitoredAccountRepository,
   PostgresPhoneMappingRepository,
+  PostgresRecipientsRepository,
   PostgresThresholdsRepository,
   type Queryable,
 } from "./postgres-repositories.js";
-import type { EncryptedPayload } from "../privacy/encryption.js";
+import { LocalDevKeyProvider, MappingEncryption, type EncryptedPayload } from "../privacy/encryption.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
 
 /** Queryable falso - grava a última chamada e devolve linhas/rowCount pré-programados, nunca toca rede/disco. */
@@ -229,5 +230,59 @@ describe("PostgresAlertLog", () => {
         createdAt: new Date("2026-10-03T00:00:00Z"),
       },
     ]);
+  });
+});
+
+describe("PostgresRecipientsRepository", () => {
+  function buildEncryption() {
+    return new MappingEncryption(new LocalDevKeyProvider());
+  }
+
+  it("add() criptografa o valor antes de persistir - nunca manda o telefone/e-mail em claro pro banco", async () => {
+    const db = fakeDb([{ id: "r1" }]);
+    const repo = new PostgresRecipientsRepository(db, buildEncryption());
+
+    const id = await repo.add({ userId: "u1", kind: "phone", value: "+5511999999999" });
+
+    expect(id).toBe("r1");
+    expect(db.lastParams[0]).toBe("u1");
+    expect(db.lastParams[1]).toBe("phone");
+    const [, , encryptedDataKey, iv, authTag, ciphertext] = db.lastParams as Buffer[];
+    for (const field of [encryptedDataKey, iv, authTag, ciphertext]) expect(Buffer.isBuffer(field)).toBe(true);
+    expect(ciphertext!.toString("utf8")).not.toContain("+5511999999999"); // prova que não é texto puro
+  });
+
+  it("add() lança erro claro se nenhuma linha voltar", async () => {
+    const repo = new PostgresRecipientsRepository(fakeDb([]), buildEncryption());
+    await expect(repo.add({ userId: "u1", kind: "email", value: "a@b.com" })).rejects.toThrow(/nenhum id retornado/);
+  });
+
+  it("listForUser() decripta de volta o valor original - round-trip real, não mock de string", async () => {
+    const encryption = buildEncryption();
+    const payload: EncryptedPayload = await encryption.encrypt("a@b.com");
+    const db = fakeDb([
+      {
+        id: "r1",
+        user_id: "u1",
+        kind: "email",
+        encrypted_data_key: payload.encryptedDataKey,
+        iv: payload.iv,
+        auth_tag: payload.authTag,
+        ciphertext: payload.ciphertext,
+      },
+    ]);
+    const repo = new PostgresRecipientsRepository(db, encryption);
+
+    expect(await repo.listForUser("u1")).toEqual([{ id: "r1", userId: "u1", kind: "email", value: "a@b.com" }]);
+    expect(db.lastParams).toEqual(["u1"]);
+  });
+
+  it("remove() só apaga se o destinatário pertencer ao usuário", async () => {
+    const dbHit = fakeDb([], 1);
+    expect(await new PostgresRecipientsRepository(dbHit, buildEncryption()).remove("r1", "u1")).toBe(true);
+    expect(dbHit.lastSql).toMatch(/WHERE id = \$1 AND user_id = \$2/);
+
+    const dbMiss = fakeDb([], 0);
+    expect(await new PostgresRecipientsRepository(dbMiss, buildEncryption()).remove("r1", "outro-usuario")).toBe(false);
   });
 });

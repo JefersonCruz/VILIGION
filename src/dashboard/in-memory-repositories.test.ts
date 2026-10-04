@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Address } from "viem";
 import { verifyPassword } from "./password.js";
 import { verifyTotp } from "./totp.js";
+import { LocalDevKeyProvider, MappingEncryption } from "../privacy/encryption.js";
 import {
   InMemoryAccountDetailsRepository,
   InMemoryAlertLog,
   InMemoryMonitoredAccountsRepository,
   InMemoryPhoneMappingRepository,
+  InMemoryRecipientsRepository,
   InMemoryThresholdsRepository,
   InMemoryUserRepository,
 } from "./in-memory-repositories.js";
@@ -33,6 +35,15 @@ describe("InMemoryUserRepository", () => {
   it("usuário inexistente retorna null, não lança erro", async () => {
     const users = new InMemoryUserRepository();
     expect(await users.findByUsername("ninguem")).toBeNull();
+  });
+
+  it("createDemoUser aceita um userId fixo, pra bater com o userId já usado em thresholds/recipients no modo demo", async () => {
+    const users = new InMemoryUserRepository();
+    const creds = users.createDemoUser("demo", "demo-user");
+
+    expect(creds.userId).toBe("demo-user");
+    const stored = await users.findByUsername("demo");
+    expect(verifyPassword(creds.password, stored!.passwordHash)).toBe(true);
   });
 });
 
@@ -114,6 +125,33 @@ describe("InMemoryThresholdsRepository", () => {
     await repo.upsert(thresholds);
 
     expect(await repo.get("u1")).toEqual(thresholds);
+  });
+});
+
+describe("InMemoryRecipientsRepository", () => {
+  function buildRepo() {
+    return new InMemoryRecipientsRepository(new MappingEncryption(new LocalDevKeyProvider()));
+  }
+
+  it("isola destinatários por usuário, decripta de volta o valor real, e permite remover só o do dono", async () => {
+    const repo = buildRepo();
+    const id = await repo.add({ userId: "u1", kind: "phone", value: "+5511999999999" });
+    await repo.add({ userId: "u2", kind: "email", value: "outro@exemplo.com" });
+
+    expect(await repo.listForUser("u1")).toEqual([{ id, userId: "u1", kind: "phone", value: "+5511999999999" }]);
+    expect(await repo.remove(id, "u2")).toBe(false); // não é dono, não remove
+    expect(await repo.listForUser("u1")).toHaveLength(1);
+    expect(await repo.remove(id, "u1")).toBe(true);
+    expect(await repo.listForUser("u1")).toHaveLength(0);
+  });
+
+  it("permite múltiplos destinatários do mesmo tipo pro mesmo usuário (ex: dois telefones)", async () => {
+    const repo = buildRepo();
+    await repo.add({ userId: "u1", kind: "phone", value: "+5511999999999" });
+    await repo.add({ userId: "u1", kind: "phone", value: "+5511888888888" });
+
+    const recipients = await repo.listForUser("u1");
+    expect(recipients.filter((r) => r.kind === "phone").map((r) => r.value)).toEqual(["+5511999999999", "+5511888888888"]);
   });
 });
 

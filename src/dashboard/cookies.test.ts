@@ -24,6 +24,11 @@ describe("buildSessionCookie", () => {
     expect(buildSessionCookie("tok123", 1800)).toMatch(/HttpOnly/);
   });
 
+  it("é Secure - nunca mandado por HTTP puro, só HTTPS (achado de auditoria de 2026-10-04)", () => {
+    expect(buildSessionCookie("tok123", 1800)).toMatch(/Secure/);
+    expect(buildExpiredSessionCookie()).toMatch(/Secure/);
+  });
+
   it("inclui o token e o Max-Age informado", () => {
     const cookie = buildSessionCookie("tok123", 1800);
     expect(cookie).toContain("viligion_session=tok123");

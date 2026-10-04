@@ -82,12 +82,11 @@ Depois de rodar a migration, se o deploy já tinha subido antes (e crashado tent
 2. Conecte uma carteira (MetaMask), assine a prova de propriedade, complete o cadastro.
 3. Configure o autenticador com o QR/código mostrado uma única vez.
 4. Faça login em `/login`, confira o painel em `/dashboard`.
-5. Em `/accounts`, adicione a conta que quer monitorar (chain + token + endereço).
-6. **Reinicie o deploy** (redeploy manual na Railway) — isso faz o `index.ts` reler `monitored_accounts` do banco e subir um monitor pra conta que você acabou de cadastrar.
+5. Em `/accounts`, adicione a conta que quer monitorar (chain + token + endereço) — o monitor sobe na hora, não precisa reiniciar nada (ver nota abaixo).
 
 ## Notas importantes
 
-- **O monitor só lê contas novas no boot.** Cadastrar uma conta não sobe o monitor dela na hora — precisa reiniciar o processo (redeploy ou restart manual). Isso é comportamento atual, não bug: `index.ts` lê `monitored_accounts.listAll()` uma vez, no startup.
+- **Contas novas já são monitoradas na hora** (corrigido em 2026-10-04, ver `ARCHITECTURE.md` → "Registro dinâmico de monitor") — cadastrar uma conta em `/accounts` sobe o `Monitor` dela imediatamente, sem precisar de redeploy. Só o passo 6 (rodar a migration pela primeira vez) ainda exige intervenção manual, igual antes.
 - **KMS real ainda não existe** (ver `ARCHITECTURE.md`) — `LocalDevKeyProvider` com a chave fixa do Passo 4 é aceitável pra validar o sistema funcionando, mas não é o que se usaria com dado de cliente real em produção de verdade.
 - **Twilio**: configure a conta e preencha as variáveis quando for testar o canal crítico. Até lá, alertas críticos só logam no console (comportamento já documentado).
 - **Custo esperado**: ~US$10-11/mês de infra fixa, já validado com preços reais de mercado (ver `docs/BUSINESS-PLAN.md`).

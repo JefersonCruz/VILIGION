@@ -99,6 +99,7 @@ async function handleGather(
 
   const result = checkPin(pending, submittedPin);
   if (result === "valid") pending.consumed = true;
+  if (result === "invalid") pending.attempts += 1; // só conta tentativa de verdade, não expired/already-consumed/locked
   onPinResult(alertId, result);
 
   const message =
