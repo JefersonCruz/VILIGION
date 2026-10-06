@@ -219,9 +219,13 @@ async function mainDemo() {
     tokenAddress: (process.env.TEMPO_WATCHED_TOKEN_ADDRESS as Address | undefined) ?? (Addresses.pathUsd as Address),
   });
 
+  const thresholdsRepo = new InMemoryThresholdsRepository();
+  await thresholdsRepo.upsert(thresholds);
+  const liveThresholds = async () => (await thresholdsRepo.get(thresholds.userId)) ?? thresholds;
+
   const tempoMonitor = new Monitor(
     tempoAdapter,
-    { address: watchedAddress, thresholds, pollIntervalMs: 15_000 },
+    { address: watchedAddress, thresholds: liveThresholds, pollIntervalMs: 15_000 },
     dispatchAlert,
     new TempoBlockedTransferExtension(tempoAdapter),
   );
@@ -235,7 +239,7 @@ async function mainDemo() {
     });
     const baseMonitor = new Monitor(
       baseAdapter,
-      { address: process.env.DEMO_SECOND_CHAIN_ADDRESS as Address, thresholds, pollIntervalMs: 15_000 },
+      { address: process.env.DEMO_SECOND_CHAIN_ADDRESS as Address, thresholds: liveThresholds, pollIntervalMs: 15_000 },
       dispatchAlert,
     );
     console.log("[monitor] segundo monitor ativo na Base (núcleo genérico, sem extensão)");
@@ -245,8 +249,6 @@ async function mainDemo() {
   const users = new InMemoryUserRepository();
   const accounts = new InMemoryAccountDetailsRepository(watchedAddress, alertLog, async () => (await tempoAdapter.getBalance(watchedAddress)).raw);
   const monitoredAccounts = new InMemoryMonitoredAccountsRepository();
-  const thresholdsRepo = new InMemoryThresholdsRepository();
-  await thresholdsRepo.upsert(thresholds);
   const phoneMappingRepo = new InMemoryPhoneMappingRepository();
   const signupService = new SignupService(new PhoneMappingService(encryption), phoneMappingRepo, users, thresholdsRepo);
 
@@ -449,7 +451,7 @@ async function startMonitorForAccount(
 ): Promise<Monitor> {
   const chain = getKnownChain(account.chainKey);
   const rpcUrl = resolveRpcUrl(account.chainKey, undefined);
-  const thresholds =
+  const thresholds = async (): Promise<UserThresholds> =>
     (await thresholdsRepo.get(account.userId)) ?? {
       userId: account.userId,
       maxBalanceDropPct: 20,

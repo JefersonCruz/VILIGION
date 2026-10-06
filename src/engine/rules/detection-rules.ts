@@ -69,11 +69,24 @@ export function checkBalanceDrop(
     (current.observedAt.getTime() - previous.observedAt.getTime()) / 60_000;
   if (elapsedMinutes > thresholds.windowMinutes) return null;
 
-  const delta = previous.raw - current.raw;
-  if (delta <= 0n) return null;
+  return balanceDropEvent(previous.raw, current.raw, elapsedMinutes, thresholds);
+}
 
-  const pctDropped = Number((delta * 10_000n) / previous.raw) / 100;
-  if (pctDropped < thresholds.maxBalanceDropPct) return null;
+/** Percentual de queda entre um saldo de referência e o atual (0 se não caiu). */
+export function dropPercent(reference: bigint, current: bigint): number {
+  if (reference <= 0n || current >= reference) return 0;
+  return Number(((reference - current) * 10_000n) / reference) / 100;
+}
+
+/** Monta o evento de queda se o percentual passa do limiar; compartilhado pela comparação par-a-par e pela janela. */
+export function balanceDropEvent(
+  reference: bigint,
+  current: bigint,
+  elapsedMinutes: number,
+  thresholds: UserThresholds,
+): DetectionEvent | null {
+  const pctDropped = dropPercent(reference, current);
+  if (pctDropped === 0 || pctDropped < thresholds.maxBalanceDropPct) return null;
 
   return {
     kind: "balance-drop",

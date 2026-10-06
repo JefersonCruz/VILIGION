@@ -35,6 +35,7 @@ import {
 } from "./views.js";
 import { getKnownChain, KNOWN_CHAINS } from "../engine/chains/known-chains.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
+import { validateThresholds } from "../engine/rules/threshold-validation.js";
 import type { SignupInput, SignupResult } from "../privacy/signup-service.js";
 import { isWaitlistProfile, type WaitlistPort } from "./waitlist.js";
 
@@ -440,14 +441,14 @@ async function handleDeleteAccount(res: ServerResponse, deps: DashboardServerDep
 
 // --- Limiares ---
 
-async function renderThresholds(res: ServerResponse, deps: DashboardServerDeps, userId: string, error?: string): Promise<void> {
+async function renderThresholds(res: ServerResponse, deps: DashboardServerDeps, userId: string, error?: string, status = 200): Promise<void> {
   const current = await deps.thresholds.get(userId);
   if (!current) {
     return send(res, 404, loginPage({ error: "Limiares ainda não configurados pro seu usuário." }));
   }
   send(
     res,
-    200,
+    status,
     thresholdsPage({
       maxBalanceDropPct: current.maxBalanceDropPct,
       criticalBalanceDropPct: current.criticalBalanceDropPct,
@@ -462,7 +463,9 @@ async function renderThresholds(res: ServerResponse, deps: DashboardServerDeps, 
 async function handleUpdateThresholds(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
   const body = await readFormBody(req);
   const parsed = parseThresholdsForm(userId, body);
-  if (!parsed) return renderThresholds(res, deps, userId, "Valores inválidos - confira os números informados.");
+  if (!parsed) return renderThresholds(res, deps, userId, "Valores inválidos - confira os números informados.", 400);
+  const problem = validateThresholds(parsed);
+  if (problem) return renderThresholds(res, deps, userId, problem, 400);
 
   await deps.thresholds.upsert(parsed);
   redirect(res, "/thresholds");
@@ -476,7 +479,8 @@ function parseThresholdsForm(userId: string, body: Record<string, string>): User
     const blockedTransferAlertThreshold = BigInt(body.blockedTransferAlertThreshold ?? "");
     const criticalBlockedTransferThreshold = BigInt(body.criticalBlockedTransferThreshold ?? "");
 
-    if ([maxBalanceDropPct, criticalBalanceDropPct, windowMinutes].some((n) => Number.isNaN(n))) return null;
+    if ([maxBalanceDropPct, criticalBalanceDropPct, windowMinutes].some((n) => !Number.isFinite(n))) return null;
+    if (!body.maxBalanceDropPct?.trim() || !body.criticalBalanceDropPct?.trim() || !body.windowMinutes?.trim()) return null;
 
     return {
       userId,

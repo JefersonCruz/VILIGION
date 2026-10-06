@@ -15,15 +15,18 @@
 import type { Address } from "viem";
 import type { EvmAdapter, BalanceSnapshot } from "./engine/chains/evm-adapter.js";
 import type { ChainExtension } from "./engine/chain-extension.js";
-import {
-  checkBalanceDrop,
-  type DetectionEvent,
-  type UserThresholds,
-} from "./engine/rules/detection-rules.js";
+import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
+import { BalanceWindow } from "./engine/rules/balance-window.js";
+
+/**
+ * Fixo (testes, demo) ou uma função consultada a cada ciclo - assim uma
+ * edição em /thresholds vale no ciclo seguinte, sem reiniciar o processo.
+ */
+export type ThresholdsSource = UserThresholds | (() => Promise<UserThresholds>);
 
 export interface MonitorConfig {
   address: Address;
-  thresholds: UserThresholds;
+  thresholds: ThresholdsSource;
   pollIntervalMs: number;
 }
 
@@ -31,6 +34,9 @@ export type AlertDispatcher = (event: DetectionEvent) => Promise<void>;
 
 export class Monitor {
   private previousSnapshot: BalanceSnapshot | null = null;
+  private readonly window = new BalanceWindow();
+  private cumulativeFeeAdjustment = 0n;
+  private lastGoodThresholds: UserThresholds | null = null;
   private lastCheckedBlock = 0n;
   private running = false;
 
@@ -59,7 +65,23 @@ export class Monitor {
     this.running = false;
   }
 
+  private async resolveThresholds(): Promise<UserThresholds> {
+    const source = this.config.thresholds;
+    if (typeof source !== "function") return source;
+    try {
+      const fresh = await source();
+      this.lastGoodThresholds = fresh;
+      return fresh;
+    } catch (err) {
+      // banco indisponível não pode deixar a conta sem proteção: segue com o último limiar válido
+      if (!this.lastGoodThresholds) throw err;
+      console.error("[monitor] falha ao ler limiares, usando o último válido:", err);
+      return this.lastGoodThresholds;
+    }
+  }
+
   private async tick(): Promise<void> {
+    const thresholds = await this.resolveThresholds();
     const current = await this.adapter.getBalance(this.config.address);
 
     if (this.previousSnapshot) {
@@ -67,15 +89,22 @@ export class Monitor {
       // comparar - sem isto, pagamento de taxa legítimo (ex: na Tempo, que
       // não tem gas token nativo) pode parecer queda de saldo real. Default
       // 0n pra chains sem essa particularidade (ver EvmAdapter.getFeeAdjustment).
-      const feeAdjustment = await this.adapter.getFeeAdjustment(
+      // Acumulado, porque a janela compara o saldo atual com um pico mais antigo.
+      this.cumulativeFeeAdjustment += await this.adapter.getFeeAdjustment(
         this.previousSnapshot.blockNumber,
         current.blockNumber,
         this.config.address,
       );
-      const adjustedCurrent = { ...current, raw: current.raw + feeAdjustment };
-
-      const event = checkBalanceDrop(this.previousSnapshot, adjustedCurrent, this.config.thresholds);
-      if (event) await this.dispatchAlert(event);
+    }
+    const adjusted = current.raw + this.cumulativeFeeAdjustment;
+    const event = this.window.evaluate(adjusted, current.observedAt, thresholds);
+    if (event) {
+      try {
+        await this.dispatchAlert(event);
+      } catch (err) {
+        this.window.forgetLastAlert();
+        throw err;
+      }
     }
     this.previousSnapshot = current;
 
@@ -88,7 +117,7 @@ export class Monitor {
         const extraEvents = await this.extension.checkExtra(
           this.lastCheckedBlock + 1n,
           confirmedBlock,
-          this.config.thresholds,
+          thresholds,
         );
         for (const event of extraEvents) await this.dispatchAlert(event);
         this.lastCheckedBlock = confirmedBlock;
