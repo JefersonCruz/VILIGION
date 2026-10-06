@@ -29,6 +29,7 @@ import { getKnownChain, resolveRpcUrl } from "./engine/chains/known-chains.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { Monitor } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
+import { InMemoryWaitlistRepository, PostgresWaitlistRepository } from "./dashboard/waitlist.js";
 import { createEmailNotifier } from "./alerts/email-notifier.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
 import { handleWebhookRequest, type PinStore, type WebhookServerConfig } from "./webhook-server.js";
@@ -285,6 +286,7 @@ async function mainDemo() {
       signup: signupService,
       recipients,
       monitorControl,
+      waitlist: new InMemoryWaitlistRepository(),
       testAlert: () => dispatchAlert({ kind: "balance-drop", userId: thresholds.userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
     },
   );
@@ -425,6 +427,7 @@ async function mainWithDatabase(databaseUrl: string) {
       signup: signupService,
       recipients: recipientsRepo,
       monitorControl,
+      waitlist: new PostgresWaitlistRepository(pool),
       testAlert: (userId) =>
         makeDispatcher(userId)({ kind: "balance-drop", userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
     },

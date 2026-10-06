@@ -8,6 +8,8 @@
  * Usa EIP-1193 cru, sem viem/ethers no cliente, pra não exigir bundler.
  */
 
+import { WAITLIST_PROFILES } from "./waitlist.js";
+
 function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -240,6 +242,58 @@ export function signupSuccessPage(params: { username: string; otpAuthUri: string
     <p class="muted">Usuário: <code>${escapeHtml(params.username)}</code></p>
     <a href="/login" style="text-decoration:none"><button type="button">Ir para o login</button></a>`;
   return authLayout({ title: "Cadastro concluído", body });
+}
+
+export function landingPage(params: { joined?: boolean; error?: string }): string {
+  const profileOptions = Object.entries(WAITLIST_PROFILES)
+    .map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`)
+    .join("");
+
+  const form = params.joined
+    ? `<p style="margin:0;"><strong>Você está na lista.</strong> <span class="muted">Avisamos por e-mail quando abrirmos o acesso.</span></p>`
+    : `<form method="POST" action="/waitlist">
+    <label for="email">Seu e-mail</label>
+    <input type="email" id="email" name="email" required maxlength="200" placeholder="voce@empresa.com">
+
+    <label for="profile">Qual é o seu caso?</label>
+    <select id="profile" name="profile" required>${profileOptions}</select>
+
+    <label for="note">O que mais te preocupa na segurança da sua tesouraria? (opcional)</label>
+    <input type="text" id="note" name="note" maxlength="500">
+
+    <button type="submit">Entrar na lista de espera</button>
+    <p class="muted" style="margin:12px 0 0;">Usamos o e-mail só para avisar do acesso e pedir feedback. Sem spam, sem repasse a terceiros.</p>
+  </form>`;
+
+  const body = `
+<p class="muted" style="font-size:1.02rem; margin-top:0;">O VILIGION vigia a tesouraria de stablecoins na <strong>Tempo</strong> e avisa por <strong>ligação</strong> quando algo anormal acontece &mdash; sem expor saldo, endereço ou telefone no alerta.</p>
+<p class="muted"><a class="link" href="/login">Já tenho conta &rarr; Entrar</a></p>
+
+<div class="card">
+  <p style="margin:0 0 8px;"><strong>O problema</strong></p>
+  <p class="muted" style="margin:0;">Quem guarda a tesouraria de uma equipe ou empresa raramente tem alguém olhando o saldo o dia todo. Se a pessoa que controla a chave for coagida a transferir, ou a chave vazar, ninguém mais fica sabendo a tempo.</p>
+</div>
+
+<div class="card">
+  <p style="margin:0 0 8px;"><strong>Como funciona</strong></p>
+  <ol class="muted" style="margin:0; padding-left:20px; line-height:1.7;">
+    <li>Você cadastra o endereço da tesouraria (prova de posse por assinatura, sem mover fundos).</li>
+    <li>Você escolhe <strong>quem deve ser avisado</strong> &mdash; de preferência alguém de confiança que <em>não</em> seja a pessoa sob risco.</li>
+    <li>Queda forte de saldo vira alerta crítico: <strong>ligação + código de confirmação por WhatsApp</strong>. Alertas menores vão por e-mail.</li>
+  </ol>
+  <p class="muted" style="margin:10px 0 0;">O conteúdo do alerta nunca traz saldo nem endereço, e os destinatários ficam criptografados.</p>
+</div>
+
+<div class="card">
+  <p style="margin:0 0 8px;"><strong>Em que estágio estamos</strong></p>
+  <p class="muted" style="margin:0;">Em construção, rodando na testnet da Tempo, com código aberto no <a class="link" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">GitHub</a>. Entre na lista para testar primeiro &mdash; o seu feedback define o que construímos a seguir.</p>
+</div>
+
+<div class="card" id="lista">
+  <p style="margin:0 0 4px;"><strong>Lista de espera</strong></p>
+  ${form}
+</div>`;
+  return layout({ title: "Alerta de tesouraria feito para funcionar sob coação", body, error: params.error });
 }
 
 export function loginPage(params: { error?: string }): string {

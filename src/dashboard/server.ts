@@ -11,7 +11,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { Address } from "viem";
 import { verifyPassword } from "./password.js";
 import { verifyTotp } from "./totp.js";
@@ -24,6 +24,7 @@ import {
   accountsPage,
   alertsHistoryPage,
   dashboardPage,
+  landingPage,
   loginPage,
   recipientsPage,
   signupPage,
@@ -33,6 +34,7 @@ import {
 import { getKnownChain, KNOWN_CHAINS } from "../engine/chains/known-chains.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
 import type { SignupInput, SignupResult } from "../privacy/signup-service.js";
+import { isWaitlistProfile, type WaitlistPort } from "./waitlist.js";
 
 export interface DashboardUser {
   userId: string;
@@ -112,6 +114,8 @@ export interface DashboardServerDeps {
   monitorControl: MonitorControlPort;
   /** Dispara um alerta crítico sintético pro usuário (ligação + PIN) - botão de teste em /recipients. */
   testAlert?: (userId: string) => Promise<void>;
+  /** Lista de espera da landing pública (/ e /waitlist). Sem isto a raiz volta a redirecionar pro login. */
+  waitlist?: WaitlistPort;
 }
 
 const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
@@ -125,11 +129,12 @@ const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
  */
 export function createDashboardRequestHandler(deps: DashboardServerDeps) {
   const loginLimiter = new RateLimiter(5, 15 * 60_000); // 5 tentativas / 15 min por identificador
+  const waitlistLimiter = new RateLimiter(5, 60 * 60_000); // 5 inscrições / hora por IP
   const sessions = new SessionStore();
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
-      await route(req, res, deps, loginLimiter, sessions);
+      await route(req, res, deps, loginLimiter, waitlistLimiter, sessions);
     } catch (err) {
       console.error("[painel] erro não tratado:", err);
       if (!res.headersSent) {
@@ -150,9 +155,11 @@ async function route(
   res: ServerResponse,
   deps: DashboardServerDeps,
   loginLimiter: RateLimiter,
+  waitlistLimiter: RateLimiter,
   sessions: SessionStore,
 ): Promise<void> {
   const url = req.url ?? "";
+  const path = url.split("?")[0];
   const deleteMatch = url.match(/^\/accounts\/([^/]+)\/delete$/);
   const recipientDeleteMatch = url.match(/^\/recipients\/([^/]+)\/delete$/);
 
@@ -161,14 +168,18 @@ async function route(
   if (req.method === "GET" && url === "/details") return handleJsonDetails(req, res, deps.accounts, sessions);
 
   // --- Páginas HTML ---
-  if (req.method === "GET" && url === "/") {
-    // Raiz do domínio público (ex: alguém abre o link puro, sem caminho) -
-    // sem isso, caía no 404 genérico, confuso pra quem não sabe que rota pedir.
+  if (req.method === "GET" && path === "/") {
+    // Raiz do domínio público: logado vai pro painel; visitante vê a landing
+    // com a lista de espera (ou, sem waitlist configurada, cai no login).
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies["viligion_session"];
     const session = token ? sessions.validate(token) : null;
-    return redirect(res, session ? "/dashboard" : "/login");
+    if (session) return redirect(res, "/dashboard");
+    if (!deps.waitlist) return redirect(res, "/login");
+    return send(res, 200, landingPage({ joined: url.includes("ok=1") }));
   }
+  if (req.method === "POST" && path === "/waitlist") return handleWaitlistSignup(req, res, deps, waitlistLimiter);
+  if (req.method === "GET" && path === "/admin/waitlist") return handleWaitlistExport(req, res, deps);
   if (req.method === "GET" && url === "/signup") return renderSignupPage(res);
   if (req.method === "POST" && url === "/signup") return handleSignup(req, res, deps.signup);
   if (req.method === "GET" && url === "/login") return send(res, 200, loginPage({}));
@@ -224,6 +235,63 @@ function send(res: ServerResponse, status: number, html: string): void {
 function redirect(res: ServerResponse, location: string, extraHeaders?: Record<string, string>): void {
   res.writeHead(302, { Location: location, ...extraHeaders });
   res.end();
+}
+
+// --- Lista de espera ---
+
+/** IP do cliente atrás do proxy do Railway: o último item de x-forwarded-for é o que a borda viu (os anteriores o cliente pode forjar). */
+function clientIp(req: IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+  const last = raw?.split(",").pop()?.trim();
+  return last || req.socket.remoteAddress || "unknown";
+}
+
+async function handleWaitlistSignup(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deps: DashboardServerDeps,
+  limiter: RateLimiter,
+): Promise<void> {
+  if (!deps.waitlist) return redirect(res, "/login");
+  const body = await readFormBody(req);
+  const email = (body.email ?? "").trim();
+  const profile = body.profile ?? "";
+  const note = (body.note ?? "").trim().slice(0, 500);
+
+  if (!limiter.attempt(clientIp(req))) {
+    return send(res, 429, landingPage({ error: "Muitas inscrições deste endereço. Tente novamente mais tarde." }));
+  }
+  if (!isValidEmail(email) || email.length > 200) {
+    return send(res, 400, landingPage({ error: "Informe um e-mail válido." }));
+  }
+  if (!isWaitlistProfile(profile)) {
+    return send(res, 400, landingPage({ error: "Escolha uma das opções do seu caso." }));
+  }
+
+  const result = await deps.waitlist.add({ email, profile, note });
+  console.log(`[waitlist] inscrição ${result} (perfil=${profile})`);
+  redirect(res, "/?ok=1#lista");
+}
+
+/** Exporta as inscrições em JSON. Só habilitado com WAITLIST_ADMIN_TOKEN definido; sem ele a rota responde 404. */
+async function handleWaitlistExport(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps): Promise<void> {
+  const token = process.env.WAITLIST_ADMIN_TOKEN;
+  if (!token || !deps.waitlist) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Não encontrado.");
+    return;
+  }
+  const provided = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
+  const expected = Buffer.from(token);
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    res.writeHead(401, { "Content-Type": "text/plain" });
+    res.end("Não autorizado.");
+    return;
+  }
+  const entries = await deps.waitlist.list();
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ total: entries.length, entries }));
 }
 
 // --- Cadastro ---
@@ -560,7 +628,13 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
 function readFormBody(req: IncomingMessage): Promise<Record<string, string>> {
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (chunk) => (data += chunk));
+    req.on("data", (chunk) => {
+      data += chunk;
+      if (data.length > 64 * 1024) {
+        req.destroy();
+        reject(new Error("corpo da requisição grande demais"));
+      }
+    });
     req.on("end", () => {
       const params = new URLSearchParams(data);
       resolve(Object.fromEntries(params));
