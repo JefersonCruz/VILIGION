@@ -176,11 +176,11 @@ Manual (antes do deploy): abrir a tela, trocar de perfil, editar campo → "Pers
 
 ## 8. Critérios de pronto
 
-- [ ] Editar o limiar muda o comportamento do monitor no ciclo seguinte (teste automatizado).
-- [ ] Nenhum conjunto incoerente é gravado (teste automatizado).
-- [ ] Dreno gradual é detectado (teste automatizado).
-- [ ] Campos de transferência bloqueada em US$, sem unidade crua na tela.
-- [ ] Suíte completa passa (147 testes existentes + novos) e `tsc` sem erro.
+- [x] Editar o limiar muda o comportamento do monitor no ciclo seguinte (teste automatizado).
+- [x] Nenhum conjunto incoerente é gravado (teste automatizado).
+- [x] Dreno gradual é detectado (teste automatizado).
+- [x] Campos de transferência bloqueada em US$, sem unidade crua na tela.
+- [x] Suíte completa passa (176 testes) e `tsc` sem erro.
 - [ ] Deploy feito com `railway up -s viligion-app --detach` e `/thresholds` verificado em produção.
 - [ ] `BUSINESS-PLAN.md` e `ARCHITECTURE.md` refletem a nova contagem de testes e a janela deslizante.
 

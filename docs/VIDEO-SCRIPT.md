@@ -13,7 +13,7 @@ Desde a última revisão deste roteiro (03/10), o produto avançou bastante:
 - **Registro dinâmico de monitor**: adicionar uma conta em `/accounts` sobe o monitoramento na hora, sem precisar reiniciar nada — dá pra mostrar isso ao vivo (cadastra → já está monitorando).
 - **Tutorial inline**: `/signup`, `/accounts`, `/thresholds` e `/recipients` agora explicam o que cada campo faz antes de preencher.
 - **Canal crítico com entrega real do PIN**: a ligação toca e o código de confirmação chega por WhatsApp de verdade (antes, o script da ligação prometia isso mas nada enviava) — **só mostre isso no vídeo depois de validar com uma conta Twilio real configurada** (ver checklist no fim deste arquivo).
-- **139 testes automatizados**, CI verde.
+- **176 testes automatizados**, CI verde.
 
 ⚠️ **Antes de gravar**: o deploy do Railway está atrasado em relação a tudo isso. Redeploy + nova migration primeiro (ver `docs/DEPLOYMENT.md`), senão a demo ao vivo mostra a versão antiga.
 
@@ -73,7 +73,7 @@ Foco: provar que funciona contra dado real, não simulação — e agora dá pra
 - Se o canal crítico ainda não estiver validado com conta Twilio real na hora da gravação: narre com transparência — "ligação é reservada pra severidade crítica; aqui o sistema já loga que faria a chamada e enviaria o código por WhatsApp" — e mostre o log do `dispatchAlert` com a severidade e o canal escolhido.
 
 **[2:30–2:50] Fechamento**
-- "Core testado — 139 testes automatizados, CI rodando a cada commit, repositório público." (Mostrar rapidamente o terminal do `npx vitest run` passando é mais forte que só falar.)
+- "Core testado — 176 testes automatizados, CI rodando a cada commit, repositório público." (Mostrar rapidamente o terminal do `npx vitest run` passando é mais forte que só falar.)
 
 ---
 

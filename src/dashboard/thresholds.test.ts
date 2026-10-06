@@ -22,6 +22,7 @@ describe("POST /thresholds - validação no servidor", () => {
     };
     const deps = {
       users: { async findByUsername() { return { userId: "user-1", passwordHash: hashPassword("senha-forte-123"), totpSecret }; } },
+      accounts: { async getDetails() { return { address: "0x0", balanceRaw: "250000000000", lastAlerts: [] }; } },
       thresholds: {
         async get() { return saved; },
         async upsert(t: UserThresholds) { saved = t; },
@@ -59,15 +60,17 @@ describe("POST /thresholds - validação no servidor", () => {
     maxBalanceDropPct: "10",
     criticalBalanceDropPct: "30",
     windowMinutes: "60",
-    blockedTransferAlertThreshold: "2000000",
-    criticalBlockedTransferThreshold: "20000000",
+    blockedWarnUsd: "2",
+    blockedCritUsd: "20,5",
   };
 
   it("grava e redireciona quando os valores são coerentes", async () => {
     const res = await post(await login(), valid);
     expect(res.status).toBe(302);
     expect(saved.maxBalanceDropPct).toBe(10);
-    expect(saved.criticalBlockedTransferThreshold).toBe(20_000_000n);
+    expect(saved.blockedTransferAlertThreshold).toBe(2_000_000n);
+    expect(saved.criticalBlockedTransferThreshold).toBe(20_500_000n);
+    expect(res.headers.get("location")).toBe("/thresholds?salvo=1");
   });
 
   it("rejeita crítico <= aviso com 400, mensagem clara, e não grava", async () => {
@@ -82,6 +85,36 @@ describe("POST /thresholds - validação no servidor", () => {
     expect((await post(cookie, { ...valid, criticalBalanceDropPct: "500" })).status).toBe(400);
     expect((await post(cookie, { ...valid, windowMinutes: "0" })).status).toBe(400);
     expect((await post(cookie, { ...valid, windowMinutes: "" })).status).toBe(400);
+    expect(saved.maxBalanceDropPct).toBe(20);
+  });
+
+  it("GET /thresholds mostra os valores salvos em US$, o saldo real na prévia e os perfis", async () => {
+    const res = await fetch(`${baseUrl}/thresholds`, { headers: { Cookie: await login() } });
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    expect(html).toContain('name="blockedWarnUsd" type="text" inputmode="decimal" value="1"'); // 1_000_000 unidades = US$ 1
+    expect(html).toContain("US$ 250.000"); // saldo real, não o exemplo
+    expect(html).toContain("saldo real");
+    expect(html).toContain('"key":"equilibrado"');
+  });
+
+  it("aceita ?salvo=1 e mostra confirmação", async () => {
+    const res = await fetch(`${baseUrl}/thresholds?salvo=1`, { headers: { Cookie: await login() } });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('"justSaved":true');
+  });
+
+  it("depois de um erro, a página volta com o que o usuário digitou, não com o valor salvo", async () => {
+    const res = await post(await login(), { ...valid, maxBalanceDropPct: "40", criticalBalanceDropPct: "35" });
+    expect(res.status).toBe(400);
+    const html = await res.text();
+    expect(html).toContain('name="maxBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="40"');
+    expect(html).toContain('"saved":{"warn":20');
+  });
+
+  it("valor em dólar inválido (mais de 6 casas) é rejeitado sem gravar", async () => {
+    const res = await post(await login(), { ...valid, blockedWarnUsd: "1,1234567" });
+    expect(res.status).toBe(400);
     expect(saved.maxBalanceDropPct).toBe(20);
   });
 });

@@ -9,6 +9,8 @@
  */
 
 import { WAITLIST_PROFILES } from "./waitlist.js";
+import { THRESHOLD_PRESETS, WINDOW_CHOICES_MINUTES } from "../engine/rules/threshold-presets.js";
+import { THRESHOLDS_HEAD, thresholdsScript } from "./thresholds-ui.js";
 
 function escapeHtml(input: string): string {
   return input
@@ -431,38 +433,129 @@ export function accountsPage(params: {
   return layout({ title: "Contas monitoradas", body, authed: true, error: params.error });
 }
 
+export interface ThresholdsFormValues {
+  warn: number;
+  crit: number;
+  win: number;
+  /** transferência bloqueada em US$ */
+  bw: number;
+  bc: number;
+}
+
+/** Tela de limiares (docs/THRESHOLDS.md, C6): perfis, controles, prévia com saldo real e simulador. */
 export function thresholdsPage(params: {
-  maxBalanceDropPct: number;
-  criticalBalanceDropPct: number;
-  windowMinutes: number;
-  blockedTransferAlertThreshold: string;
-  criticalBlockedTransferThreshold: string;
+  current: ThresholdsFormValues;
+  saved: ThresholdsFormValues;
+  /** saldo atual monitorado em US$; null se ainda não foi lido (a prévia usa um exemplo e avisa) */
+  balanceUsd: number | null;
+  justSaved?: boolean;
   error?: string;
 }): string {
+  const cfg = JSON.stringify({
+    presets: THRESHOLD_PRESETS,
+    windows: WINDOW_CHOICES_MINUTES,
+    current: params.current,
+    saved: params.saved,
+    balanceUsd: params.balanceUsd,
+    justSaved: params.justSaved === true,
+  }).replace(/</g, "\\u003c");
+  const c = params.current;
+  const live = params.balanceUsd !== null;
   const body = `
-<div class="card">
-  <p class="muted" style="margin-bottom:10px;">Abaixo do limiar crítico, o alerta sai por e-mail; no limiar crítico ou acima, por ligação + WhatsApp com o PIN (ver <a class="link" href="/recipients">destinatários</a>, e SECURITY.md/ARCHITECTURE.md sobre o porquê da divisão por severidade).</p>
-  <p class="muted" style="margin:0 0 14px;"><strong>Exemplo prático:</strong> com os valores padrão (20% / 50%), uma queda de 15% não alerta nada; uma queda de 30% manda e-mail; uma queda de 55% liga por telefone. "Menor unidade do token" é o valor bruto (ex: um TIP-20 com 6 casas decimais → 1.000.000 = 1 token inteiro).</p>
-  <form method="POST" action="/thresholds">
-    <label for="maxBalanceDropPct">Queda de saldo que dispara alerta (%)</label>
-    <input type="number" step="0.1" id="maxBalanceDropPct" name="maxBalanceDropPct" value="${params.maxBalanceDropPct}" required>
+<div class="th">
+  <span class="live"><i></i> Alterações valem no ciclo seguinte do monitor (até 15 s), sem reiniciar</span>
+  <p class="lead">Escolha um perfil e ajuste se precisar. A prévia ao lado mostra, com o seu saldo, quanto dinheiro precisa sair para disparar cada tipo de alerta.</p>
 
-    <label for="criticalBalanceDropPct">Queda de saldo que vira ligação (%)</label>
-    <input type="number" step="0.1" id="criticalBalanceDropPct" name="criticalBalanceDropPct" value="${params.criticalBalanceDropPct}" required>
+  <form method="POST" action="/thresholds" id="thForm">
+    <div class="presets" id="presets"></div>
 
-    <label for="windowMinutes">Janela de tempo pro cálculo de queda (minutos)</label>
-    <input type="number" id="windowMinutes" name="windowMinutes" value="${params.windowMinutes}" required>
+    <div class="layout">
+      <div>
+        <div class="card">
+          <h2><span class="ico">&#8595;</span> Queda de saldo</h2>
+          <p class="sub">Somamos todas as saídas dentro da janela escolhida, mesmo que venham em várias transferências pequenas.</p>
 
-    <label for="blockedTransferAlertThreshold">Valor bloqueado que dispara alerta (menor unidade do token)</label>
-    <input type="text" id="blockedTransferAlertThreshold" name="blockedTransferAlertThreshold" value="${escapeHtml(params.blockedTransferAlertThreshold)}" required>
+          <div class="field">
+            <div class="row">
+              <label for="pctWarnN"><span class="dot" style="background:var(--warn)"></span> Avisar por e-mail a partir de</label>
+              <div class="val"><input id="pctWarnN" name="maxBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="${c.warn}" required><span>%</span></div>
+            </div>
+            <input type="range" id="pctWarn" min="1" max="100" step="1" style="--c:var(--warn)" aria-label="Limite de e-mail em porcentagem">
+          </div>
 
-    <label for="criticalBlockedTransferThreshold">Valor bloqueado que vira ligação (menor unidade do token)</label>
-    <input type="text" id="criticalBlockedTransferThreshold" name="criticalBlockedTransferThreshold" value="${escapeHtml(params.criticalBlockedTransferThreshold)}" required>
+          <div class="field">
+            <div class="row">
+              <label for="pctCritN"><span class="dot" style="background:var(--crit)"></span> Ligar por telefone a partir de</label>
+              <div class="val"><input id="pctCritN" name="criticalBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="${c.crit}" required><span>%</span></div>
+            </div>
+            <input type="range" id="pctCrit" min="1" max="100" step="1" style="--c:var(--crit)" aria-label="Limite de ligação em porcentagem">
+            <p class="hint">A ligação traz o <b>código por WhatsApp</b> e é o alerta mais intrusivo. Use um limite que só um evento sério alcance.</p>
+          </div>
 
-    <button type="submit">Salvar</button>
+          <div class="field">
+            <div class="row"><label>Janela de tempo</label></div>
+            <div class="seg" id="win"></div>
+            <input type="hidden" id="windowMinutes" name="windowMinutes" value="${c.win}">
+            <p class="hint" id="winHint"></p>
+          </div>
+          <div class="alert-box" id="err1" role="alert"></div>
+        </div>
+
+        <div class="card">
+          <h2><span class="ico">&#9940;</span> Transferência bloqueada</h2>
+          <p class="sub">Quando a política de recebimento da Tempo bloqueia um valor, você é avisado conforme o tamanho dele.</p>
+          <div class="two">
+            <div>
+              <label for="blkWarn">E-mail a partir de</label>
+              <div class="money"><b>US$</b><input id="blkWarn" name="blockedWarnUsd" type="text" inputmode="decimal" value="${c.bw}" required></div>
+            </div>
+            <div>
+              <label for="blkCrit">Ligação a partir de</label>
+              <div class="money"><b>US$</b><input id="blkCrit" name="blockedCritUsd" type="text" inputmode="decimal" value="${c.bc}" required></div>
+            </div>
+          </div>
+          <p class="hint">Digite em dólares (até 6 casas). O sistema converte para a menor unidade do token sozinho.</p>
+          <div class="alert-box" id="err2" role="alert"></div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="card">
+          <div class="eyebrow"><span>Prévia com seu saldo</span><span style="color:${live ? "var(--ok)" : "var(--warn)"}">&#9679; ${live ? "saldo real" : "exemplo"}</span></div>
+          <div class="bal"><strong>${live ? escapeHtml("US$ " + Math.round(params.balanceUsd as number).toLocaleString("pt-BR")) : "US$ 100.000"}</strong><small>${live ? "saldo atual monitorado" : "exemplo: o monitor ainda não leu seu saldo"}</small></div>
+
+          <div class="gauge" id="gauge"><div class="z z1"></div><div class="z z2"></div><div class="z z3"></div></div>
+          <div class="ticks" id="ticks"></div>
+
+          <div class="legend">
+            <div class="lg" id="lg0" style="--hc:#14503a;--hb:#0b2a1f"><span class="dot" style="background:var(--ok)"></span><div><b>Sem alerta</b><span id="t0"></span></div></div>
+            <div class="lg" id="lg1" style="--hc:#7a5f12;--hb:#241d08"><span class="dot" style="background:var(--warn)"></span><div><b>E-mail</b><span id="t1"></span></div></div>
+            <div class="lg" id="lg2" style="--hc:#7a2a2a;--hb:#241010"><span class="dot" style="background:var(--crit)"></span><div><b>Ligação + código no WhatsApp</b><span id="t2"></span></div></div>
+          </div>
+
+          <div class="sim">
+            <div class="row"><label for="sim">Simular uma saída de</label><strong id="simTxt" style="font-size:.95rem"></strong></div>
+            <input type="range" id="sim" min="0" max="100" step="1">
+            <div class="result" id="result"></div>
+          </div>
+
+          <div class="note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" style="flex:none;margin-top:2px" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <span>Os alertas nunca trazem saldo ou endereço. Esta prévia só aparece aqui, dentro do painel autenticado.</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="bar">
+      <div class="msg" id="barMsg"></div>
+      <button type="button" class="ghost" id="reset">Descartar</button>
+      <button type="submit" class="btn" id="save">Salvar limiares</button>
+    </div>
   </form>
-</div>`;
-  return layout({ title: "Limiares de detecção", body, authed: true, error: params.error });
+</div>
+${thresholdsScript(cfg)}`;
+  return layout({ title: "Quando você quer ser avisado", body, authed: true, error: params.error, head: THRESHOLDS_HEAD });
 }
 
 export function recipientsPage(params: {

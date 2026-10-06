@@ -169,3 +169,14 @@ Found in the same audit pass, both low-risk and now closed:
 ## Recipient format validation (closed 2026-10-04)
 
 `/recipients` accepted any string as a phone number or email — a typo was only discoverable when Twilio or SMTP rejected it at the moment a real alert needed to fire, the worst possible time to find out. New `dashboard/recipient-validation.ts` (pure, no dependencies): `isValidPhone` checks E.164 shape (`+`, non-zero leading digit, 8–15 digits total — what Twilio's voice/WhatsApp APIs require), `isValidEmail` is a deliberately pragmatic check (has `@`, has a domain with a dot), not a full RFC 5322 validator, since the real validation that matters happens at send time anyway. `handleAddRecipient` in `dashboard/server.ts` rejects an invalid value with a clear message instead of persisting it. 13 new tests in `recipient-validation.test.ts`.
+
+## Editable thresholds (rolling window, live reload, USD UI)
+
+Full design in `docs/THRESHOLDS.md`. Summary of what changed in the code:
+
+- **Live reload**: `Monitor` takes a `ThresholdsSource` (value or async function) resolved on every tick (15 s); on a read error it keeps the last good value. `index.ts` passes a function reading `thresholdsRepo.get(userId)`, so edits apply without restarting.
+- **Rolling window**: `rules/balance-window.ts#BalanceWindow` compares the current (fee-adjusted, cumulative) balance against the maximum seen within `windowMinutes` (up to 1440), so a slow drain split into small transfers is caught. Anti-repeat: it re-alerts only on severity escalation or when the drop grows by `maxBalanceDropPct` points; `forgetLastAlert()` re-arms it if dispatch fails.
+- **Validation**: `rules/threshold-validation.ts#validateThresholds` is the single source of truth (0.1 ≤ warn < crit ≤ 100, window 1–1440 min, blocked warn < crit); the server rejects incoherent sets with HTTP 400 and re-renders the form with what the user typed.
+- **USD instead of raw units**: `rules/token-units.ts` converts "2000", "20,5" ⇄ token base units with `bigint` only (6 decimals assumed).
+- **UI**: `rules/threshold-presets.ts` (Conservador/Equilibrado/Tolerante) and `dashboard/thresholds-ui.ts` (scoped CSS + client script) render a live preview using the user's real balance and a "simulate an outflow" slider. The preview only exists inside the authenticated dashboard; alerts themselves never carry balance or address.
+- z-score is intentionally not used for critical alerts (see roadmap in `docs/THRESHOLDS.md`).

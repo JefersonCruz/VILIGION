@@ -32,10 +32,12 @@ import {
   signupPage,
   signupSuccessPage,
   thresholdsPage,
+  type ThresholdsFormValues,
 } from "./views.js";
 import { getKnownChain, KNOWN_CHAINS } from "../engine/chains/known-chains.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
 import { validateThresholds } from "../engine/rules/threshold-validation.js";
+import { parseUsdToUnits, unitsToUsdString } from "../engine/rules/token-units.js";
 import type { SignupInput, SignupResult } from "../privacy/signup-service.js";
 import { isWaitlistProfile, type WaitlistPort } from "./waitlist.js";
 
@@ -197,7 +199,7 @@ async function route(
     const accountId = deleteMatch[1] as string;
     return withSession(req, res, sessions, (userId) => handleDeleteAccount(res, deps, userId, accountId));
   }
-  if (req.method === "GET" && url === "/thresholds") return withSession(req, res, sessions, (userId) => renderThresholds(res, deps, userId));
+  if (req.method === "GET" && path === "/thresholds") return withSession(req, res, sessions, (userId) => renderThresholds(res, deps, userId, { justSaved: url.includes("salvo=1") }));
   if (req.method === "POST" && url === "/thresholds") return withSession(req, res, sessions, (userId) => handleUpdateThresholds(req, res, deps, userId));
   if (req.method === "GET" && url === "/recipients") return withSession(req, res, sessions, (userId) => renderRecipients(res, deps, userId));
   if (req.method === "POST" && url === "/recipients") return withSession(req, res, sessions, (userId) => handleAddRecipient(req, res, deps, userId));
@@ -441,58 +443,98 @@ async function handleDeleteAccount(res: ServerResponse, deps: DashboardServerDep
 
 // --- Limiares ---
 
-async function renderThresholds(res: ServerResponse, deps: DashboardServerDeps, userId: string, error?: string, status = 200): Promise<void> {
+function toFormValues(t: UserThresholds): ThresholdsFormValues {
+  return {
+    warn: t.maxBalanceDropPct,
+    crit: t.criticalBalanceDropPct,
+    win: t.windowMinutes,
+    bw: Number(unitsToUsdString(t.blockedTransferAlertThreshold)),
+    bc: Number(unitsToUsdString(t.criticalBlockedTransferThreshold)),
+  };
+}
+
+/** Reaproveita o que o usuário digitou no POST que falhou; campo ilegível volta ao valor salvo. */
+function submittedValues(body: Record<string, string>, saved: ThresholdsFormValues): ThresholdsFormValues {
+  const num = (raw: string | undefined, fallback: number) => {
+    const n = Number((raw ?? "").trim().replace(",", "."));
+    return raw?.trim() && Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    warn: num(body.maxBalanceDropPct, saved.warn),
+    crit: num(body.criticalBalanceDropPct, saved.crit),
+    win: num(body.windowMinutes, saved.win),
+    bw: num(body.blockedWarnUsd, saved.bw),
+    bc: num(body.blockedCritUsd, saved.bc),
+  };
+}
+
+async function currentBalanceUsd(deps: DashboardServerDeps, userId: string): Promise<number | null> {
+  try {
+    const raw = BigInt((await deps.accounts.getDetails(userId)).balanceRaw);
+    return raw > 0n ? Number(unitsToUsdString(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function renderThresholds(
+  res: ServerResponse,
+  deps: DashboardServerDeps,
+  userId: string,
+  opts: { error?: string; status?: number; submitted?: Record<string, string>; justSaved?: boolean } = {},
+): Promise<void> {
   const current = await deps.thresholds.get(userId);
   if (!current) {
     return send(res, 404, loginPage({ error: "Limiares ainda não configurados pro seu usuário." }));
   }
+  const saved = toFormValues(current);
   send(
     res,
-    status,
+    opts.status ?? 200,
     thresholdsPage({
-      maxBalanceDropPct: current.maxBalanceDropPct,
-      criticalBalanceDropPct: current.criticalBalanceDropPct,
-      windowMinutes: current.windowMinutes,
-      blockedTransferAlertThreshold: current.blockedTransferAlertThreshold.toString(),
-      criticalBlockedTransferThreshold: current.criticalBlockedTransferThreshold.toString(),
-      error,
+      current: opts.submitted ? submittedValues(opts.submitted, saved) : saved,
+      saved,
+      balanceUsd: await currentBalanceUsd(deps, userId),
+      justSaved: opts.justSaved,
+      error: opts.error,
     }),
   );
 }
 
 async function handleUpdateThresholds(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
   const body = await readFormBody(req);
+  const fail = (error: string) => renderThresholds(res, deps, userId, { error, status: 400, submitted: body });
+
   const parsed = parseThresholdsForm(userId, body);
-  if (!parsed) return renderThresholds(res, deps, userId, "Valores inválidos - confira os números informados.", 400);
+  if (!parsed) return fail("Valores inválidos - confira os números informados (dólares com até 6 casas, ex.: 2000 ou 2000,50).");
   const problem = validateThresholds(parsed);
-  if (problem) return renderThresholds(res, deps, userId, problem, 400);
+  if (problem) return fail(problem);
 
   await deps.thresholds.upsert(parsed);
-  redirect(res, "/thresholds");
+  redirect(res, "/thresholds?salvo=1");
 }
 
 function parseThresholdsForm(userId: string, body: Record<string, string>): UserThresholds | null {
-  try {
-    const maxBalanceDropPct = Number(body.maxBalanceDropPct);
-    const criticalBalanceDropPct = Number(body.criticalBalanceDropPct);
-    const windowMinutes = Number(body.windowMinutes);
-    const blockedTransferAlertThreshold = BigInt(body.blockedTransferAlertThreshold ?? "");
-    const criticalBlockedTransferThreshold = BigInt(body.criticalBlockedTransferThreshold ?? "");
+  const required = [body.maxBalanceDropPct, body.criticalBalanceDropPct, body.windowMinutes];
+  if (required.some((v) => !v?.trim())) return null;
 
-    if ([maxBalanceDropPct, criticalBalanceDropPct, windowMinutes].some((n) => !Number.isFinite(n))) return null;
-    if (!body.maxBalanceDropPct?.trim() || !body.criticalBalanceDropPct?.trim() || !body.windowMinutes?.trim()) return null;
+  const maxBalanceDropPct = Number(body.maxBalanceDropPct);
+  const criticalBalanceDropPct = Number(body.criticalBalanceDropPct);
+  const windowMinutes = Number(body.windowMinutes);
+  const blockedTransferAlertThreshold = parseUsdToUnits(body.blockedWarnUsd);
+  const criticalBlockedTransferThreshold = parseUsdToUnits(body.blockedCritUsd);
 
-    return {
-      userId,
-      maxBalanceDropPct,
-      criticalBalanceDropPct,
-      windowMinutes,
-      blockedTransferAlertThreshold,
-      criticalBlockedTransferThreshold,
-    };
-  } catch {
-    return null; // BigInt() lança se a string não for inteiro válido
-  }
+  if ([maxBalanceDropPct, criticalBalanceDropPct, windowMinutes].some((n) => !Number.isFinite(n))) return null;
+  if (blockedTransferAlertThreshold === null || criticalBlockedTransferThreshold === null) return null;
+
+  return {
+    userId,
+    maxBalanceDropPct,
+    criticalBalanceDropPct,
+    windowMinutes,
+    blockedTransferAlertThreshold,
+    criticalBlockedTransferThreshold,
+  };
 }
 
 // --- Destinatários de alerta ---
