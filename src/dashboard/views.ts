@@ -95,13 +95,14 @@ const NAV = `
 </nav>`;
 
 /** Layout interno (painel autenticado) - header com nav, conteúdo em coluna única. */
-function layout(params: { title: string; body: string; authed?: boolean; error?: string }): string {
+function layout(params: { title: string; body: string; authed?: boolean; error?: string; head?: string }): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VILIGION — ${escapeHtml(params.title)}</title>
+${params.head ?? ""}
 <style>${BASE_STYLE}</style>
 </head>
 <body>
@@ -244,7 +245,40 @@ export function signupSuccessPage(params: { username: string; otpAuthUri: string
   return authLayout({ title: "Cadastro concluído", body });
 }
 
-export function landingPage(params: { joined?: boolean; error?: string }): string {
+const SHARE_TITLE = "VILIGION: treasury alerts that still work under duress";
+const SHARE_DESCRIPTION =
+  "On-chain monitoring for stablecoin treasuries on Tempo. When balances drop abnormally, a trusted person gets a phone call plus a WhatsApp PIN, with no balances, addresses or phone numbers exposed in the alert. Built for the case where the key holder can't say no.";
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2.5l7.5 2.7v6.1c0 4.8-3.2 8.9-7.5 10.2-4.3-1.3-7.5-5.4-7.5-10.2V5.2L12 2.5z" fill="#22d3ee"/><path d="M7.2 12.4h2.3l1.3-2.6 1.6 4.8 1.2-2.2h2.3" stroke="#0b0f19" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+)}`;
+
+/** Metatags de compartilhamento (Open Graph + X/Twitter Card). baseUrl precisa ser absoluta: os scrapers não resolvem URL relativa. */
+function shareMeta(baseUrl: string): string {
+  const url = escapeHtml(baseUrl);
+  const image = `${url}/og-image.png`;
+  return `<meta name="description" content="${escapeHtml(SHARE_DESCRIPTION)}">
+<meta name="theme-color" content="#0b0f19">
+<link rel="icon" href="${FAVICON}">
+<link rel="canonical" href="${url}/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="VILIGION">
+<meta property="og:title" content="${escapeHtml(SHARE_TITLE)}">
+<meta property="og:description" content="${escapeHtml(SHARE_DESCRIPTION)}">
+<meta property="og:url" content="${url}/">
+<meta property="og:image" content="${image}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="VILIGION: when the key holder can't say no, someone else gets the call.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escapeHtml(SHARE_TITLE)}">
+<meta name="twitter:description" content="${escapeHtml(SHARE_DESCRIPTION)}">
+<meta name="twitter:image" content="${image}">
+<meta name="twitter:image:alt" content="VILIGION: when the key holder can't say no, someone else gets the call.">`;
+}
+
+export function landingPage(params: { joined?: boolean; error?: string; baseUrl: string }): string {
   const profileOptions = Object.entries(WAITLIST_PROFILES)
     .map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`)
     .join("");
@@ -293,7 +327,12 @@ export function landingPage(params: { joined?: boolean; error?: string }): strin
   <p style="margin:0 0 4px;"><strong>Lista de espera</strong></p>
   ${form}
 </div>`;
-  return layout({ title: "Alerta de tesouraria feito para funcionar sob coação", body, error: params.error });
+  return layout({
+    title: "Alerta de tesouraria feito para funcionar sob coação",
+    body,
+    error: params.error,
+    head: shareMeta(params.baseUrl),
+  });
 }
 
 export function loginPage(params: { error?: string }): string {

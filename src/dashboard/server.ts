@@ -12,6 +12,8 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Address } from "viem";
 import { verifyPassword } from "./password.js";
 import { verifyTotp } from "./totp.js";
@@ -176,8 +178,9 @@ async function route(
     const session = token ? sessions.validate(token) : null;
     if (session) return redirect(res, "/dashboard");
     if (!deps.waitlist) return redirect(res, "/login");
-    return send(res, 200, landingPage({ joined: url.includes("ok=1") }));
+    return send(res, 200, landingPage({ joined: url.includes("ok=1"), baseUrl: publicBaseUrl() }));
   }
+  if (req.method === "GET" && path === "/og-image.png") return serveOgImage(res);
   if (req.method === "POST" && path === "/waitlist") return handleWaitlistSignup(req, res, deps, waitlistLimiter);
   if (req.method === "GET" && path === "/admin/waitlist") return handleWaitlistExport(req, res, deps);
   if (req.method === "GET" && url === "/signup") return renderSignupPage(res);
@@ -239,6 +242,26 @@ function redirect(res: ServerResponse, location: string, extraHeaders?: Record<s
 
 // --- Lista de espera ---
 
+/** URL pública absoluta usada nas metatags de compartilhamento. Defina PUBLIC_BASE_URL ao trocar de domínio. */
+function publicBaseUrl(): string {
+  return (process.env.PUBLIC_BASE_URL ?? "https://viligion-app-production.up.railway.app").replace(/\/+$/, "");
+}
+
+const OG_IMAGE_PATH = fileURLToPath(new URL("../../assets/og-image.png", import.meta.url));
+let ogImageCache: Buffer | null = null;
+
+function serveOgImage(res: ServerResponse): void {
+  try {
+    ogImageCache ??= readFileSync(OG_IMAGE_PATH);
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Não encontrado.");
+    return;
+  }
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": ogImageCache.length, "Cache-Control": "public, max-age=3600" });
+  res.end(ogImageCache);
+}
+
 /** IP do cliente atrás do proxy do Railway: o último item de x-forwarded-for é o que a borda viu (os anteriores o cliente pode forjar). */
 function clientIp(req: IncomingMessage): string {
   const forwarded = req.headers["x-forwarded-for"];
@@ -260,13 +283,13 @@ async function handleWaitlistSignup(
   const note = (body.note ?? "").trim().slice(0, 500);
 
   if (!limiter.attempt(clientIp(req))) {
-    return send(res, 429, landingPage({ error: "Muitas inscrições deste endereço. Tente novamente mais tarde." }));
+    return send(res, 429, landingPage({ baseUrl: publicBaseUrl(), error: "Muitas inscrições deste endereço. Tente novamente mais tarde." }));
   }
   if (!isValidEmail(email) || email.length > 200) {
-    return send(res, 400, landingPage({ error: "Informe um e-mail válido." }));
+    return send(res, 400, landingPage({ baseUrl: publicBaseUrl(), error: "Informe um e-mail válido." }));
   }
   if (!isWaitlistProfile(profile)) {
-    return send(res, 400, landingPage({ error: "Escolha uma das opções do seu caso." }));
+    return send(res, 400, landingPage({ baseUrl: publicBaseUrl(), error: "Escolha uma das opções do seu caso." }));
   }
 
   const result = await deps.waitlist.add({ email, profile, note });

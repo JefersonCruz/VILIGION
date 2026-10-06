@@ -40,6 +40,20 @@ describe("waitlist - landing pública", () => {
     expect(await res.text()).toContain('action="/waitlist"');
   });
 
+  it("landing traz metatags Open Graph/Twitter com URLs absolutas e a imagem é servida como PNG", async () => {
+    const html = await (await fetch(`${baseUrl}/`)).text();
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
+    expect(html).toMatch(/property="og:image" content="https:\/\/[^"]+\/og-image\.png"/);
+    expect(html).toContain('<link rel="canonical"');
+
+    const img = await fetch(`${baseUrl}/og-image.png`);
+    expect(img.status).toBe(200);
+    expect(img.headers.get("content-type")).toBe("image/png");
+    const bytes = Buffer.from(await img.arrayBuffer());
+    expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+  });
+
   it("inscrição válida grava e redireciona; e-mail repetido não duplica", async () => {
     const res = await submit({ email: "Ana@Empresa.com", profile: "treasury", note: "medo de coação" });
     expect(res.status).toBe(302);
