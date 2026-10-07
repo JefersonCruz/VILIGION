@@ -57,8 +57,12 @@ async function main() {
     console.log("❌ Actions.token.getBalance falhou:", err instanceof Error ? err.message : err);
   }
 
-  console.log("\n=== 6. getLogs no ReceivePolicyGuard (últimos 10.000 blocos) ===");
-  const fromBlock = blockNumber > 10_000n ? blockNumber - 10_000n : 0n;
+  console.log("\n=== 6. getLogs no ReceivePolicyGuard (últimos 50.000 blocos) ===");
+  // 50k (não 10k) porque uma checagem em 2026-10-07 achou ~78 TransferBlocked
+  // nos últimos 100k blocos da Moderato - 10k às vezes não pega nenhum mesmo
+  // a rede estando ativa, e 50k ainda cabe numa única chamada eth_getLogs
+  // (limite do RPC é 100k).
+  const fromBlock = blockNumber > 50_000n ? blockNumber - 50_000n : 0n;
   const adapter = new TempoAdapter({
     rpcUrl: tempoModerato.rpcUrls.default.http[0] as string,
     chainId: tempoModerato.id,
