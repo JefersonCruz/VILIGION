@@ -7,11 +7,19 @@ import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-ru
 
 const TEST_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 
-/** Adapter falso - nunca toca rede de verdade, só devolve saldos pré-programados em sequência. */
+/**
+ * Adapter falso - nunca toca rede de verdade, só devolve saldos e blocos
+ * confirmados pré-programados em sequência. `confirmedBlocks` é opcional -
+ * sem ele, fica fixo em 1n (suficiente pros testes que não olham a extensão).
+ */
 class FakeAdapter extends EvmAdapter {
   private callIndex = 0;
+  private blockCallIndex = 0;
 
-  constructor(private readonly balances: bigint[]) {
+  constructor(
+    private readonly balances: bigint[],
+    private readonly confirmedBlocks: bigint[] = [1n],
+  ) {
     super({ rpcUrl: "http://localhost:1", chainId: 1, minConfirmations: 1 });
   }
 
@@ -22,7 +30,9 @@ class FakeAdapter extends EvmAdapter {
   }
 
   async getConfirmedBlockNumber(): Promise<bigint> {
-    return 1n;
+    const block = this.confirmedBlocks[Math.min(this.blockCallIndex, this.confirmedBlocks.length - 1)] ?? 1n;
+    this.blockCallIndex++;
+    return block;
   }
 }
 
@@ -132,8 +142,31 @@ describe("Monitor", () => {
     expect(event && "pctDropped" in event ? event.pctDropped : null).toBeCloseTo(25, 1);
   });
 
-  it("com extensão: chama checkExtra e despacha os eventos extras", async () => {
-    const adapter = new FakeAdapter([1000n, 1000n]);
+  it("primeiro ciclo NUNCA consulta a extensão - só estabelece o bloco atual como ponto de partida (achado de produção 2026-10-07)", async () => {
+    // Bloco bem alto, do tamanho real da Tempo hoje - se o monitor tentasse
+    // ler do bloco 1 em diante aqui, seria exatamente o bug visto em
+    // produção (eth_getLogs rejeitado por exceder o range máximo do RPC).
+    // Com a correção, o primeiro ciclo não chama a extensão nenhuma vez.
+    const adapter = new FakeAdapter([1000n, 1000n], [42_629_110n, 42_629_110n, 42_629_110n]);
+    const extension = new FakeExtension([]);
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async () => {},
+      extension,
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 30));
+    monitor.stop();
+    await run;
+
+    expect(extension.calls).toBe(0);
+  });
+
+  it("com extensão: no ciclo em que um bloco novo aparece, chama checkExtra e despacha os eventos extras", async () => {
+    // 1º ciclo (bloco 1n) só estabelece a base; 2º ciclo em diante (bloco 2n) dispara a checagem de verdade.
+    const adapter = new FakeAdapter([1000n, 1000n, 1000n], [1n, 2n, 2n, 2n]);
     const extraEvent: DetectionEvent = {
       kind: "transfer-blocked",
       userId: "u1",
@@ -151,7 +184,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => setTimeout(r, 40));
     monitor.stop();
     await run;
 
@@ -159,12 +192,8 @@ describe("Monitor", () => {
   });
 
   it("repassa pra extensão o bloco confirmado que ACABOU de calcular, em vez de deixá-la recalcular (achado de performance de 2026-10-03)", async () => {
-    class FakeAdapterAtBlock99 extends FakeAdapter {
-      override async getConfirmedBlockNumber(): Promise<bigint> {
-        return 99n;
-      }
-    }
-    const adapter = new FakeAdapterAtBlock99([1000n, 1000n]);
+    // Baseline no bloco 50n (1º ciclo), bloco confirmado sobe pra 99n a partir do 2º ciclo.
+    const adapter = new FakeAdapter([1000n, 1000n, 1000n], [50n, 99n, 99n]);
     const extension = new FakeExtension([]);
     const monitor = new Monitor(
       adapter,
@@ -174,15 +203,16 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 15));
+    await new Promise((r) => setTimeout(r, 30));
     monitor.stop();
     await run;
 
-    expect(extension.lastCall).toEqual({ fromBlock: 1n, toBlock: 99n });
+    expect(extension.lastCall).toEqual({ fromBlock: 51n, toBlock: 99n });
   });
 
   it("extensão só é consultada uma vez por bloco confirmado novo, não a cada ciclo de poll", async () => {
-    const adapter = new FakeAdapter([1000n, 1000n, 1000n, 1000n]);
+    // Baseline no bloco 1n, sobe pra 5n e fica parada lá pelo resto dos ciclos.
+    const adapter = new FakeAdapter([1000n, 1000n, 1000n, 1000n, 1000n], [1n, 5n, 5n, 5n, 5n]);
     const extension = new FakeExtension([]);
     const monitor = new Monitor(
       adapter,
@@ -192,11 +222,35 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 40)); // várias voltas do loop, mas o bloco confirmado nunca muda (sempre 1n)
+    await new Promise((r) => setTimeout(r, 50)); // várias voltas do loop, mas o bloco confirmado só muda uma vez
     monitor.stop();
     await run;
 
     expect(extension.calls).toBe(1);
+  });
+
+  it("limita o range da consulta ao MAX_LOG_RANGE_BLOCKS quando o gap entre ciclos é grande demais (RPC fora do ar por horas, por exemplo)", async () => {
+    // Baseline no bloco 10n; de repente o bloco confirmado salta 200.000 blocos à frente
+    // num só ciclo - bem acima do limite de range que o RPC aceita numa consulta.
+    const farAhead = 10n + 200_000n;
+    const adapter = new FakeAdapter([1000n, 1000n, 1000n], [10n, farAhead, farAhead]);
+    const extension = new FakeExtension([]);
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async () => {},
+      extension,
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 30));
+    monitor.stop();
+    await run;
+
+    expect(extension.lastCall).not.toBeNull();
+    // toBlock sempre é o bloco confirmado real; fromBlock é recuado só até o limite do range, não até 11n.
+    expect(extension.lastCall?.toBlock).toBe(farAhead);
+    expect(extension.lastCall!.toBlock - extension.lastCall!.fromBlock).toBeLessThanOrEqual(50_000n);
   });
 
   it("edição de limiar vale no ciclo seguinte, sem reiniciar o monitor", async () => {

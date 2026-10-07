@@ -32,12 +32,31 @@ export interface MonitorConfig {
 
 export type AlertDispatcher = (event: DetectionEvent) => Promise<void>;
 
+/**
+ * Limite conservador de blocos por consulta eth_getLogs. Provedores de RPC
+ * costumam rejeitar ranges grandes (o da Tempo rejeita acima de 100.000,
+ * achado em produção em 2026-10-07 - ver nota em `tick()`); fica bem abaixo
+ * disso de propósito, como margem de segurança.
+ */
+const MAX_LOG_RANGE_BLOCKS = 50_000n;
+
 export class Monitor {
   private previousSnapshot: BalanceSnapshot | null = null;
   private readonly window = new BalanceWindow();
   private cumulativeFeeAdjustment = 0n;
   private lastGoodThresholds: UserThresholds | null = null;
-  private lastCheckedBlock = 0n;
+  /**
+   * null = "este monitor ainda não rodou nenhum ciclo". Inicializar em 0n
+   * aqui foi o bug real encontrado em produção: todo monitor tentava reler
+   * a chain inteira do bloco 1 em diante no primeiro ciclo (uma chain com
+   * dezenas de milhões de blocos), e o provedor RPC rejeita qualquer range
+   * de eth_getLogs acima de 100.000 blocos - a consulta falhava sempre,
+   * indefinidamente, gerando só spam de log, nunca uma leitura bem-sucedida.
+   * Correção: na primeira vez, só anota o bloco confirmado atual como ponto
+   * de partida - um monitor recém-criado deve observar dali pra frente, não
+   * reprocessar o histórico inteiro da chain.
+   */
+  private lastCheckedBlock: bigint | null = null;
   private running = false;
 
   constructor(
@@ -110,15 +129,34 @@ export class Monitor {
 
     if (this.extension) {
       const confirmedBlock = await this.adapter.getConfirmedBlockNumber();
-      if (confirmedBlock > this.lastCheckedBlock) {
+
+      if (this.lastCheckedBlock === null) {
+        // Primeiro ciclo deste monitor - começa a observar a partir de
+        // agora, não tenta reler a chain inteira (ver nota no campo acima).
+        this.lastCheckedBlock = confirmedBlock;
+      } else if (confirmedBlock > this.lastCheckedBlock) {
+        // Clamp defensivo: mesmo já inicializado corretamente, um gap longo
+        // sem ciclo bem-sucedido (RPC fora do ar por horas, processo preso)
+        // ainda poderia acumular mais blocos que o provedor aceita numa
+        // consulta só. Em vez de voltar a falhar pra sempre como antes,
+        // aceita perder eventos mais antigos que o limite e segue andando -
+        // um monitor que se recupera sozinho é melhor que um que trava.
+        const fromBlock =
+          confirmedBlock - this.lastCheckedBlock > MAX_LOG_RANGE_BLOCKS
+            ? confirmedBlock - MAX_LOG_RANGE_BLOCKS + 1n
+            : this.lastCheckedBlock + 1n;
+
+        if (fromBlock > this.lastCheckedBlock + 1n) {
+          console.error(
+            `[monitor] gap de blocos maior que o limite de consulta (${MAX_LOG_RANGE_BLOCKS} blocos) - ` +
+              `pulando de ${this.lastCheckedBlock} pra ${fromBlock - 1n}, eventos nesse intervalo foram perdidos`,
+          );
+        }
+
         // Passa o bloco confirmado que ACABAMOS de calcular, em vez de
         // deixar a extensão perguntar de novo à RPC (achado de performance
         // de 2026-10-03 - essa segunda chamada era pura duplicação).
-        const extraEvents = await this.extension.checkExtra(
-          this.lastCheckedBlock + 1n,
-          confirmedBlock,
-          thresholds,
-        );
+        const extraEvents = await this.extension.checkExtra(fromBlock, confirmedBlock, thresholds);
         for (const event of extraEvents) await this.dispatchAlert(event);
         this.lastCheckedBlock = confirmedBlock;
       }
