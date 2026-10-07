@@ -266,7 +266,7 @@ function shareMeta(baseUrl: string): string {
   const url = escapeHtml(baseUrl);
   const image = `${url}/og-image.png`;
   return `<meta name="description" content="${escapeHtml(SHARE_DESCRIPTION)}">
-<meta name="theme-color" content="#ebe6ef">
+<meta name="theme-color" content="#0a0e17">
 <link rel="icon" href="${FAVICON}">
 <link rel="canonical" href="${url}/">
 <meta property="og:type" content="website">
@@ -290,27 +290,104 @@ function shareMeta(baseUrl: string): string {
 /** Ícone do GitHub, 14px, inline - prova de autoridade (open-source) perto do topo, sem asset externo. */
 const GITHUB_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
 
+/** Ícones inline da landing (stroke, 16-32px) - sem asset externo, mesmo padrão do GITHUB_ICON acima. */
+const ICON_CLOCK = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>`;
+const ICON_CODE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11 0h3a2 2 0 0 0 2-2v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_PHONE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_PHONE_ACCENT = ICON_PHONE.replace('stroke="#67e8f9"', 'stroke="#fbbf24"');
+const ICON_CALENDAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18" stroke-linecap="round"/></svg>`;
+const ICON_RADAR = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 5V3M12 21v-2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>`;
+const ICON_LOCK = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+const ICON_LOCK_BIG = ICON_LOCK.replace('width="22" height="22"', 'width="32" height="32"').replace('stroke-width="1.8"', 'stroke-width="1.5"').replace('stroke="#67e8f9"', 'stroke="#22d3ee"');
+const ICON_SHIELD_CHECK = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l7.5 2.7v6.1c0 4.8-3.2 8.9-7.5 10.2-4.3-1.3-7.5-5.4-7.5-10.2V5.2L12 2.5z"/><path d="m9 12 2 2 4-4"/></svg>`;
+const ICON_ARROW = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+const ICON_CHECK = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;"><path d="M20 6 9 17l-5-5"/></svg>`;
+
 /**
  * Estilo extra só da landing — hero próprio em grid (texto + formulário lado
  * a lado), não reaproveita o <main> estreito/h1 pequeno do layout() interno
  * (telas de app). Formulário fica dentro da primeira dobra, não exige rolar
  * (feedback de revisão: form empurrado pra baixo matava conversão).
  */
+/**
+ * Estilo completo e AUTOSSUFICIENTE da landing - não combina com BASE_STYLE
+ * (claro/lilás, usado no painel/login/cadastro). Decisão: só a landing pública
+ * vira dark/cyan (identidade "security-grade"); o resto do produto continua
+ * claro, sem risco de regressão visual a poucos dias da submissão.
+ */
 const LANDING_STYLE = `
+  * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  .hero { padding:48px 24px 56px; background: radial-gradient(ellipse 70% 55% at 15% -15%, rgba(124,58,237,0.07), transparent 60%); border-bottom:1px solid #e3deec; }
-  .hero-grid { max-width:1040px; margin:0 auto; display:grid; grid-template-columns:1.15fr 0.85fr; gap:40px; align-items:start; }
+  body {
+    margin:0; min-height:100vh; background:#0a0e17; color:#e5e7eb;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  ::selection { background: rgba(34,211,238,0.3); }
+  a { color:#67e8f9; text-decoration:none; }
+  a:hover { color:#22d3ee; }
+  a.link { color:#22d3ee; }
+  a.link:hover { text-decoration:underline; }
+  .muted { color:#8b95a7; font-size:0.9rem; line-height:1.55; }
+  .container { max-width:1120px; margin:0 auto; padding-left:28px; padding-right:28px; }
+  h1, h2 { font-family:'Space Grotesk', 'Inter', sans-serif; color:#f8fafc; }
+
+  /* reveal-on-scroll: JS adds .is-visible when the element enters the viewport */
+  .reveal { opacity:0; transform:translateY(18px); transition: opacity .6s ease-out, transform .6s ease-out; }
+  .reveal.is-visible { opacity:1; transform:translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity:1; transform:none; transition:none; }
+  }
+
+  /* header */
+  .top-header { position:sticky; top:0; z-index:20; border-bottom:1px solid #1b2433; background:rgba(10,14,23,0.82); backdrop-filter:blur(10px); }
+  .top-header .container { display:flex; align-items:center; justify-content:space-between; height:72px; }
+  .top-header .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:1.05rem; color:#f8fafc; }
+  .top-nav { display:flex; align-items:center; gap:26px; }
+  .top-nav a.nav-link { color:#9aa4b2; font-size:0.88rem; transition: color .15s ease; }
+  .top-nav a.nav-link:hover { color:#e5e7eb; }
+  .top-nav a.btn-ghost { color:#cbd5e1; font-size:0.88rem; border:1px solid #2a3449; padding:8px 16px; border-radius:8px; transition: border-color .15s ease; }
+  .top-nav a.btn-ghost:hover { border-color:#3a4760; color:#f1f5f9; }
+  @media (max-width:860px) { .top-nav .nav-link { display:none; } }
+
+  /* buttons */
+  button, a.btn { font-family:inherit; cursor:pointer; border:none; display:inline-flex; align-items:center; justify-content:center;
+    padding:12px 22px; border-radius:9px; font-weight:600; font-size:0.95rem; text-decoration:none;
+    transition: transform .1s ease, box-shadow .18s ease, opacity .15s ease; }
+  button.cta, a.btn.cta {
+    background: linear-gradient(180deg, #fbbf24, #f59e0b); color:#231703;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 1px rgba(245,158,11,0.4) inset, 0 0 0 rgba(245,158,11,0.3);
+  }
+  button.cta:hover, a.btn.cta:hover { box-shadow: 0 4px 22px rgba(245,158,11,0.35), 0 0 0 1px rgba(245,158,11,0.5) inset; transform: translateY(-1px); }
+  button.cta:active, a.btn.cta:active { transform: translateY(0); }
+  a.btn.secondary { background:transparent; border:1px solid #2a3449; color:#cbd5e1; }
+  a.btn.secondary:hover { border-color:#3a4760; color:#f1f5f9; }
+
+  /* form elements (waitlist card) */
+  label { display:block; margin-top:14px; margin-bottom:6px; font-size:0.82rem; color:#9aa4b2; font-weight:500; }
+  input, select { width:100%; background:#101726; border:1px solid #232d40; color:#e5e7eb;
+    padding:11px 13px; border-radius:8px; font-size:0.95rem; font-family:inherit;
+    transition: border-color .15s ease, box-shadow .15s ease; }
+  input:focus, select:focus { outline:none; border-color:#22d3ee; box-shadow: 0 0 0 3px rgba(34,211,238,0.15); }
+  input::placeholder { color:#4b5668; }
+  .error { background:#2a1212; border:1px solid #5c1f1f; color:#fca5a5; padding:11px 15px; border-radius:8px; margin-bottom:18px; font-size:0.88rem; }
+
+  /* hero */
+  .hero { position:relative; padding:76px 0 64px; overflow:hidden;
+    background: radial-gradient(ellipse 60% 55% at 12% -10%, rgba(34,211,238,0.14), transparent 60%), radial-gradient(ellipse 50% 45% at 100% 0%, rgba(245,158,11,0.07), transparent 55%);
+    border-bottom:1px solid #1b2433; }
+  .hero-grid { display:grid; grid-template-columns:1.15fr 0.85fr; gap:48px; align-items:start; }
   @media (max-width:860px) { .hero-grid { grid-template-columns:1fr; } .hero-copy { text-align:center; } .hero-copy .mark, .trust-row { justify-content:center; } }
   .hero-copy .mark { display:inline-block; margin-bottom:18px; }
   .hero-copy .mark img { display:block; border-radius:18%; }
-  .hero-copy h1 { font-size: clamp(1.8rem, 3.6vw, 2.5rem); line-height:1.22; margin:0 0 14px; letter-spacing:-0.02em; font-weight:800; color:#1e1b29; }
-  .hero-copy .lead { font-size:1.02rem; color:#564f66; margin:0 0 8px; line-height:1.55; }
-  .hero-copy .lead strong { color:#1e1b29; }
+  .hero-copy h1 { font-size: clamp(1.9rem, 3.6vw, 2.7rem); line-height:1.18; margin:0 0 16px; letter-spacing:-0.02em; font-weight:700; }
+  .hero-copy .lead { font-size:1.04rem; color:#aab4c4; margin:0 0 8px; line-height:1.58; }
+  .hero-copy .lead strong { color:#e5e7eb; }
   .trust-row { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0 20px; }
   .hero-copy .mark, .hero-copy h1, .hero-copy .lead, .hero-copy .trust-row, .hero-copy > p.muted, .hero-form {
     animation: fade-up .6s ease-out both;
   }
-  .hero-copy .mark { animation: fade-up .6s ease-out both; }
+  .hero-copy .mark { animation: fade-up .6s ease-out both, pulse-ring 2.6s cubic-bezier(.4,0,.6,1) .6s infinite; border-radius:18%; }
   .hero-copy h1 { animation-delay: .08s; }
   .hero-copy .lead:nth-of-type(1) { animation-delay: .14s; }
   .hero-copy .lead:nth-of-type(2) { animation-delay: .2s; }
@@ -318,49 +395,98 @@ const LANDING_STYLE = `
   .hero-copy > p.muted { animation-delay: .32s; }
   .hero-form { animation-delay: .38s; }
   @keyframes fade-up { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform: translateY(0); } }
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(34,211,238,0.45), 0 0 26px rgba(34,211,238,0.3); }
+    70%  { box-shadow: 0 0 0 16px rgba(34,211,238,0), 0 0 26px rgba(34,211,238,0.3); }
+    100% { box-shadow: 0 0 0 0 rgba(34,211,238,0), 0 0 26px rgba(34,211,238,0.3); }
+  }
   @media (prefers-reduced-motion: reduce) {
     .hero-copy .mark img, .hero-copy .mark, .hero-copy h1, .hero-copy .lead, .hero-copy .trust-row, .hero-copy > p.muted, .hero-form {
       animation: none;
     }
   }
-  .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid #e3deec; color:#6b6475; font-size:0.78rem; font-weight:600; text-decoration:none; background:#ffffff; transition: border-color .15s ease, color .15s ease; }
-  a.badge:hover { border-color:#a89bbd; color:#413c4d; }
-  .badge.accent { border-color:rgba(234,88,12,0.35); color:#c2410c; background:#fff7ed; }
-  .hero-form { margin-top:0; }
-  .hero-form .form-title { margin:0 0 4px; font-weight:700; font-size:1.05rem; color:#1e1b29; }
+  .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid #2a3449; color:#9aa4b2; font-size:0.78rem; font-weight:600; background:#0e1521; transition: border-color .15s ease, color .15s ease; }
+  a.badge:hover { border-color:#3a4760; color:#cbd5e1; }
+  .badge.accent { border-color:rgba(245,158,11,0.4); color:#fbbf24; }
+
+  /* hero waitlist card */
+  .hero-form { background:#0e1521; border:1px solid #1b2433; border-radius:14px; padding:24px; box-shadow:0 20px 50px rgba(0,0,0,0.35); }
+  .hero-form .form-title { margin:0 0 4px; font-weight:700; font-size:1.05rem; color:#f8fafc; }
   .pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
   .pills input { position:absolute; opacity:0; width:1px; height:1px; }
-  .pills label { cursor:pointer; padding:8px 14px; border-radius:999px; border:1px solid #d7d0e3; background:#ffffff; color:#6b6475; font-size:0.82rem; font-weight:500; transition: all .15s ease; }
-  .pills input:checked + label { border-color:#7c3aed; color:#1e1b29; background:#f3effa; }
-  .pills input:focus-visible + label { outline:2px solid #7c3aed; outline-offset:2px; }
+  .pills label { cursor:pointer; padding:8px 14px; border-radius:999px; border:1px solid #232d40; background:#101726; color:#9aa4b2; font-size:0.82rem; font-weight:500; transition: all .15s ease; margin-top:0; }
+  .pills input:checked + label { border-color:#22d3ee; color:#e5e7eb; background:#0c2228; }
+  .pills input:focus-visible + label { outline:2px solid #22d3ee; outline-offset:2px; }
   details.note-toggle { margin-top:16px; }
-  details.note-toggle summary { cursor:pointer; color:#6b6475; font-size:0.82rem; list-style:none; }
+  details.note-toggle summary { cursor:pointer; color:#8b95a7; font-size:0.82rem; list-style:none; }
   details.note-toggle summary::-webkit-details-marker { display:none; }
-  details.note-toggle summary::before { content:"+ "; color:#7c3aed; font-weight:700; }
+  details.note-toggle summary::before { content:"+ "; color:#22d3ee; font-weight:700; }
   details.note-toggle[open] summary::before { content:"− "; }
-  details.note-toggle label { margin-top:12px; }
-  button.cta, a.btn.cta { background: linear-gradient(180deg, #fb923c, #ea580c); color:#431407;
-    box-shadow: 0 1px 2px rgba(30,20,46,0.15), 0 0 0 1px rgba(234,88,12,0.35) inset; }
-  button.cta:hover, a.btn.cta:hover { box-shadow: 0 2px 8px rgba(234,88,12,0.22), 0 0 0 1px rgba(234,88,12,0.45) inset; }
-  a.btn { display:inline-flex; align-items:center; justify-content:center; text-decoration:none;
-    padding:11px 22px; border-radius:8px; font-weight:600; font-size:0.95rem; margin-top:0;
-    transition: box-shadow .15s ease, border-color .15s ease; }
-  a.btn.secondary { background:transparent; border:1px solid #d7d0e3; color:#413c4d; }
-  a.btn.secondary:hover { border-color:#a89bbd; }
-  .landing-main { max-width:760px; margin:0 auto; padding:48px 24px 64px; }
-  .steps { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:4px; }
-  @media (max-width:700px) { .steps { grid-template-columns:1fr; } }
-  .step { background:#ffffff; border:1px solid #e3deec; border-radius:10px; padding:16px; }
-  .step .num { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:999px; background:#f3effa; color:#6d28d9; font-weight:700; font-size:0.85rem; margin-bottom:10px; }
-  .step .step-title { font-weight:600; color:#1e1b29; margin:0 0 4px; font-size:0.92rem; }
-  .step .step-desc { color:#6b6475; font-size:0.84rem; line-height:1.5; margin:0; }
-  .contributors-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:12px; }
-  .contributors-row a { display:block; width:36px; height:36px; border-radius:999px; overflow:hidden; border:2px solid #e3deec; transition: border-color .15s ease, transform .15s ease; }
-  .contributors-row a:hover { border-color:#7c3aed; transform: translateY(-2px); }
-  .contributors-row img { display:block; width:100%; height:100%; }
-  .contributors-row .cta-join { font-size:0.84rem; }
+
+  /* sections, shared rhythm */
+  .section { padding:72px 0; }
+  .section.alt { background:#0b0f19; border-top:1px solid #1b2433; border-bottom:1px solid #1b2433; }
+  .eyebrow { color:#67e8f9; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 10px; }
+  .section h2 { font-size:1.6rem; font-weight:700; margin:0 0 30px; max-width:600px; }
+
+  /* trust bar */
+  .trust-bar { border-top:1px solid #1b2433; border-bottom:1px solid #1b2433; background:#0b0f19; }
+  .trust-bar .container { display:flex; flex-wrap:wrap; gap:26px; align-items:center; justify-content:space-between; padding:24px 28px; }
+  .trust-bar .item { display:flex; align-items:center; gap:8px; color:#8b95a7; font-size:0.84rem; }
+  .trust-bar svg { flex-shrink:0; }
+
+  /* problem / stat */
+  .stat-row { display:flex; gap:48px; align-items:center; flex-wrap:wrap; }
+  .stat-number { font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:4rem; color:#fbbf24; line-height:1; }
+  .stat-row .stat-copy { flex:1 1 420px; border-left:1px solid #1b2433; padding-left:36px; }
+
+  /* how it works: diagram */
+  .steps-row { display:grid; grid-template-columns:repeat(4,1fr); gap:0; align-items:stretch; }
+  @media (max-width:900px) { .steps-row { grid-template-columns:1fr; } .step-arrow { transform:rotate(90deg); margin:2px 0; } }
+  .step-card { background:#0e1521; border:1px solid #1b2433; border-radius:12px; padding:22px; transition: border-color .2s ease, transform .2s ease; }
+  .step-card:hover { border-color:#2a3449; transform:translateY(-3px); }
+  .step-card .step-icon { margin-bottom:14px; }
+  .step-card .step-title { margin:0 0 6px; color:#f1f5f9; font-weight:600; font-size:0.94rem; }
+  .step-card .step-desc { margin:0; color:#8b95a7; font-size:0.84rem; line-height:1.55; }
+  .step-arrow { display:flex; align-items:center; justify-content:center; color:#2a3449; animation: arrow-flow 1.8s ease-in-out infinite; }
+  @keyframes arrow-flow { 0%,100% { opacity:0.45; transform:translateX(0); } 50% { opacity:1; transform:translateX(3px); } }
+  @media (prefers-reduced-motion: reduce) { .step-arrow { animation:none; } }
+
+  /* product preview */
+  .product-frame { display:flex; background:#0b121d; border:1px solid #1b2433; border-radius:16px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,0.35); }
+  .product-frame .side { width:190px; flex-shrink:0; background:#0e1521; border-right:1px solid #1b2433; padding:20px 0; }
+  .product-frame .side .item { padding:10px 20px; color:#8b95a7; font-size:0.84rem; }
+  .product-frame .side .item.active { color:#e5e7eb; background:rgba(34,211,238,0.08); border-left:2px solid #22d3ee; }
+  .product-frame .main { flex:1; padding:26px 30px; min-width:0; }
+  .mini-table { width:100%; border-collapse:collapse; margin-bottom:22px; }
+  .mini-table th { text-align:left; color:#8b95a7; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; padding:8px 10px; border-bottom:1px solid #1b2433; }
+  .mini-table td { padding:10px; border-bottom:1px solid #1b2433; color:#cbd5e1; font-size:0.85rem; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.74rem; font-weight:600; letter-spacing:0.02em; }
+  .pill.critical { background:#2a1212; color:#fca5a5; }
+  .pill.normal { background:#0c2228; color:#67e8f9; }
+
+  /* security section */
+  .security-grid { display:flex; gap:44px; flex-wrap:wrap; align-items:flex-start; }
+  .security-icon { flex-shrink:0; width:68px; height:68px; border-radius:16px; background:rgba(34,211,238,0.08); display:flex; align-items:center; justify-content:center; }
+  .check-list { display:flex; flex-direction:column; gap:10px; margin-top:18px; }
+  .check-list .row { display:flex; align-items:center; gap:10px; color:#cbd5e1; font-size:0.9rem; }
+
+  /* comparison */
+  .table-wrap { overflow-x:auto; border-radius:12px; border:1px solid #1b2433; }
+  .compare-table { width:100%; border-collapse:collapse; min-width:620px; }
+  .compare-table th { text-align:left; padding:14px 18px; background:#0e1521; font-size:0.8rem; border-bottom:1px solid #1b2433; }
+  .compare-table th.them { color:#9aa4b2; font-weight:600; }
+  .compare-table th.us { color:#67e8f9; font-weight:700; }
+  .compare-table td { padding:14px 18px; font-size:0.86rem; border-bottom:1px solid #1b2433; }
+  .compare-table tr:last-child td { border-bottom:none; }
+  .compare-table td.row-label { color:#8b95a7; }
+  .compare-table td.them { color:#8b95a7; }
+  .compare-table td.us { color:#e5e7eb; }
+  .compare-table tr:hover td { background:rgba(34,211,238,0.04); }
+
+  /* status + contributors */
   .status-panel {
-    background:#0b0f19; border:1px solid #1b2433; border-radius:10px; padding:14px 16px; margin-top:4px;
+    background:#0b0f19; border:1px solid #1b2433; border-radius:10px; padding:14px 16px;
     font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size:0.82rem; position:relative; overflow:hidden;
   }
   .status-panel::before {
@@ -386,7 +512,23 @@ const LANDING_STYLE = `
   @keyframes loading-sweep { 0% { left:-40%; } 100% { left:100%; } }
   @media (prefers-reduced-motion: reduce) {
     .dot.ok, .dot.active, .loading-bar span { animation: none; }
-  }`;
+  }
+  .contributors-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:14px; }
+  .contributors-row a { display:block; width:36px; height:36px; border-radius:999px; overflow:hidden; border:2px solid #1b2433; transition: border-color .15s ease, transform .15s ease; }
+  .contributors-row a:hover { border-color:#22d3ee; transform: translateY(-2px); }
+  .contributors-row img { display:block; width:100%; height:100%; }
+  .contributors-row .cta-join { font-size:0.84rem; }
+
+  /* final CTA + footer */
+  .final-cta { text-align:center; background:radial-gradient(ellipse 60% 70% at 50% 100%, rgba(34,211,238,0.1), transparent 60%); }
+  .final-cta .container { max-width:640px; }
+  .final-cta h2 { margin:0 0 14px; font-size:1.7rem; }
+  .footer-grid { display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:32px; }
+  @media (max-width:700px) { .footer-grid { grid-template-columns:1fr 1fr; } }
+  .footer-grid .col-title { color:#9aa4b2; font-size:0.76rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0 0 12px; }
+  .footer-grid a { color:#8b95a7; font-size:0.86rem; display:block; margin-bottom:8px; }
+  .footer-bottom { margin-top:28px; padding-top:20px; border-top:1px solid #151d2b; color:#4b5668; font-size:0.78rem; }
+`;
 
 /** Lista de avatares com link pro perfil - cresce sozinha conforme o GitHub reportar mais colaboradores (ver dashboard/contributors.ts). */
 function contributorsRow(contributors: Contributor[]): string {
@@ -429,47 +571,6 @@ export function landingPage(params: { joined?: boolean; error?: string; baseUrl:
     <p class="muted" style="margin:12px 0 0;">Usamos o e-mail só para avisar do acesso e pedir feedback. Sem spam, sem repasse a terceiros.</p>
   </form>`;
 
-  const body = `
-<div class="card">
-  <p style="margin:0 0 8px;"><strong>O problema</strong></p>
-  <p class="muted" style="margin:0;">Quem guarda a tesouraria de uma equipe ou empresa raramente tem alguém olhando o saldo o dia todo. Se a pessoa que controla a chave for coagida a transferir, ou a chave vazar, ninguém mais fica sabendo a tempo.</p>
-</div>
-
-<div class="card">
-  <p style="margin:0 0 12px;"><strong>Como funciona</strong></p>
-  <div class="steps">
-    <div class="step">
-      <span class="num">1</span>
-      <p class="step-title">Cadastre o endereço</p>
-      <p class="step-desc">Prova de posse por assinatura da carteira — sem mover fundos.</p>
-    </div>
-    <div class="step">
-      <span class="num">2</span>
-      <p class="step-title">Escolha quem é avisado</p>
-      <p class="step-desc">De preferência alguém de confiança que não seja a pessoa sob risco.</p>
-    </div>
-    <div class="step">
-      <span class="num">3</span>
-      <p class="step-title">Alerta por severidade</p>
-      <p class="step-desc">Crítico: ligação + PIN por WhatsApp. Normal: e-mail.</p>
-    </div>
-  </div>
-  <p class="muted" style="margin:14px 0 0;">O conteúdo do alerta nunca traz saldo nem endereço, e os destinatários ficam criptografados.</p>
-</div>
-
-<div class="card">
-  <p style="margin:0 0 10px;"><strong>Em que estágio estamos</strong></p>
-  <div class="status-panel" role="img" aria-label="Status: motor de detecção validado na testnet Moderato, código aberto no GitHub, submissão em andamento.">
-    <div class="status-line"><span class="dot ok" aria-hidden="true"></span><span class="label">core_engine</span><span class="value">validado · testnet Moderato</span></div>
-    <div class="status-line"><span class="dot ok" aria-hidden="true"></span><span class="label">código</span><span class="value">aberto no GitHub · MIT</span></div>
-    <div class="status-line"><span class="dot active" aria-hidden="true"></span><span class="label">submissão</span><span class="value">em andamento</span></div>
-    <div class="loading-bar" aria-hidden="true"><span></span></div>
-  </div>
-  <p class="muted" style="margin:14px 0 0;">Entre na lista para testar primeiro &mdash; o seu feedback define o que construímos a seguir.</p>
-  <p class="muted" style="margin:16px 0 0;"><strong style="color:#1e1b29;">Quem constrói</strong> &mdash; direto do GitHub, atualiza sozinho conforme mais gente contribui:</p>
-  ${contributorsRow(params.contributors)}
-</div>`;
-
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -477,15 +578,26 @@ export function landingPage(params: { joined?: boolean; error?: string; baseUrl:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VILIGION — Alerta de tesouraria feito para funcionar sob coação</title>
 ${shareMeta(params.baseUrl)}
-<style>${BASE_STYLE}${LANDING_STYLE}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap">
+<style>${LANDING_STYLE}</style>
 </head>
 <body>
-<header>
-  <a class="brand" href="/">${logoMark(28)}VILIGION</a>
-  <nav><a href="/login">Entrar</a></nav>
+<header class="top-header">
+  <div class="container">
+    <a class="brand" href="/">${logoMark(28)}VILIGION</a>
+    <div class="top-nav">
+      <a class="nav-link" href="#como-funciona">Como funciona</a>
+      <a class="nav-link" href="#seguranca">Segurança</a>
+      <a class="nav-link" href="#comparativo">Comparativo</a>
+      <a class="btn-ghost" href="/login">Entrar</a>
+      <a class="btn cta" href="#lista">Lista de espera</a>
+    </div>
+  </div>
 </header>
+
 <section class="hero">
-  <div class="hero-grid">
+  <div class="container hero-grid">
     <div class="hero-copy">
       <div class="mark"><img src="${LOGO_FULL_DATA_URI}" width="88" height="88" alt="VILIGION"></div>
       <h1>Alerta de tesouraria feito para funcionar sob coação</h1>
@@ -497,16 +609,226 @@ ${shareMeta(params.baseUrl)}
       </div>
       <p class="muted"><a class="link" href="/login">Já tenho conta &rarr; Entrar</a></p>
     </div>
-    <div class="card hero-form" id="lista">
+    <div class="hero-form" id="lista">
       <p class="form-title">Entre na lista de espera</p>
+      ${params.error ? `<div class="error">${escapeHtml(params.error)}</div>` : ""}
       ${form}
     </div>
   </div>
 </section>
-<main class="landing-main">
-  ${params.error ? `<div class="error">${escapeHtml(params.error)}</div>` : ""}
-  ${body}
-</main>
+
+<div class="trust-bar">
+  <div class="container">
+    <div class="item">${ICON_CLOCK}Blockchain Tempo</div>
+    <div class="item">${ICON_CODE}Código aberto · MIT</div>
+    <div class="item">${ICON_PHONE}Alertas via Twilio Voice</div>
+    <div class="item">${ICON_CALENDAR}Crypto World's Fair · Colosseum</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="container stat-row reveal">
+    <div>
+      <div class="stat-number"><span data-countup="33">+0</span>%</div>
+      <p class="muted" style="max-width:220px; margin-top:8px;">no crescimento de ataques físicos ligados a cripto em 2026 (CertiK) — mais de US$ 30M só no primeiro semestre (Chainalysis).</p>
+    </div>
+    <div class="stat-copy">
+      <p style="margin:0 0 6px; color:#f1f5f9; font-weight:600; font-size:1.02rem;">O problema</p>
+      <p class="muted" style="margin:0;">Quem guarda a tesouraria de uma equipe ou empresa raramente tem alguém olhando o saldo o dia todo. Ferramentas institucionais (Hexagate, Elliptic, TRM Labs, Blockaid) são feitas pra equipes de segurança — não pra quem não tem esse time. E ligar um telefone a um saldo on-chain cria, por si só, um risco físico documentado.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section alt" id="como-funciona">
+  <div class="container">
+    <p class="eyebrow">Como funciona</p>
+    <h2>Do RPC até o telefone de alguém de confiança</h2>
+    <div class="steps-row reveal">
+      <div class="step-card">
+        <div class="step-icon">${ICON_RADAR}</div>
+        <p class="step-title">1. Monitoramento</p>
+        <p class="step-desc">RPC direto (Viem) observa saldo, eventos de política de recebimento e padrões de transferência em endereços TIP-20.</p>
+      </div>
+      <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
+      <div class="step-card">
+        <div class="step-icon">${ICON_LOCK}</div>
+        <p class="step-title">2. Privacidade</p>
+        <p class="step-desc">Resolve endereço → contato e decide o que pode sair. Nenhum dado sensível cruza essa camada.</p>
+      </div>
+      <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
+      <div class="step-card">
+        <div class="step-icon">${ICON_PHONE_ACCENT}</div>
+        <p class="step-title">3. Alerta por severidade</p>
+        <p class="step-desc">Crítico vira ligação (Twilio Voice) + PIN. Normal vira e-mail. Conteúdo sempre genérico, nos dois canais.</p>
+      </div>
+      <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
+      <div class="step-card">
+        <div class="step-icon">${ICON_SHIELD_CHECK}</div>
+        <p class="step-title">4. Painel autenticado</p>
+        <p class="step-desc">Saldo real e histórico completo só aparecem depois do login — nunca pelo canal de alerta.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="container">
+    <p class="eyebrow">O produto</p>
+    <h2>Não só a promessa — o painel de verdade</h2>
+    <div class="product-frame reveal">
+      <div class="side">
+        <div class="item active">Painel</div>
+        <div class="item">Contas monitoradas</div>
+        <div class="item">Limiares</div>
+        <div class="item">Destinatários</div>
+        <div class="item">Alertas</div>
+      </div>
+      <div class="main">
+        <p style="margin:0 0 14px; color:#f1f5f9; font-weight:600; font-size:0.92rem;">Contas monitoradas <span class="muted">(exemplo)</span></p>
+        <table class="mini-table">
+          <tr><th>Chain</th><th>Endereço</th><th>Status</th></tr>
+          <tr><td>Tempo (Moderato)</td><td>0x4f3a…c921</td><td><span class="pill normal">normal</span></td></tr>
+          <tr><td>Tempo (Moderato)</td><td>0x91bd…77ea</td><td><span class="pill critical">crítico</span></td></tr>
+        </table>
+        <p style="margin:0 0 14px; color:#f1f5f9; font-weight:600; font-size:0.92rem;">Histórico de alertas <span class="muted">(exemplo)</span></p>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #1b2433;">
+          <span style="color:#cbd5e1; font-size:0.86rem;">Queda abrupta de saldo</span>
+          <span class="pill critical">ligação enviada</span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0;">
+          <span style="color:#cbd5e1; font-size:0.86rem;">Transferência bloqueada pela policy</span>
+          <span class="pill normal">e-mail enviado</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section alt" id="seguranca">
+  <div class="container security-grid reveal">
+    <div class="security-icon">${ICON_LOCK_BIG}</div>
+    <div style="flex:1 1 420px;">
+      <h2 style="margin:0 0 14px;">Desenhado pra funcionar mesmo sob coação</h2>
+      <p class="muted" style="max-width:620px;">O conteúdo do alerta nunca revela saldo, endereço ou número de telefone. Destinatários usam números virtuais dedicados — nunca o telefone pessoal do dono — e ficam criptografados via KMS gerenciado, nunca em texto puro junto ao endereço monitorado.</p>
+      <div class="check-list">
+        <div class="row">${ICON_CHECK}Nunca executa transação a partir de resposta por voz ou SMS</div>
+        <div class="row">${ICON_CHECK}Não é produto de custódia — nunca guardamos sua chave privada</div>
+        <div class="row">${ICON_CHECK}Prova de posse por assinatura EIP-191 no cadastro, sem mover fundos</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" id="comparativo">
+  <div class="container">
+    <p class="eyebrow">Comparativo</p>
+    <h2>Por que não só uma ferramenta institucional</h2>
+    <div class="table-wrap reveal">
+      <table class="compare-table">
+        <tr><th></th><th class="them">Hexagate · Elliptic · TRM · Blockaid</th><th class="us">VILIGION</th></tr>
+        <tr><td class="row-label">Público-alvo</td><td class="them">Equipes de segurança institucional</td><td class="us">Dono de PME sem equipe de segurança</td></tr>
+        <tr><td class="row-label">Canal de alerta</td><td class="them">Dashboard, Slack, webhook</td><td class="us">Ligação + e-mail, por severidade</td></tr>
+        <tr><td class="row-label">Privacidade do destinatário</td><td class="them">Não é o foco do produto</td><td class="us">Número virtual dedicado + criptografia KMS</td></tr>
+        <tr><td class="row-label">Custo e complexidade</td><td class="them">Alto, requer integração dedicada</td><td class="us">Cadastro direto, sem time dedicado</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section alt">
+  <div class="container reveal">
+    <p style="margin:0 0 18px; color:#f1f5f9; font-weight:600; font-size:1.02rem;">Em que estágio estamos</p>
+    <div class="status-panel" role="img" aria-label="Status: motor de detecção validado na testnet Moderato, código aberto no GitHub, submissão em andamento.">
+      <div class="status-line"><span class="dot ok" aria-hidden="true"></span><span class="label">core_engine</span><span class="value">validado · testnet Moderato</span></div>
+      <div class="status-line"><span class="dot ok" aria-hidden="true"></span><span class="label">código</span><span class="value">aberto no GitHub · MIT</span></div>
+      <div class="status-line"><span class="dot active" aria-hidden="true"></span><span class="label">submissão</span><span class="value">em andamento</span></div>
+      <div class="loading-bar" aria-hidden="true"><span></span></div>
+    </div>
+    <p class="muted" style="margin:16px 0 0;">Entre na lista para testar primeiro &mdash; o seu feedback define o que construímos a seguir.</p>
+    <p class="muted" style="margin:16px 0 0;"><strong style="color:#e5e7eb;">Quem constrói</strong> &mdash; direto do GitHub, atualiza sozinho conforme mais gente contribui:</p>
+    ${contributorsRow(params.contributors)}
+  </div>
+</div>
+
+<div class="section final-cta">
+  <div class="container">
+    <h2>Pronto pra saber antes de alguém precisar fazer essa ligação?</h2>
+    <p class="muted" style="margin:0 0 28px;">Entre na lista de espera — seu feedback define o que construímos a seguir. Sem spam, sem repasse a terceiros.</p>
+    <a class="btn cta" href="#lista">Entrar na lista de espera</a>
+  </div>
+</div>
+
+<footer style="padding:48px 0 0;">
+  <div class="container footer-grid">
+    <div>
+      <div style="display:flex; align-items:center; gap:9px; color:#f1f5f9; font-weight:700; margin-bottom:10px;">${logoMark(22)}VILIGION</div>
+      <p class="muted" style="max-width:240px;">Alerta de tesouraria on-chain que continua funcionando sob coação.</p>
+    </div>
+    <div>
+      <p class="col-title">Produto</p>
+      <a href="#como-funciona">Como funciona</a>
+      <a href="#seguranca">Segurança</a>
+      <a href="#comparativo">Comparativo</a>
+    </div>
+    <div>
+      <p class="col-title">Projeto</p>
+      <a href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/JefersonCruz/VILIGION/blob/master/LICENSE" target="_blank" rel="noopener">Licença MIT</a>
+      <a href="https://github.com/JefersonCruz/VILIGION/blob/master/TERMS-OF-USE.md" target="_blank" rel="noopener">Termos de uso</a>
+    </div>
+    <div>
+      <p class="col-title">Contato</p>
+      <a href="mailto:jefersonhenri1@gmail.com">jefersonhenri1@gmail.com</a>
+    </div>
+  </div>
+  <div class="container footer-bottom">© 2026 VILIGION — Construído para o Crypto World's Fair (Colosseum), track Tempo.</div>
+</footer>
+
+<script>
+(function () {
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var revealEls = document.querySelectorAll(".reveal");
+  if (reduceMotion || !("IntersectionObserver" in window)) {
+    revealEls.forEach(function (el) { el.classList.add("is-visible"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
+    revealEls.forEach(function (el) { io.observe(el); });
+  }
+
+  var counters = document.querySelectorAll("[data-countup]");
+  counters.forEach(function (el) {
+    var target = parseInt(el.getAttribute("data-countup"), 10) || 0;
+    if (reduceMotion) { el.textContent = "+" + target; return; }
+    var start = null;
+    var duration = 900;
+    function step(ts) {
+      if (start === null) start = ts;
+      var progress = Math.min((ts - start) / duration, 1);
+      el.textContent = "+" + Math.round(progress * target);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    var started = false;
+    var countIo = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting && !started) {
+          started = true;
+          requestAnimationFrame(step);
+          countIo.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.6 });
+    countIo.observe(el);
+  });
+})();
+</script>
 </body>
 </html>`;
 }
