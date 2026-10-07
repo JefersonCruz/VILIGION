@@ -11,6 +11,7 @@
 import { WAITLIST_PROFILES } from "./waitlist.js";
 import { THRESHOLD_PRESETS, WINDOW_CHOICES_MINUTES } from "../engine/rules/threshold-presets.js";
 import { THRESHOLDS_HEAD, thresholdsScript } from "./thresholds-ui.js";
+import { LOGO_FULL_DATA_URI, LOGO_ICON_DATA_URI } from "./logo-assets.js";
 
 function escapeHtml(input: string): string {
   return input
@@ -21,14 +22,14 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** Ícone de escudo com "pulso" (monitoramento) - SVG inline, sem asset externo. */
-const LOGO_MARK = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <path d="M12 2.5l7.5 2.7v6.1c0 4.8-3.2 8.9-7.5 10.2-4.3-1.3-7.5-5.4-7.5-10.2V5.2L12 2.5z" fill="url(#g)" stroke="#22d3ee" stroke-width="1.1"/>
-  <path d="M7.2 12.4h2.3l1.3-2.6 1.6 4.8 1.2-2.2h2.3" stroke="#0b0f19" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-  <defs><linearGradient id="g" x1="4.5" y1="2.5" x2="19.5" y2="21.5" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#22d3ee"/><stop offset="1" stop-color="#0891b2"/>
-  </linearGradient></defs>
-</svg>`;
+/**
+ * Logo oficial VILIGION (ícone "V"), embutido como data URI - ver
+ * dashboard/logo-assets.ts. Era um SVG placeholder (escudo com pulso) até a
+ * marca oficial ser compartilhada; trocado pra usar a imagem real.
+ */
+function logoMark(size = 28): string {
+  return `<img src="${LOGO_ICON_DATA_URI}" width="${size}" height="${size}" alt="VILIGION" style="display:block; border-radius:${Math.round(size * 0.18)}px;">`;
+}
 
 const BASE_STYLE = `
   :root { color-scheme: dark; }
@@ -114,7 +115,7 @@ ${params.head ?? ""}
 </head>
 <body>
 <header>
-  <a class="brand" href="/">${LOGO_MARK}VILIGION</a>
+  <a class="brand" href="/">${logoMark(28)}VILIGION</a>
   ${params.authed ? nav(params.active) : ""}
 </header>
 <main>
@@ -153,7 +154,7 @@ function authLayout(params: { title: string; subtitle?: string; body: string; er
 <body>
 <div class="auth-wrap">
   <div class="auth-box">
-    <div class="auth-logo">${LOGO_MARK}<span>VILIGION</span></div>
+    <div class="auth-logo">${logoMark(28)}<span>VILIGION</span></div>
     <div class="auth-card">
       <p class="auth-title">${escapeHtml(params.title)}</p>
       ${params.subtitle ? `<p class="auth-subtitle">${params.subtitle}</p>` : ""}
@@ -285,61 +286,181 @@ function shareMeta(baseUrl: string): string {
 <meta name="twitter:image:alt" content="VILIGION: when the key holder can't say no, someone else gets the call.">`;
 }
 
+/** Ícone do GitHub, 14px, inline - prova de autoridade (open-source) perto do topo, sem asset externo. */
+const GITHUB_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
+
+/**
+ * Estilo extra só da landing — hero próprio em grid (texto + formulário lado
+ * a lado), não reaproveita o <main> estreito/h1 pequeno do layout() interno
+ * (telas de app). Formulário fica dentro da primeira dobra, não exige rolar
+ * (feedback de revisão: form empurrado pra baixo matava conversão).
+ */
+const LANDING_STYLE = `
+  html { scroll-behavior: smooth; }
+  .hero { padding:48px 24px 56px; background: radial-gradient(ellipse 70% 55% at 15% -15%, rgba(34,211,238,0.12), transparent 60%); border-bottom:1px solid #1b2433; }
+  .hero-grid { max-width:1040px; margin:0 auto; display:grid; grid-template-columns:1.15fr 0.85fr; gap:40px; align-items:start; }
+  @media (max-width:860px) { .hero-grid { grid-template-columns:1fr; } .hero-copy { text-align:center; } .hero-copy .mark, .trust-row { justify-content:center; } }
+  .hero-copy .mark { display:inline-block; margin-bottom:18px; }
+  .hero-copy .mark img { display:block; border-radius:18%; }
+  .hero-copy h1 { font-size: clamp(1.8rem, 3.6vw, 2.5rem); line-height:1.22; margin:0 0 14px; letter-spacing:-0.02em; font-weight:800; color:#f8fafc; }
+  .hero-copy .lead { font-size:1.02rem; color:#aab4c4; margin:0 0 8px; line-height:1.55; }
+  .hero-copy .lead strong { color:#e5e7eb; }
+  .trust-row { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0 20px; }
+  .hero-copy .mark, .hero-copy h1, .hero-copy .lead, .hero-copy .trust-row, .hero-copy > p.muted, .hero-form {
+    animation: fade-up .6s ease-out both;
+  }
+  .hero-copy .mark { animation: fade-up .6s ease-out both, pulse-ring 2.6s cubic-bezier(.4,0,.6,1) 0.6s infinite; }
+  .hero-copy h1 { animation-delay: .08s; }
+  .hero-copy .lead:nth-of-type(1) { animation-delay: .14s; }
+  .hero-copy .lead:nth-of-type(2) { animation-delay: .2s; }
+  .hero-copy .trust-row { animation-delay: .26s; }
+  .hero-copy > p.muted { animation-delay: .32s; }
+  .hero-form { animation-delay: .38s; }
+  @keyframes fade-up { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform: translateY(0); } }
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(34,211,238,0.45), 0 0 26px rgba(34,211,238,0.3); }
+    70%  { box-shadow: 0 0 0 16px rgba(34,211,238,0), 0 0 26px rgba(34,211,238,0.3); }
+    100% { box-shadow: 0 0 0 0 rgba(34,211,238,0), 0 0 26px rgba(34,211,238,0.3); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-copy .mark img, .hero-copy .mark, .hero-copy h1, .hero-copy .lead, .hero-copy .trust-row, .hero-copy > p.muted, .hero-form {
+      animation: none;
+    }
+  }
+  .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid #2a3449; color:#9aa4b2; font-size:0.78rem; font-weight:600; text-decoration:none; background:#0e1521; transition: border-color .15s ease, color .15s ease; }
+  a.badge:hover { border-color:#3a4760; color:#cbd5e1; }
+  .badge.accent { border-color:rgba(245,158,11,0.4); color:#fbbf24; }
+  .hero-form { margin-top:0; }
+  .hero-form .form-title { margin:0 0 4px; font-weight:700; font-size:1.05rem; color:#f8fafc; }
+  .pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .pills input { position:absolute; opacity:0; width:1px; height:1px; }
+  .pills label { cursor:pointer; padding:8px 14px; border-radius:999px; border:1px solid #232d40; background:#101726; color:#9aa4b2; font-size:0.82rem; font-weight:500; transition: all .15s ease; }
+  .pills input:checked + label { border-color:#22d3ee; color:#e5e7eb; background:#0c2228; }
+  .pills input:focus-visible + label { outline:2px solid #22d3ee; outline-offset:2px; }
+  details.note-toggle { margin-top:16px; }
+  details.note-toggle summary { cursor:pointer; color:#8b95a7; font-size:0.82rem; list-style:none; }
+  details.note-toggle summary::-webkit-details-marker { display:none; }
+  details.note-toggle summary::before { content:"+ "; color:#22d3ee; font-weight:700; }
+  details.note-toggle[open] summary::before { content:"− "; }
+  details.note-toggle label { margin-top:12px; }
+  button.cta, a.btn.cta { background: linear-gradient(180deg, #fbbf24, #f59e0b); color:#231703;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 1px rgba(245,158,11,0.4) inset, 0 0 22px rgba(245,158,11,0.22); }
+  button.cta:hover, a.btn.cta:hover { box-shadow: 0 2px 14px rgba(245,158,11,0.35), 0 0 0 1px rgba(245,158,11,0.5) inset; }
+  a.btn { display:inline-flex; align-items:center; justify-content:center; text-decoration:none;
+    padding:11px 22px; border-radius:8px; font-weight:600; font-size:0.95rem; margin-top:0;
+    transition: box-shadow .15s ease, border-color .15s ease; }
+  a.btn.secondary { background:transparent; border:1px solid #2a3449; color:#cbd5e1; }
+  a.btn.secondary:hover { border-color:#3a4760; }
+  .landing-main { max-width:760px; margin:0 auto; padding:48px 24px 64px; }
+  .steps { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:4px; }
+  @media (max-width:700px) { .steps { grid-template-columns:1fr; } }
+  .step { background:#0b121d; border:1px solid #1b2433; border-radius:10px; padding:16px; }
+  .step .num { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:999px; background:#0c2228; color:#67e8f9; font-weight:700; font-size:0.85rem; margin-bottom:10px; }
+  .step .step-title { font-weight:600; color:#e5e7eb; margin:0 0 4px; font-size:0.92rem; }
+  .step .step-desc { color:#8b95a7; font-size:0.84rem; line-height:1.5; margin:0; }`;
+
 export function landingPage(params: { joined?: boolean; error?: string; baseUrl: string }): string {
-  const profileOptions = Object.entries(WAITLIST_PROFILES)
-    .map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`)
-    .join("");
+  const pills = Object.entries(WAITLIST_PROFILES)
+    .map(
+      ([key, label], i) =>
+        `<input type="radio" id="profile-${key}" name="profile" value="${escapeHtml(key)}" required${i === 0 ? " checked" : ""}>
+    <label for="profile-${key}">${escapeHtml(label)}</label>`,
+    )
+    .join("\n    ");
 
   const form = params.joined
     ? `<p style="margin:0;"><strong>Você está na lista.</strong> <span class="muted">Avisamos por e-mail quando abrirmos o acesso.</span></p>`
     : `<form method="POST" action="/waitlist">
     <label for="email">Seu e-mail</label>
-    <input type="email" id="email" name="email" required maxlength="200" placeholder="voce@empresa.com">
+    <input type="email" id="email" name="email" required maxlength="200" placeholder="voce@empresa.com" autofocus>
 
-    <label for="profile">Qual é o seu caso?</label>
-    <select id="profile" name="profile" required>${profileOptions}</select>
+    <label>Qual é o seu caso?</label>
+    <div class="pills">
+    ${pills}
+    </div>
 
-    <label for="note">O que mais te preocupa na segurança da sua tesouraria? (opcional)</label>
-    <input type="text" id="note" name="note" maxlength="500">
+    <details class="note-toggle">
+      <summary>Adicionar um comentário (opcional)</summary>
+      <label for="note">O que mais te preocupa na segurança da sua tesouraria?</label>
+      <input type="text" id="note" name="note" maxlength="500">
+    </details>
 
-    <button type="submit">Entrar na lista de espera</button>
+    <button type="submit" class="cta">Entrar na lista de espera</button>
     <p class="muted" style="margin:12px 0 0;">Usamos o e-mail só para avisar do acesso e pedir feedback. Sem spam, sem repasse a terceiros.</p>
   </form>`;
 
   const body = `
-<p class="muted" style="font-size:1.02rem; margin-top:0;">O VILIGION vigia a tesouraria de stablecoins na <strong>Tempo</strong> e avisa por <strong>ligação</strong> quando algo anormal acontece &mdash; sem expor saldo, endereço ou telefone no alerta.</p>
-<p class="muted"><a class="link" href="/login">Já tenho conta &rarr; Entrar</a></p>
-
 <div class="card">
   <p style="margin:0 0 8px;"><strong>O problema</strong></p>
   <p class="muted" style="margin:0;">Quem guarda a tesouraria de uma equipe ou empresa raramente tem alguém olhando o saldo o dia todo. Se a pessoa que controla a chave for coagida a transferir, ou a chave vazar, ninguém mais fica sabendo a tempo.</p>
 </div>
 
 <div class="card">
-  <p style="margin:0 0 8px;"><strong>Como funciona</strong></p>
-  <ol class="muted" style="margin:0; padding-left:20px; line-height:1.7;">
-    <li>Você cadastra o endereço da tesouraria (prova de posse por assinatura, sem mover fundos).</li>
-    <li>Você escolhe <strong>quem deve ser avisado</strong> &mdash; de preferência alguém de confiança que <em>não</em> seja a pessoa sob risco.</li>
-    <li>Queda forte de saldo vira alerta crítico: <strong>ligação + código de confirmação por WhatsApp</strong>. Alertas menores vão por e-mail.</li>
-  </ol>
-  <p class="muted" style="margin:10px 0 0;">O conteúdo do alerta nunca traz saldo nem endereço, e os destinatários ficam criptografados.</p>
+  <p style="margin:0 0 12px;"><strong>Como funciona</strong></p>
+  <div class="steps">
+    <div class="step">
+      <span class="num">1</span>
+      <p class="step-title">Cadastre o endereço</p>
+      <p class="step-desc">Prova de posse por assinatura da carteira — sem mover fundos.</p>
+    </div>
+    <div class="step">
+      <span class="num">2</span>
+      <p class="step-title">Escolha quem é avisado</p>
+      <p class="step-desc">De preferência alguém de confiança que não seja a pessoa sob risco.</p>
+    </div>
+    <div class="step">
+      <span class="num">3</span>
+      <p class="step-title">Alerta por severidade</p>
+      <p class="step-desc">Crítico: ligação + PIN por WhatsApp. Normal: e-mail.</p>
+    </div>
+  </div>
+  <p class="muted" style="margin:14px 0 0;">O conteúdo do alerta nunca traz saldo nem endereço, e os destinatários ficam criptografados.</p>
 </div>
 
 <div class="card">
   <p style="margin:0 0 8px;"><strong>Em que estágio estamos</strong></p>
-  <p class="muted" style="margin:0;">Em construção, rodando na testnet da Tempo, com código aberto no <a class="link" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">GitHub</a>. Entre na lista para testar primeiro &mdash; o seu feedback define o que construímos a seguir.</p>
-</div>
-
-<div class="card" id="lista">
-  <p style="margin:0 0 4px;"><strong>Lista de espera</strong></p>
-  ${form}
+  <p class="muted" style="margin:0;">Em construção, rodando na testnet da Tempo. Entre na lista para testar primeiro &mdash; o seu feedback define o que construímos a seguir.</p>
 </div>`;
-  return layout({
-    title: "Alerta de tesouraria feito para funcionar sob coação",
-    body,
-    error: params.error,
-    head: shareMeta(params.baseUrl),
-  });
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VILIGION — Alerta de tesouraria feito para funcionar sob coação</title>
+${shareMeta(params.baseUrl)}
+<style>${BASE_STYLE}${LANDING_STYLE}</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">${logoMark(28)}VILIGION</a>
+  <nav><a href="/login">Entrar</a></nav>
+</header>
+<section class="hero">
+  <div class="hero-grid">
+    <div class="hero-copy">
+      <div class="mark"><img src="${LOGO_FULL_DATA_URI}" width="88" height="88" alt="VILIGION"></div>
+      <h1>Alerta de tesouraria feito para funcionar sob coação</h1>
+      <p class="lead">Monitoramento em tempo real da tesouraria de stablecoins na <strong>Tempo</strong>.</p>
+      <p class="lead">Quando algo foge do padrão, alguém de confiança recebe uma <strong>ligação</strong> — sem expor saldo, endereço ou telefone no alerta.</p>
+      <div class="trust-row">
+        <a class="badge accent" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">${GITHUB_ICON}Código aberto</a>
+        <span class="badge">Rodando na testnet Tempo</span>
+      </div>
+      <p class="muted"><a class="link" href="/login">Já tenho conta &rarr; Entrar</a></p>
+    </div>
+    <div class="card hero-form" id="lista">
+      <p class="form-title">Entre na lista de espera</p>
+      ${form}
+    </div>
+  </div>
+</section>
+<main class="landing-main">
+  ${params.error ? `<div class="error">${escapeHtml(params.error)}</div>` : ""}
+  ${body}
+</main>
+</body>
+</html>`;
 }
 
 export function loginPage(params: { error?: string }): string {
