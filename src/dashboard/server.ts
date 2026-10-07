@@ -22,6 +22,7 @@ import { RateLimiter } from "./rate-limiter.js";
 import { isValidEmail, isValidPhone } from "./recipient-validation.js";
 import { SessionStore } from "./session.js";
 import { buildExpiredSessionCookie, buildSessionCookie, parseCookies } from "./cookies.js";
+import { getContributors } from "./contributors.js";
 import {
   accountsPage,
   alertsHistoryPage,
@@ -181,7 +182,7 @@ async function route(
     const session = token ? sessions.validate(token) : null;
     if (session) return redirect(res, "/dashboard");
     if (!deps.waitlist) return redirect(res, "/login");
-    return send(res, 200, landingPage({ joined: url.includes("ok=1"), baseUrl: publicBaseUrl() }));
+    return send(res, 200, landingPage({ joined: url.includes("ok=1"), baseUrl: publicBaseUrl(), contributors: getContributors() }));
   }
   if (req.method === "GET" && path === "/og-image.png") return serveOgImage(res);
   if (req.method === "POST" && path === "/waitlist") return handleWaitlistSignup(req, res, deps, waitlistLimiter);
@@ -286,13 +287,13 @@ async function handleWaitlistSignup(
   const note = (body.note ?? "").trim().slice(0, 500);
 
   if (!limiter.attempt(clientIp(req))) {
-    return send(res, 429, landingPage({ baseUrl: publicBaseUrl(), error: "Muitas inscrições deste endereço. Tente novamente mais tarde." }));
+    return send(res, 429, landingPage({ baseUrl: publicBaseUrl(), contributors: getContributors(), error: "Muitas inscrições deste endereço. Tente novamente mais tarde." }));
   }
   if (!isValidEmail(email) || email.length > 200) {
-    return send(res, 400, landingPage({ baseUrl: publicBaseUrl(), error: "Informe um e-mail válido." }));
+    return send(res, 400, landingPage({ baseUrl: publicBaseUrl(), contributors: getContributors(), error: "Informe um e-mail válido." }));
   }
   if (!isWaitlistProfile(profile)) {
-    return send(res, 400, landingPage({ baseUrl: publicBaseUrl(), error: "Escolha uma das opções do seu caso." }));
+    return send(res, 400, landingPage({ baseUrl: publicBaseUrl(), contributors: getContributors(), error: "Escolha uma das opções do seu caso." }));
   }
 
   const result = await deps.waitlist.add({ email, profile, note });

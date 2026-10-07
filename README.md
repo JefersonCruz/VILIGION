@@ -47,6 +47,18 @@ Full technical detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script, [`docs/UI-SPEC.md`](./docs/UI-SPEC.md) for the portal/dashboard structure, [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for how to host it, and [`TERMS-OF-USE.md`](./TERMS-OF-USE.md) for the service's terms (draft, pending legal review — see the notice at the top of that file).
 
+## Try it live
+
+A demo account is open for testers and developers at **https://viligion.com**. It watches a test wallet on the Tempo **Moderato testnet** (no real funds involved), so feel free to log in and explore the dashboard.
+
+- **Username:** `henri`
+- **Password:** `dSjmGANqxMSdAwzTsTUJ`
+- **2FA (TOTP):** this account requires a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password...). Add it via "enter code manually" with:
+  - Secret: `XSKAP6LIQMO3CRLYXP3GLT5DMOES52PS`
+  - Type: time-based, 6 digits, 30s period
+
+This is a shared demo account with synthetic/test data only — don't register real recipients or treat its content as private. See [`SECURITY.md`](./SECURITY.md) for why personal alert data never works this way in a real deployment.
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).

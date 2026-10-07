@@ -34,6 +34,7 @@ import { createEmailNotifier } from "./alerts/email-notifier.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
 import { handleWebhookRequest, type PinStore, type WebhookServerConfig } from "./webhook-server.js";
 import { createDashboardRequestHandler, type DashboardServerDeps } from "./dashboard/server.js";
+import { warmupContributors } from "./dashboard/contributors.js";
 import {
   InMemoryAccountDetailsRepository,
   InMemoryAlertLog,
@@ -125,6 +126,7 @@ function startCombinedServer(
     publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
   };
   const dashboardHandler = createDashboardRequestHandler(dashboardDeps);
+  void warmupContributors(); // esquenta o cache de colaboradores do GitHub antes do 1º visitante, sem atrasar o listen()
 
   const server = createServer(async (req, res) => {
     const handledByWebhook = await handleWebhookRequest(req, res, webhookConfig, pinStore, onPinResult);
