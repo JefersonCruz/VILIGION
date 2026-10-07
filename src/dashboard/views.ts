@@ -43,6 +43,7 @@ const BASE_STYLE = `
   header .brand { display:flex; align-items:center; gap:9px; color:#f1f5f9; font-weight:700; font-size:1.05rem; letter-spacing:0.02em; text-decoration:none; }
   nav a { color:#8b95a7; text-decoration:none; margin-left:20px; font-size:0.88rem; transition: color .15s ease; }
   nav a:hover { color:#22d3ee; }
+  nav a.on { color:#f1f5f9; font-weight:600; box-shadow: 0 2px 0 #22d3ee; padding-bottom:6px; }
   main { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; }
   h1 { font-size:1.5rem; margin:0 0 6px; letter-spacing:-0.01em; }
   .muted { color:#8b95a7; font-size:0.9rem; line-height:1.5; }
@@ -86,18 +87,22 @@ const BASE_STYLE = `
   a.link:hover { text-decoration:underline; }
   form { margin-top: 4px; }`;
 
-const NAV = `
-<nav>
-  <a href="/dashboard">Painel</a>
-  <a href="/accounts">Contas monitoradas</a>
-  <a href="/thresholds">Limiares</a>
-  <a href="/recipients">Destinatários</a>
-  <a href="/alerts">Histórico de alertas</a>
-  <a href="/logout">Sair</a>
-</nav>`;
+const NAV_LINKS: Array<[string, string]> = [
+  ["/dashboard", "Painel"],
+  ["/accounts", "Contas monitoradas"],
+  ["/thresholds", "Limiares"],
+  ["/recipients", "Destinatários"],
+  ["/alerts", "Histórico de alertas"],
+  ["/logout", "Sair"],
+];
+
+function nav(active?: string): string {
+  const links = NAV_LINKS.map(([href, text]) => `<a href="${href}"${href === active ? ' class="on" aria-current="page"' : ""}>${text}</a>`).join("\n  ");
+  return `<nav>\n  ${links}\n</nav>`;
+}
 
 /** Layout interno (painel autenticado) - header com nav, conteúdo em coluna única. */
-function layout(params: { title: string; body: string; authed?: boolean; error?: string; head?: string }): string {
+function layout(params: { title: string; body: string; authed?: boolean; active?: string; error?: string; head?: string }): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -110,7 +115,7 @@ ${params.head ?? ""}
 <body>
 <header>
   <a class="brand" href="/">${LOGO_MARK}VILIGION</a>
-  ${params.authed ? NAV : ""}
+  ${params.authed ? nav(params.active) : ""}
 </header>
 <main>
   <h1>${escapeHtml(params.title)}</h1>
@@ -380,7 +385,7 @@ export function dashboardPage(params: {
   <p class="muted">Últimos alertas</p>
   <table><thead><tr><th>Tipo</th><th>Quando</th></tr></thead><tbody>${alertsRows}</tbody></table>
 </div>`;
-  return layout({ title: "Painel", body, authed: true });
+  return layout({ title: "Painel", body, authed: true, active: "/dashboard" });
 }
 
 export function accountsPage(params: {
@@ -430,7 +435,7 @@ export function accountsPage(params: {
     <button type="submit">Adicionar</button>
   </form>
 </div>`;
-  return layout({ title: "Contas monitoradas", body, authed: true, error: params.error });
+  return layout({ title: "Contas monitoradas", body, authed: true, active: "/accounts", error: params.error });
 }
 
 export interface ThresholdsFormValues {
@@ -463,37 +468,39 @@ export function thresholdsPage(params: {
   const live = params.balanceUsd !== null;
   const body = `
 <div class="th">
-  <span class="live"><i></i> Alterações valem no ciclo seguinte do monitor (até 15 s), sem reiniciar</span>
-  <p class="lead">Escolha um perfil e ajuste se precisar. A prévia ao lado mostra, com o seu saldo, quanto dinheiro precisa sair para disparar cada tipo de alerta.</p>
+  <p class="lead">Escolha um perfil e ajuste se precisar. A prévia ao lado usa o seu saldo para mostrar quanto dinheiro precisa sair para disparar cada tipo de alerta.</p>
 
   <form method="POST" action="/thresholds" id="thForm">
+    <p class="sect">Ponto de partida</p>
     <div class="presets" id="presets"></div>
 
     <div class="layout">
-      <div>
+      <div class="col">
         <div class="card">
-          <h2><span class="ico">&#8595;</span> Queda de saldo</h2>
-          <p class="sub">Somamos todas as saídas dentro da janela escolhida, mesmo que venham em várias transferências pequenas.</p>
-
-          <div class="field">
-            <div class="row">
-              <label for="pctWarnN"><span class="dot" style="background:var(--warn)"></span> Avisar por e-mail a partir de</label>
-              <div class="val"><input id="pctWarnN" name="maxBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="${c.warn}" required><span>%</span></div>
-            </div>
-            <input type="range" id="pctWarn" min="1" max="100" step="1" style="--c:var(--warn)" aria-label="Limite de e-mail em porcentagem">
+          <div class="head">
+            <h2><span class="ico">&#8595;</span> Queda de saldo</h2>
+            <p>Somamos as saídas dentro da janela escolhida, mesmo que venham em várias transferências pequenas.</p>
           </div>
 
           <div class="field">
-            <div class="row">
-              <label for="pctCritN"><span class="dot" style="background:var(--crit)"></span> Ligar por telefone a partir de</label>
-              <div class="val"><input id="pctCritN" name="criticalBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="${c.crit}" required><span>%</span></div>
+            <label for="pctWarnN"><span class="dot" style="background:var(--warn)"></span> Avisar por e-mail a partir de</label>
+            <div class="ctl">
+              <input type="range" id="pctWarn" min="1" max="100" step="1" style="--c:var(--warn)" aria-label="Limite de e-mail em porcentagem">
+              <div class="num"><input id="pctWarnN" name="maxBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="${c.warn}" required><span>%</span></div>
             </div>
-            <input type="range" id="pctCrit" min="1" max="100" step="1" style="--c:var(--crit)" aria-label="Limite de ligação em porcentagem">
+          </div>
+
+          <div class="field">
+            <label for="pctCritN"><span class="dot" style="background:var(--crit)"></span> Ligar por telefone a partir de</label>
+            <div class="ctl">
+              <input type="range" id="pctCrit" min="1" max="100" step="1" style="--c:var(--crit)" aria-label="Limite de ligação em porcentagem">
+              <div class="num"><input id="pctCritN" name="criticalBalanceDropPct" type="number" min="0.1" max="100" step="0.1" value="${c.crit}" required><span>%</span></div>
+            </div>
             <p class="hint">A ligação traz o <b>código por WhatsApp</b> e é o alerta mais intrusivo. Use um limite que só um evento sério alcance.</p>
           </div>
 
           <div class="field">
-            <div class="row"><label>Janela de tempo</label></div>
+            <label>Janela de tempo</label>
             <div class="seg" id="win"></div>
             <input type="hidden" id="windowMinutes" name="windowMinutes" value="${c.win}">
             <p class="hint" id="winHint"></p>
@@ -502,19 +509,21 @@ export function thresholdsPage(params: {
         </div>
 
         <div class="card">
-          <h2><span class="ico">&#9940;</span> Transferência bloqueada</h2>
-          <p class="sub">Quando a política de recebimento da Tempo bloqueia um valor, você é avisado conforme o tamanho dele.</p>
+          <div class="head">
+            <h2><span class="ico">&#9940;</span> Transferência bloqueada</h2>
+            <p>Quando a política de recebimento da Tempo bloqueia um valor, você é avisado conforme o tamanho dele.</p>
+          </div>
           <div class="two">
             <div>
-              <label for="blkWarn">E-mail a partir de</label>
+              <label for="blkWarn"><span class="dot" style="background:var(--warn)"></span> E-mail a partir de</label>
               <div class="money"><b>US$</b><input id="blkWarn" name="blockedWarnUsd" type="text" inputmode="decimal" value="${c.bw}" required></div>
             </div>
             <div>
-              <label for="blkCrit">Ligação a partir de</label>
+              <label for="blkCrit"><span class="dot" style="background:var(--crit)"></span> Ligação a partir de</label>
               <div class="money"><b>US$</b><input id="blkCrit" name="blockedCritUsd" type="text" inputmode="decimal" value="${c.bc}" required></div>
             </div>
           </div>
-          <p class="hint">Digite em dólares (até 6 casas). O sistema converte para a menor unidade do token sozinho.</p>
+          <p class="hint">Digite em dólares, até 6 casas. O sistema converte para a menor unidade do token.</p>
           <div class="alert-box" id="err2" role="alert"></div>
         </div>
       </div>
@@ -522,19 +531,23 @@ export function thresholdsPage(params: {
       <aside class="side">
         <div class="card">
           <div class="eyebrow"><span>Prévia com seu saldo</span><span style="color:${live ? "var(--ok)" : "var(--warn)"}">&#9679; ${live ? "saldo real" : "exemplo"}</span></div>
-          <div class="bal"><strong>${live ? escapeHtml("US$ " + Math.round(params.balanceUsd as number).toLocaleString("pt-BR")) : "US$ 100.000"}</strong><small>${live ? "saldo atual monitorado" : "exemplo: o monitor ainda não leu seu saldo"}</small></div>
+          <div class="balwrap"><strong>${live ? escapeHtml("US$ " + Math.round(params.balanceUsd as number).toLocaleString("pt-BR")) : "US$ 100.000"}</strong><small>${live ? "saldo atual monitorado" : "exemplo: o monitor ainda não leu seu saldo"}</small></div>
 
-          <div class="gauge" id="gauge"><div class="z z1"></div><div class="z z2"></div><div class="z z3"></div></div>
-          <div class="ticks" id="ticks"></div>
+          <div class="rule">
+            <div class="rtop" id="ruleTop"></div>
+            <div class="track"><div class="gauge" id="gauge"><div class="z z1"></div><div class="z z2"></div><div class="z z3"></div></div><i class="mk" id="mk"></i></div>
+            <div class="rbot" id="ruleBot"></div>
+          </div>
 
           <div class="legend">
-            <div class="lg" id="lg0" style="--hc:#14503a;--hb:#0b2a1f"><span class="dot" style="background:var(--ok)"></span><div><b>Sem alerta</b><span id="t0"></span></div></div>
-            <div class="lg" id="lg1" style="--hc:#7a5f12;--hb:#241d08"><span class="dot" style="background:var(--warn)"></span><div><b>E-mail</b><span id="t1"></span></div></div>
-            <div class="lg" id="lg2" style="--hc:#7a2a2a;--hb:#241010"><span class="dot" style="background:var(--crit)"></span><div><b>Ligação + código no WhatsApp</b><span id="t2"></span></div></div>
+            <p class="cap" id="cap"></p>
+            <div class="lg" id="lg0" style="--hc:#14503a;--hb:#0b2a1f"><span class="dot" style="background:var(--ok)"></span><b>Sem alerta</b><span class="amt" id="t0"></span></div>
+            <div class="lg" id="lg1" style="--hc:#7a5f12;--hb:#241d08"><span class="dot" style="background:var(--warn)"></span><b>E-mail</b><span class="amt" id="t1"></span></div>
+            <div class="lg" id="lg2" style="--hc:#7a2a2a;--hb:#241010"><span class="dot" style="background:var(--crit)"></span><b>Ligação + WhatsApp</b><span class="amt" id="t2"></span></div>
           </div>
 
           <div class="sim">
-            <div class="row"><label for="sim">Simular uma saída de</label><strong id="simTxt" style="font-size:.95rem"></strong></div>
+            <div class="top"><label for="sim">Simular uma saída de</label><strong id="simTxt"></strong></div>
             <input type="range" id="sim" min="0" max="100" step="1">
             <div class="result" id="result"></div>
           </div>
@@ -555,7 +568,7 @@ export function thresholdsPage(params: {
   </form>
 </div>
 ${thresholdsScript(cfg)}`;
-  return layout({ title: "Quando você quer ser avisado", body, authed: true, error: params.error, head: THRESHOLDS_HEAD });
+  return layout({ title: "Quando você quer ser avisado", body, authed: true, active: "/thresholds", error: params.error, head: THRESHOLDS_HEAD });
 }
 
 export function recipientsPage(params: {
@@ -610,7 +623,7 @@ export function recipientsPage(params: {
 </div>`
       : ""
   }`;
-  return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="card"><p>${escapeHtml(params.notice)}</p></div>${body}` : body, authed: true, error: params.error });
+  return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="card"><p>${escapeHtml(params.notice)}</p></div>${body}` : body, authed: true, active: "/recipients", error: params.error });
 }
 
 export function alertsHistoryPage(params: {
@@ -636,5 +649,5 @@ export function alertsHistoryPage(params: {
   <table><thead><tr><th>Tipo</th><th>Severidade</th><th>Canal</th><th>PIN</th><th>Quando</th></tr></thead>
   <tbody>${rows}</tbody></table>
 </div>`;
-  return layout({ title: "Histórico de alertas", body, authed: true });
+  return layout({ title: "Histórico de alertas", body, authed: true, active: "/alerts" });
 }

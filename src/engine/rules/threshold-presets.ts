@@ -17,7 +17,7 @@ export const THRESHOLD_PRESETS: ThresholdPreset[] = [
   {
     key: "conservador",
     name: "Conservador",
-    description: "Avisa cedo. Mais alertas, menos chance de passar algo despercebido.",
+    description: "Avisa cedo. Mais alertas, menos risco de perder algo.",
     warnPct: 5,
     critPct: 20,
     windowMinutes: 60,
@@ -27,7 +27,7 @@ export const THRESHOLD_PRESETS: ThresholdPreset[] = [
   {
     key: "equilibrado",
     name: "Equilibrado",
-    description: "Recomendado para a maioria das tesourarias com movimento regular.",
+    description: "Recomendado para a maioria das tesourarias.",
     warnPct: 10,
     critPct: 30,
     windowMinutes: 60,
@@ -37,7 +37,7 @@ export const THRESHOLD_PRESETS: ThresholdPreset[] = [
   {
     key: "tolerante",
     name: "Tolerante",
-    description: "Para quem movimenta valores grandes com frequência e quer menos ruído.",
+    description: "Para valores grandes e movimento frequente. Menos ruído.",
     warnPct: 20,
     critPct: 50,
     windowMinutes: 120,
