@@ -1,6 +1,6 @@
 # Plano de Negócio e Desenvolvimento — VILIGION
 
-> Documento de planejamento interno. Escrito para orientar decisão e execução, não é texto de submissão da Colosseum — a submissão é escrita pelo time, com voz própria. Última revisão: 2026-10-04.
+> Documento de planejamento interno. Escrito para orientar decisão e execução, não é texto de submissão da Colosseum — a submissão é escrita pelo time, com voz própria. Última revisão: 2026-10-04. Para viabilidade técnica/esforço de cada melhoria de produto específica (não mercado/monetização, que ficam aqui), ver [`docs/PRODUCT-FEASIBILITY.md`](./PRODUCT-FEASIBILITY.md).
 
 ## 0. Onde estamos de fato (sem otimismo nem pessimismo)
 
