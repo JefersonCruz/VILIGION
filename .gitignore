@@ -12,6 +12,11 @@ build/
 secrets/
 user-thresholds.json
 
+# Documento interno - termos financeiros, só colaboradores assinados veem
+# (a cópia que vale é compartilhada por link privado, não pelo git - ver
+# nota no topo do próprio arquivo e em docs/signatures/README.md)
+CONTRIBUTOR-AGREEMENT.md
+
 # Logs e temporários
 *.log
 .DS_Store

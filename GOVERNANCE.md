@@ -29,3 +29,7 @@ The rules in `SECURITY.md` (never reveal balance/address in an alert, never hold
 ## Licensing
 
 MIT. Any fork or commercial use is permitted under the license terms; there's no obligation to contribute back, but it's encouraged.
+
+## Prize money and future equity
+
+How hackathon prize money (if any) is split among contributors, and the non-binding intention around future equity if the project becomes a company, are covered in an internal Contributor Agreement — a draft pending legal review, not covered by MIT (that license governs the code, not money or equity). It's shared privately with contributors, not published in this public repo; see [`docs/signatures/README.md`](./docs/signatures/README.md) for the public (non-financial) record of who signed it.
