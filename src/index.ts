@@ -21,13 +21,14 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { Address } from "viem";
 import { Pool } from "pg";
+import nodemailer from "nodemailer";
 import { Addresses } from "viem/tempo";
 import { RECEIVE_POLICY_GUARD_ADDRESS, TempoAdapter } from "./engine/chains/tempo.adapter.js";
 import { TempoBlockedTransferExtension } from "./engine/chains/tempo-extension.js";
 import { EvmAdapter } from "./engine/chains/evm-adapter.js";
 import { getKnownChain, resolveRpcUrl } from "./engine/chains/known-chains.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
-import { Monitor } from "./monitor.js";
+import { Monitor, type HealthListener } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { InMemoryWaitlistRepository, PostgresWaitlistRepository } from "./dashboard/waitlist.js";
 import { createEmailNotifier } from "./alerts/email-notifier.js";
@@ -104,6 +105,46 @@ function buildEmailNotifierIfConfigured() {
     smtpPass,
     fromAddress,
   });
+}
+
+/**
+ * Health check do monitor (issue #8, parte 2): "avisar alguém" quando o
+ * loop falha repetidamente, não só logar local. Reaproveita o mesmo SMTP do
+ * canal de alerta normal (zero infra nova), mas é um e-mail de OPERAÇÃO
+ * (pro time, não pro cliente) - por isso não passa por buildAlertEmail/
+ * alert-content-policy (aquilo é especificamente pro conteúdo que o
+ * CLIENTE recebe sobre a própria tesouraria). Sem SMTP_* ou OPS_ALERT_EMAIL
+ * configurados, undefined - Monitor já loga local de qualquer forma
+ * (comportamento honesto, mesmo padrão do resto deste arquivo: sem dizer
+ * que avisa alguém quando na verdade não tem como).
+ */
+function buildUnhealthyNotifierIfConfigured(monitorLabel: string): HealthListener | undefined {
+  const opsEmail = process.env.OPS_ALERT_EMAIL;
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const fromAddress = process.env.SMTP_FROM_ADDRESS;
+  if (!opsEmail || !smtpHost || !smtpPort || !smtpUser || !smtpPass || !fromAddress) return undefined;
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: Number(smtpPort),
+    secure: Number(smtpPort) === 465,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
+  return ({ consecutiveFailures, lastError }) => {
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    void transporter
+      .sendMail({
+        from: fromAddress,
+        to: opsEmail,
+        subject: `[VILIGION] Monitor "${monitorLabel}" com ${consecutiveFailures} falhas consecutivas`,
+        text: `O monitor "${monitorLabel}" falhou ${consecutiveFailures} vezes seguidas.\n\nÚltimo erro: ${message}\n\nIsto é um alerta operacional (saúde do sistema), não um alerta de cliente sobre a tesouraria.`,
+      })
+      .catch((err) => console.error("[monitor] falha ao enviar e-mail de saúde degradada:", err));
+  };
 }
 
 /**
@@ -230,6 +271,7 @@ async function mainDemo() {
     { address: watchedAddress, thresholds: liveThresholds, pollIntervalMs: 15_000 },
     dispatchAlert,
     new TempoBlockedTransferExtension(tempoAdapter),
+    buildUnhealthyNotifierIfConfigured(`demo:${watchedAddress}`),
   );
   const monitors = [tempoMonitor.start()];
 
@@ -243,6 +285,8 @@ async function mainDemo() {
       baseAdapter,
       { address: process.env.DEMO_SECOND_CHAIN_ADDRESS as Address, thresholds: liveThresholds, pollIntervalMs: 15_000 },
       dispatchAlert,
+      undefined,
+      buildUnhealthyNotifierIfConfigured(`demo-base:${process.env.DEMO_SECOND_CHAIN_ADDRESS}`),
     );
     console.log("[monitor] segundo monitor ativo na Base (núcleo genérico, sem extensão)");
     monitors.push(baseMonitor.start());
@@ -463,6 +507,9 @@ async function startMonitorForAccount(
       criticalBlockedTransferThreshold: 10_000_000n,
     };
 
+  const monitorLabel = `usuário=${account.userId} chain=${account.chainKey} conta=${account.id}`;
+  const onUnhealthy = buildUnhealthyNotifierIfConfigured(monitorLabel);
+
   if (account.chainKey === "tempo") {
     const adapter = new TempoAdapter({
       rpcUrl,
@@ -476,14 +523,21 @@ async function startMonitorForAccount(
       { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
       dispatchAlert,
       new TempoBlockedTransferExtension(adapter),
+      onUnhealthy,
     );
-    console.log(`[monitor] ativo: usuário=${account.userId} chain=tempo token=${account.tokenAddress}`);
+    console.log(`[monitor] ativo: ${monitorLabel} token=${account.tokenAddress}`);
     return monitor;
   }
 
   const adapter = new EvmAdapter({ rpcUrl, chainId: chain.chainId, minConfirmations: 3, tokenAddress: account.tokenAddress as Address });
-  const monitor = new Monitor(adapter, { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 }, dispatchAlert);
-  console.log(`[monitor] ativo: usuário=${account.userId} chain=${account.chainKey} token=${account.tokenAddress}`);
+  const monitor = new Monitor(
+    adapter,
+    { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
+    dispatchAlert,
+    undefined,
+    onUnhealthy,
+  );
+  console.log(`[monitor] ativo: ${monitorLabel} token=${account.tokenAddress}`);
   return monitor;
 }
 

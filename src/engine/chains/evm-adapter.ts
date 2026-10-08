@@ -29,6 +29,16 @@ const ERC20_BALANCE_OF_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
 ]);
 
+/**
+ * Limite conservador de blocos por chamada eth_getLogs. Provedores de RPC
+ * costumam rejeitar ranges grandes (o da Tempo rejeita acima de 100.000,
+ * achado em produção em 2026-10-07 - InvalidParamsRpcError "query exceeds
+ * max block range 100000"); fica bem abaixo disso de propósito, como margem
+ * de segurança. Única definição - monitor.ts reaproveita esta mesma
+ * constante em vez de duplicar o número.
+ */
+export const MAX_LOG_RANGE_BLOCKS = 50_000n;
+
 export interface EvmAdapterConfig {
   rpcUrl: string;
   chainId: number;
@@ -113,6 +123,15 @@ export class EvmAdapter {
    * Observa logs de um contrato específico entre dois blocos, já aplicando a
    * profundidade mínima de confirmação. Chains específicas usam isto como
    * base para decodificar eventos próprios (ex: ReceivePolicyGuard na Tempo).
+   *
+   * Pagina internamente em janelas de MAX_LOG_RANGE_BLOCKS (achado de
+   * produção 2026-10-07, issue #8): antes, um range maior que o limite do
+   * provedor RPC falhava sempre, numa chamada só. monitor.ts já limita o
+   * TAMANHO do gap que tenta recuperar por ciclo (política de "prefiro
+   * perder evento antigo a travar pra sempre") - isto aqui é a camada de
+   * baixo que garante que QUALQUER range pedido, de qualquer chamador atual
+   * ou futuro (ex: getFeeAdjustment em tempo.adapter.ts, que não tinha
+   * nenhuma proteção própria), nunca estoura o limite do RPC numa chamada só.
    */
   async getConfirmedLogs(params: {
     address: Address;
@@ -122,10 +141,20 @@ export class EvmAdapter {
     const confirmedTo = params.toBlock ?? (await this.getConfirmedBlockNumber());
     if (confirmedTo < params.fromBlock) return [];
 
-    return this.client.getLogs({
-      address: params.address,
-      fromBlock: params.fromBlock,
-      toBlock: confirmedTo,
-    });
+    const logs: Log[] = [];
+    let chunkStart = params.fromBlock;
+    while (chunkStart <= confirmedTo) {
+      const remaining = confirmedTo - chunkStart + 1n;
+      const chunkEnd = remaining > MAX_LOG_RANGE_BLOCKS ? chunkStart + MAX_LOG_RANGE_BLOCKS - 1n : confirmedTo;
+      const chunkLogs = await this.rawGetLogs({ address: params.address, fromBlock: chunkStart, toBlock: chunkEnd });
+      logs.push(...chunkLogs);
+      chunkStart = chunkEnd + 1n;
+    }
+    return logs;
+  }
+
+  /** Chamada RPC crua, isolada só pra poder ser substituída em teste (ver evm-adapter.test.ts) sem mockar o client inteiro. */
+  protected async rawGetLogs(params: { address: Address; fromBlock: bigint; toBlock: bigint }): Promise<Log[]> {
+    return this.client.getLogs(params);
   }
 }

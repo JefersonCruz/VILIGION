@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Address } from "viem";
-import { Monitor } from "./monitor.js";
+import { Monitor, UNHEALTHY_AFTER_CONSECUTIVE_FAILURES } from "./monitor.js";
 import { EvmAdapter, type BalanceSnapshot } from "./engine/chains/evm-adapter.js";
 import type { ChainExtension } from "./engine/chain-extension.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
@@ -45,6 +45,20 @@ class FakeFeeChargingAdapter extends FakeAdapter {
 
   override async getFeeAdjustment(): Promise<bigint> {
     return this.fees[this.feeCall++] ?? 0n;
+  }
+}
+
+/** Falha nos primeiros `failCount` ciclos (ex: RPC fora do ar), depois volta a responder normalmente. */
+class FakeFailingAdapter extends FakeAdapter {
+  private calls = 0;
+  constructor(private readonly failCount: number, balances: bigint[]) {
+    super(balances);
+  }
+
+  override async getBalance(address: Address): Promise<BalanceSnapshot> {
+    this.calls++;
+    if (this.calls <= this.failCount) throw new Error(`RPC fora do ar (tentativa ${this.calls})`);
+    return super.getBalance(address);
   }
 }
 
@@ -290,6 +304,105 @@ describe("Monitor", () => {
     monitor.stop();
     await run;
 
+    expect(dispatched.some((e) => e.kind === "balance-drop")).toBe(true);
+  });
+
+  it("health check (issue #8): chama onUnhealthy ao atingir UNHEALTHY_AFTER_CONSECUTIVE_FAILURES falhas seguidas", async () => {
+    const adapter = new FakeFailingAdapter(UNHEALTHY_AFTER_CONSECUTIVE_FAILURES, [1000n]);
+    const unhealthyCalls: Array<{ consecutiveFailures: number }> = [];
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async () => {},
+      undefined,
+      (info) => unhealthyCalls.push(info),
+    );
+
+    const run = monitor.start();
+    // UNHEALTHY_AFTER_CONSECUTIVE_FAILURES ciclos de 5ms pra falhar + folga
+    await new Promise((r) => setTimeout(r, UNHEALTHY_AFTER_CONSECUTIVE_FAILURES * 15 + 20));
+    monitor.stop();
+    await run;
+
+    expect(unhealthyCalls).toHaveLength(1);
+    expect(unhealthyCalls[0]!.consecutiveFailures).toBe(UNHEALTHY_AFTER_CONSECUTIVE_FAILURES);
+  });
+
+  it("health check: NÃO chama onUnhealthy antes de atingir o limiar de falhas consecutivas", async () => {
+    const adapter = new FakeFailingAdapter(UNHEALTHY_AFTER_CONSECUTIVE_FAILURES - 1, [1000n]);
+    const unhealthyCalls: unknown[] = [];
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async () => {},
+      undefined,
+      (info) => unhealthyCalls.push(info),
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 40));
+    monitor.stop();
+    await run;
+
+    expect(unhealthyCalls).toHaveLength(0);
+  });
+
+  it("health check: recupera e reseta o contador depois de um ciclo bem-sucedido (não fica preso em 'não saudável' pra sempre)", async () => {
+    // falha UNHEALTHY_AFTER_CONSECUTIVE_FAILURES vezes, dispara onUnhealthy uma vez, recupera,
+    // depois falha de novo UNHEALTHY_AFTER_CONSECUTIVE_FAILURES vezes - deve disparar de novo (não ficou "travado" em 1 falha a mais).
+    class RecoverThenFailAgain extends FakeAdapter {
+      private calls = 0;
+      constructor() {
+        super([1000n]);
+      }
+      override async getBalance(address: Address): Promise<BalanceSnapshot> {
+        this.calls++;
+        const firstFailBatchEnd = UNHEALTHY_AFTER_CONSECUTIVE_FAILURES;
+        const recoveryTick = firstFailBatchEnd + 1;
+        const secondFailBatchEnd = recoveryTick + UNHEALTHY_AFTER_CONSECUTIVE_FAILURES;
+        if (this.calls <= firstFailBatchEnd) throw new Error("falha 1");
+        if (this.calls === recoveryTick) return super.getBalance(address);
+        if (this.calls <= secondFailBatchEnd) throw new Error("falha 2");
+        return super.getBalance(address);
+      }
+    }
+    const adapter = new RecoverThenFailAgain();
+    const unhealthyCalls: unknown[] = [];
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async () => {},
+      undefined,
+      (info) => unhealthyCalls.push(info),
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, (UNHEALTHY_AFTER_CONSECUTIVE_FAILURES * 2 + 3) * 15));
+    monitor.stop();
+    await run;
+
+    expect(unhealthyCalls).toHaveLength(2);
+  });
+
+  it("health check: uma notificação que lança erro não derruba o loop do monitor", async () => {
+    const adapter = new FakeFailingAdapter(UNHEALTHY_AFTER_CONSECUTIVE_FAILURES, [1000n, 1000n, 700n]);
+    const dispatched: DetectionEvent[] = [];
+    const monitor = new Monitor(
+      adapter,
+      { address: TEST_ADDRESS, thresholds, pollIntervalMs: 5 },
+      async (e) => { dispatched.push(e); },
+      undefined,
+      () => {
+        throw new Error("notificador também está quebrado");
+      },
+    );
+
+    const run = monitor.start();
+    await new Promise((r) => setTimeout(r, 120));
+    monitor.stop();
+    await run;
+
+    // mesmo com o notificador explodindo, o monitor continuou rodando depois da recuperação
     expect(dispatched.some((e) => e.kind === "balance-drop")).toBe(true);
   });
 });

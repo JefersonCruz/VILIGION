@@ -13,7 +13,7 @@
  */
 
 import type { Address } from "viem";
-import type { EvmAdapter, BalanceSnapshot } from "./engine/chains/evm-adapter.js";
+import { MAX_LOG_RANGE_BLOCKS, type EvmAdapter, type BalanceSnapshot } from "./engine/chains/evm-adapter.js";
 import type { ChainExtension } from "./engine/chain-extension.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { BalanceWindow } from "./engine/rules/balance-window.js";
@@ -33,12 +33,16 @@ export interface MonitorConfig {
 export type AlertDispatcher = (event: DetectionEvent) => Promise<void>;
 
 /**
- * Limite conservador de blocos por consulta eth_getLogs. Provedores de RPC
- * costumam rejeitar ranges grandes (o da Tempo rejeita acima de 100.000,
- * achado em produção em 2026-10-07 - ver nota em `tick()`); fica bem abaixo
- * disso de propósito, como margem de segurança.
+ * Depois de quantas falhas consecutivas de ciclo o monitor considera a si
+ * mesmo "não saudável" e chama onUnhealthy (issue #8, parte 2 - "health
+ * check"). Reseta pra 0 no primeiro ciclo bem-sucedido depois de uma falha.
+ * Múltiplos desse valor (3, 6, 9...) notificam de novo, pra não ficar calado
+ * numa falha longa, mas também não espamar a cada 15s.
  */
-const MAX_LOG_RANGE_BLOCKS = 50_000n;
+export const UNHEALTHY_AFTER_CONSECUTIVE_FAILURES = 3;
+
+/** Chamado quando o monitor cruza (ou segue cruzando) o limiar de falhas consecutivas - index.ts decide o que "avisar alguém" significa de verdade (hoje: e-mail de ops, se configurado). */
+export type HealthListener = (info: { consecutiveFailures: number; lastError: unknown }) => void;
 
 export class Monitor {
   private previousSnapshot: BalanceSnapshot | null = null;
@@ -58,6 +62,7 @@ export class Monitor {
    */
   private lastCheckedBlock: bigint | null = null;
   private running = false;
+  private consecutiveFailures = 0;
 
   constructor(
     private readonly adapter: EvmAdapter,
@@ -65,17 +70,34 @@ export class Monitor {
     private readonly dispatchAlert: AlertDispatcher,
     /** Opcional - só chains com particularidade de protocolo (ex: Tempo) passam uma */
     private readonly extension?: ChainExtension,
+    /** Opcional - sem isto, uma falha persistente só aparece no log local (ver issue #8). */
+    private readonly onUnhealthy?: HealthListener,
   ) {}
 
   async start(): Promise<void> {
     this.running = true;
     while (this.running) {
-      await this.tick().catch((err) => {
+      try {
+        await this.tick();
+        if (this.consecutiveFailures > 0) {
+          console.log(`[monitor] recuperado depois de ${this.consecutiveFailures} falha(s) consecutiva(s)`);
+        }
+        this.consecutiveFailures = 0;
+      } catch (err) {
         // um erro de leitura não deve derrubar o monitor inteiro - loga e
-        // tenta de novo no próximo ciclo. Ver item "health-check" em
-        // SECURITY.md: idealmente isto também avisa a equipe se persistir.
-        console.error("[monitor] erro no ciclo de verificação:", err);
-      });
+        // tenta de novo no próximo ciclo.
+        this.consecutiveFailures++;
+        console.error(`[monitor] erro no ciclo de verificação (falha consecutiva #${this.consecutiveFailures}):`, err);
+
+        if (this.onUnhealthy && this.consecutiveFailures % UNHEALTHY_AFTER_CONSECUTIVE_FAILURES === 0) {
+          try {
+            this.onUnhealthy({ consecutiveFailures: this.consecutiveFailures, lastError: err });
+          } catch (notifyErr) {
+            // notificação quebrada não pode derrubar o monitor por cima do erro original
+            console.error("[monitor] falha ao notificar saúde degradada:", notifyErr);
+          }
+        }
+      }
       await sleep(this.config.pollIntervalMs);
     }
   }

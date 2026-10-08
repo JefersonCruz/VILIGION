@@ -80,9 +80,21 @@ Decision: treat as a post-hackathon roadmap item alongside PWA push, not build b
 
 A repository review found pieces described in the documentation (or already with logic/schema in place) that weren't connected end-to-end. Most have since been closed (see "Portal" below); what's left:
 
-- **No health check for the monitor itself**: if the loop in `monitor.ts` stops progressing (RPC down, unhandled error), today it only shows up in the local log — nothing actively alerts the team.
-- **No production KMS key provider**: `LocalDevKeyProvider` (`privacy/encryption.ts`) is explicitly dev-only and is still what `index.ts` uses in both bootstrap paths — before processing real user data, swap it for a provider backed by `@aws-sdk/client-kms` or equivalent (see the warning `index.ts` logs at boot when `ENCRYPTION_KEY_KMS_ARN` is unset).
+- **No production KMS key provider**: `LocalDevKeyProvider` (`privacy/encryption.ts`) is explicitly dev-only and is still what `index.ts` uses in both bootstrap paths — before processing real user data, swap it for a provider backed by `@aws-sdk/client-kms` or equivalent (see the warning `index.ts` logs at boot when `ENCRYPTION_KEY_KMS_ARN` is unset). Tracked as [issue #9](https://github.com/JefersonCruz/VILIGION/issues/9).
 - **Per-user RPC overrides still come from shared env vars** — only alert recipients were migrated to per-user data (see "Recipients" below); a per-account RPC override is still a shared config, not user data.
+
+~~No health check for the monitor itself~~ — closed 2026-10-08, see below.
+
+## Monitor reliability: unpaginated `eth_getLogs` + no health check (closed 2026-10-08)
+
+Reproduced in practice ([issue #8](https://github.com/JefersonCruz/VILIGION/issues/8), filed by a collaborator): running the server locally in demo mode threw `InvalidParamsRpcError: query exceeds max block range 100000`. Root cause: `EvmAdapter.getConfirmedLogs` (`engine/chains/evm-adapter.ts`) made a single `eth_getLogs` call for whatever range it was given — correct as long as every caller pre-clamped its range, which `monitor.ts`'s extension path did (since the 2026-10-07 production fix, `MAX_LOG_RANGE_BLOCKS = 50_000n`) but `TempoAdapter.getFeeAdjustment` did not: a long gap between ticks (RPC down, process stalled) could still hand it an unbounded range with zero protection.
+
+Two fixes, matching the issue's two tasks:
+
+- **Pagination moved to the root, not the caller**: `getConfirmedLogs` now loops internally in `MAX_LOG_RANGE_BLOCKS`-sized windows (the constant moved to `evm-adapter.ts`, exported, so `monitor.ts` imports it instead of duplicating the number) and concatenates results — any range, from any caller present or future, is now safe by construction, not by every caller remembering to clamp first. The actual RPC call is isolated in a new protected `rawGetLogs` so tests can verify chunk boundaries without mocking viem's client (`evm-adapter.test.ts`).
+- **Health check**: `Monitor` now tracks consecutive tick failures and, every `UNHEALTHY_AFTER_CONSECUTIVE_FAILURES` (3) of them, calls an optional `onUnhealthy` listener — resets silently on the next successful tick, logs the recovery. `index.ts` wires a default listener, `buildUnhealthyNotifierIfConfigured`, that emails `OPS_ALERT_EMAIL` (new, optional env var) via the same SMTP config already used for customer alerts — but as a distinct operational message, never through `alert-content-policy`/`buildAlertEmail` (that pipeline is specifically for what a *customer* learns about their own treasury, not for the team's own ops signal). Without `OPS_ALERT_EMAIL`/SMTP configured, the failure still only reaches the local log — same honest degrade-without-lying pattern as the voice/email alert channels elsewhere in this file.
+
+Covered by `evm-adapter.test.ts` (new file: single call within range, exact-boundary range, one-block-over paginates into two, a range reproducing the real ~43M-block bug paginates into several contiguous chunks with no gap/overlap, `toBlock < fromBlock` makes zero calls) and four new cases in `monitor.test.ts` (triggers at the exact threshold, not before; resets and can trigger again after recovering; a throwing listener doesn't take the monitor loop down with it).
 
 ## Portal (built 2026-10-03, see `docs/UI-SPEC.md`)
 
