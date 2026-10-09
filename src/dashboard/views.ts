@@ -10,9 +10,24 @@
 
 import { WAITLIST_PROFILES } from "./waitlist.js";
 import { THRESHOLD_PRESETS, WINDOW_CHOICES_MINUTES } from "../engine/rules/threshold-presets.js";
+import { formatUsdDisplay } from "../engine/rules/token-units.js";
 import { THRESHOLDS_HEAD, thresholdsScript } from "./thresholds-ui.js";
 import { LOGO_FULL_DATA_URI, LOGO_ICON_DATA_URI } from "./logo-assets.js";
 import type { Contributor } from "./contributors.js";
+
+/** Null em vez de exceção quando o valor não é inteiro válido — a tela mostra "—" em vez de quebrar. */
+function safeBigInt(value: string): bigint | null {
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+/** `0x4f3a…c921`. O endereço inteiro vai no `title`, que é onde quem precisa confere. */
+function shortenAddress(address: string): string {
+  return address.length <= 14 ? address : `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
 
 function escapeHtml(input: string): string {
   return input
@@ -87,6 +102,12 @@ const BASE_STYLE = `
   code { background:#f3f1f6; padding:2px 7px; border-radius:5px; font-size:0.85rem; border:1px solid #e3deec; }
   a.link { color:#7c3aed; text-decoration:none; }
   a.link:hover { text-decoration:underline; }
+  .balance {
+    font-size: 2.25rem; font-weight: 700; letter-spacing: -0.02em; color:#1e1b29;
+    margin: 0 0 2px;
+    /* dígitos de largura fixa: sem isto o número "dança" a cada atualização de saldo */
+    font-variant-numeric: tabular-nums;
+  }
   form { margin-top: 4px; }`;
 
 const NAV_LINKS: Array<[string, string]> = [
@@ -867,13 +888,21 @@ export function dashboardPage(params: {
           .map((a) => `<tr><td>${escapeHtml(a.kind)}</td><td>${escapeHtml(a.createdAt)}</td></tr>`)
           .join("");
 
+  // O saldo vinha pra tela como unidade bruta do token dentro de <code> - o
+  // número mais importante do produto aparecia como "42180320000". A função de
+  // formatação já existia e não era usada aqui (ver docs/UI-DESIGN-STUDY.md §0).
+  // O valor bruto continua acessível no title, pra quem precisa conferir.
+  const balanceUnits = safeBigInt(params.balanceRaw);
+  const balanceLabel = balanceUnits === null ? "—" : `US$ ${formatUsdDisplay(balanceUnits)}`;
+
   const body = `
 <div class="card">
-  <p class="muted">Endereço principal</p>
-  <p><code>${escapeHtml(params.address)}</code></p>
-  <p class="muted">Saldo bruto (menor unidade do token)</p>
-  <p><code>${escapeHtml(params.balanceRaw)}</code></p>
-  <p class="muted">${params.accountsCount} conta(s) monitorada(s) — <a class="link" href="/accounts">gerenciar</a></p>
+  <p class="muted" style="margin:0 0 2px;">Saldo monitorado</p>
+  <p class="balance" title="${escapeHtml(params.balanceRaw)} (menor unidade do token)">${escapeHtml(balanceLabel)}</p>
+  <p class="muted" style="margin:0 0 18px;">PathUSD · Tempo</p>
+  <p class="muted" style="margin:0 0 2px;">Endereço principal</p>
+  <p style="margin:0 0 14px;"><code title="${escapeHtml(params.address)}">${escapeHtml(shortenAddress(params.address))}</code></p>
+  <p class="muted" style="margin:0;">${params.accountsCount} conta(s) monitorada(s) — <a class="link" href="/accounts">gerenciar</a></p>
 </div>
 <div class="card">
   <p class="muted">Últimos alertas</p>

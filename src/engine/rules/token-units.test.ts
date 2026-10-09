@@ -1,4 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { formatUsdDisplay } from "./token-units.js";
+
+describe("formatUsdDisplay", () => {
+  it("formata com separador de milhar e sempre duas casas", () => {
+    expect(formatUsdDisplay(42_180_320_000n)).toBe("42.180,32");
+    expect(formatUsdDisplay(1_000_000n)).toBe("1,00");
+    expect(formatUsdDisplay(0n)).toBe("0,00");
+    expect(formatUsdDisplay(500_000n)).toBe("0,50");
+  });
+
+  it("trunca abaixo do centavo em vez de arredondar pra cima (nunca mostrar mais do que existe)", () => {
+    expect(formatUsdDisplay(1_999_999n)).toBe("1,99");
+  });
+
+  it("não perde precisão em saldo maior que o inteiro seguro do JS", () => {
+    // 9.007.199.254,740993 dólares - acima de Number.MAX_SAFE_INTEGER em unidades
+    expect(formatUsdDisplay(9_007_199_254_740_993n)).toBe("9.007.199.254,74");
+  });
+
+  it("preserva o sinal de valor negativo", () => {
+    expect(formatUsdDisplay(-42_180_320_000n)).toBe("-42.180,32");
+  });
+});
 import { parseUsdToUnits, unitsToUsdString } from "./token-units.js";
 import { THRESHOLD_PRESETS } from "./threshold-presets.js";
 import { validateThresholds } from "./threshold-validation.js";
