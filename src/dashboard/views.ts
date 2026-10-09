@@ -777,8 +777,11 @@ ${shareMeta(params.baseUrl)}
       <a href="https://github.com/JefersonCruz/VILIGION/blob/master/TERMS-OF-USE.md" target="_blank" rel="noopener">Termos de uso</a>
     </div>
     <div>
-      <p class="col-title">Contato</p>
+      <p class="col-title">Canais oficiais</p>
+      <a href="https://x.com/viligion" target="_blank" rel="noopener">X · @viligion</a>
+      <a href="https://t.me/viligionOficial" target="_blank" rel="noopener">Telegram · @viligionOficial</a>
       <a href="mailto:jefersonhenri1@gmail.com">jefersonhenri1@gmail.com</a>
+      <p class="muted" style="font-size:0.78rem; margin:10px 0 0; max-width:240px;">Estes são os únicos canais oficiais. Nunca pedimos endereço, saldo, seed ou código 2FA — por canal nenhum — e nunca iniciamos conversa por mensagem privada.</p>
     </div>
   </div>
   <div class="container footer-bottom">© 2026 VILIGION — Construído para o Crypto World's Fair (Colosseum), track Tempo.</div>

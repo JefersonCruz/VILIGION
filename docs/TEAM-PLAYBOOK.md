@@ -53,8 +53,8 @@ O VILIGION existe porque ligar um telefone a um saldo on-chain é perigoso. Um c
 | Canal | Pra que serve | O que nunca acontece ali |
 |---|---|---|
 | **GitHub (issues/PR)** | Trabalho técnico, decisão registrada | Credencial, valor real de `.env`, dado de cliente |
-| **Telegram** (canal oficial, `[@handle a definir]`) | Inbound de interessado, suporte inicial, conversa do time | Endereço, saldo, valor, seed, código TOTP |
-| **Twitter/X** | Só difusão: anúncio, conteúdo, bastidor | **Nenhum atendimento de caso** — resposta pública identifica a pessoa como dona de tesouraria |
+| **Telegram** — [@viligionOficial](https://t.me/viligionOficial) | Inbound de interessado, suporte inicial, conversa do time | Endereço, saldo, valor, seed, código TOTP |
+| **X/Twitter** — [@viligion](https://x.com/viligion) | Só difusão: anúncio, conteúdo, bastidor | **Nenhum atendimento de caso** — resposta pública identifica a pessoa como dona de tesouraria |
 | **E-mail** | Lista de espera, contato formal, entrevistas da Fase 1 | Igual aos demais: nada de endereço/saldo |
 | **Painel autenticado** | O único lugar onde saldo e endereço reais aparecem | — |
 
@@ -64,7 +64,7 @@ O VILIGION existe porque ligar um telefone a um saldo on-chain é perigoso. Um c
 2. **Nunca mandamos DM primeiro.** Quem fala com a gente, fala porque procurou.
 3. **Caso específico sai do canal público.** No Twitter, a resposta é sempre "te chamo no privado" ou "entra em contato pelo site" — nunca discutir a situação ali.
 4. **Dúvida sobre a tesouraria dele é no painel**, com a pessoa autenticada. Suporte não confirma nem nega informação de conta por mensagem.
-5. **Impersonação é o golpe padrão em cripto.** Os canais oficiais ficam publicados no site; qualquer outro perfil usando o nome não é nosso.
+5. **Impersonação é o golpe padrão em cripto.** Os canais oficiais são **[@viligion](https://x.com/viligion)** no X e **[@viligionOficial](https://t.me/viligionOficial)** no Telegram, e estão publicados no rodapé de https://viligion.com pra qualquer um conferir. Qualquer outro perfil usando o nome não é nosso.
 
 **Acesso por papel** — quem faz prospecção/suporte **não recebe acesso de produção**. O painel e o banco guardam o vínculo contato↔endereço (criptografado, mas existe); trabalho de GTM não precisa dele pra nada, e todo acesso a mais é superfície de ataque a mais. Acesso de escrita no GitHub é separado de acesso à Railway: ter um não dá o outro.
 
