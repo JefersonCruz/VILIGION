@@ -1,6 +1,6 @@
 # Plano de Negócio e Desenvolvimento — VILIGION
 
-> Documento de planejamento interno. Escrito para orientar decisão e execução, não é texto de submissão da Colosseum — a submissão é escrita pelo time, com voz própria. Última revisão: 2026-10-04. Para viabilidade técnica/esforço de cada melhoria de produto específica (não mercado/monetização, que ficam aqui), ver [`docs/PRODUCT-FEASIBILITY.md`](./PRODUCT-FEASIBILITY.md).
+> Documento de planejamento interno. Escrito para orientar decisão e execução, não é texto de submissão da Colosseum — a submissão é escrita pelo time, com voz própria. Última revisão: 2026-10-09 (§0 e §6 reconciliados contra o estado real de produção; o resto é de 2026-10-04). Para viabilidade técnica/esforço de cada melhoria de produto específica (não mercado/monetização, que ficam aqui), ver [`docs/PRODUCT-FEASIBILITY.md`](./PRODUCT-FEASIBILITY.md).
 
 ## 0. Onde estamos de fato (sem otimismo nem pessimismo)
 
@@ -10,7 +10,7 @@
 - **Validado contra a rede real** (não só simulação): RPC, endereço do `ReceivePolicyGuard` e decode de `TransferBlocked` confirmados contra a testnet Moderato com eventos reais (`scripts/verify-testnet.ts`). Um bug real de leitura de saldo (nativo vs. TIP-20) foi encontrado e corrigido nesse processo.
 - **Open-source**: repositório público, MIT, CI, CODEOWNERS, templates de issue, histórico de commits limpo (sem segredo vazado). `TERMS-OF-USE.md` (rascunho, pendente de revisão jurídica real) adicionado.
 - **Equipe**: founder solo. Sem cofounder, sem colaboradores externos no momento.
-- **Maior risco em aberto agora**: fluxo de ponta a ponta com Twilio/WhatsApp de verdade ainda não testado com conta real configurada (a lógica está testada com fakes, não com uma ligação/WhatsApp de verdade chegando num telefone) — mais importante agora que antes, porque a funcionalidade real existe e precisa ser confirmada antes da gravação do vídeo de demo. Vídeos não gravados (`docs/VIDEO-SCRIPT.md` atualizado em 2026-10-04 pra refletir tudo isso); submissão ainda não criada no portal; deploy do Railway está **desatualizado** em relação a tudo isso (precisa de redeploy + nova migration antes de qualquer gravação).
+- **Maior risco em aberto agora** (revisado 2026-10-09, 3 dias pro prazo): a ligação **nunca tocou de verdade**. As credenciais da Twilio já estão em produção e o boot loga o canal crítico como ativo, mas os logs de 03/10 a 09/10 não têm uma única linha de disparo de alerta — ou seja, o canal que dá nome ao produto segue sem prova de ponta a ponta. O botão "Enviar alerta de teste" (`/recipients`) fecha isso em minutos; é o item nº 1 do §6. Vídeos não gravados; submissão não criada no portal. **Deploy do Railway já não é problema** — produção está no commit mais recente (correção em relação à versão de 04/10 deste documento), mas o auto-deploy por push não dispara sozinho (ver §6).
 - **Pitch**: já corrigido de uma claim de "ineditismo" que não se sustentava — `docs/VILIGION-apresentacao-time.pdf` já tem essa correção desde 2026-10-03, mas sua tabela de status (seção 4.6) ficou desatualizada frente a tudo construído depois; vale atualizar antes de usar o deck de novo.
 - **Mercado**: a chain Tempo tem ~7 meses de existência (mainnet 18/03/2026). Não validamos ainda quantos negócios reais mantêm tesouraria TIP-20 nela hoje.
 - **Cobrança**: modelo decidido (mensal, sem anual por enquanto; TIP-20 nativo, não "qualquer cripto" — ver seção 1.3), mas **nenhum código de cobrança implementado de propósito** — depende da empresa estar formalizada primeiro (seção 3).
@@ -102,15 +102,16 @@ Uma empresa grande teria times dedicados de compliance, jurídico, vendas e segu
 - **Fase 1**: número de entrevistas concluídas; resposta validada (não estimada) pro tamanho do mercado endereçável na Tempo; 1+ usuário real em produção.
 - **Fase 2**: primeiro cliente pagante; margem unitária confirmada na prática, não só projetada.
 
-## 6. Plano real até 12/10 (reescrito 2026-10-04, 8 dias restantes)
+## 6. Plano real até 12/10 (revisado 2026-10-09 — **3 dias restantes**)
 
 Ordenado por prioridade real, não por ordem de lembrança. Cada bloco trava o próximo — não vale pular pra gravação sem fechar o bloco 1 antes, senão o vídeo mostra uma versão desatualizada ou com canal de alerta não comprovado.
 
-**Bloco 1 — Colocar o que foi construído pra rodar de verdade (1-2 dias)**
-- [ ] Redeploy no Railway com todo o código de 2026-10-04 (criptografia de destinatários, WhatsApp, registro dinâmico de monitor, etc.) — o deploy atual é de antes dessas mudanças.
-- [ ] Rodar a migration de novo (`npm run migrate`) — schema de `alert_recipients` mudou (agora criptografado); sem dado real de cliente ainda, então é seguro recriar.
-- [ ] Configurar uma conta Twilio real: número de voz + WhatsApp (o sandbox gratuito já serve pra validar, não precisa de número aprovado ainda).
-- [ ] **Disparar um alerta crítico de verdade** (não teste automatizado) e confirmar: a ligação toca, o WhatsApp chega com o PIN, digitar o PIN na ligação confirma, o painel mostra o status certo. Isto é o maior risco em aberto do projeto agora — sem isso, ninguém sabe se o canal crítico funciona de ponta a ponta.
+**Bloco 1 — Colocar o que foi construído pra rodar de verdade**
+- [x] ~~Redeploy no Railway~~ — **feito**, e várias vezes desde então; produção está no commit mais recente (`b855afa`, deploy `ea49519b`, SUCCESS em 09/10). Atenção operacional: o auto-deploy por push **não está disparando sozinho** — nas 3 últimas vezes foi preciso reconectar a fonte do serviço na Railway pra forçar o build. Verificar isso no painel antes de contar com um push de última hora.
+- [ ] Rodar a migration (`npm run migrate`) — **estado não confirmado**. O app sobe, lê `monitored_accounts` e grava waitlist sem erro, mas ninguém verificou `alert_recipients` com o schema criptografado contra o banco de produção. Confirmar antes de gravar a demo (ver `docs/DEPLOYMENT.md` passo 6 — precisa de proxy TCP temporário).
+- [x] ~~Configurar conta Twilio real~~ — **essencialmente feito**: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VOICE_NUMBER` e `TWILIO_WHATSAPP_NUMBER` estão configurados em produção, e o boot loga "canal crítico (ligação): ativo". **Falta só** `TWILIO_WHATSAPP_CONTENT_SID` (template aprovado) — sem ele o PIN é falado na ligação em vez de ir por WhatsApp, o que funciona e é demonstrável.
+- [ ] **Disparar um alerta crítico de verdade** (não teste automatizado) e confirmar: a ligação toca, o PIN chega (WhatsApp ou falado), digitar o PIN confirma, o painel mostra o status certo. **Continua sendo o maior risco em aberto** — verificado nos logs de produção de 03/10 até 09/10: nenhuma linha `[alerta] disparando` jamais apareceu. O canal nunca foi exercitado de verdade. Atalho disponível: o botão "Enviar alerta de teste" em `/recipients` já existe (commit `64a6b55`) — dá pra fechar este item em minutos, sem esperar uma anomalia real na chain.
+- [ ] Configurar SMTP (`SMTP_*`) se quiser mostrar o canal normal — hoje não está configurado em produção, o boot loga "canal normal (e-mail): NÃO configurado - só logará".
 
 **Bloco 2 — Preparar os entregáveis de gravação (pode rodar em paralelo ao Bloco 1)**
 - [x] ~~Corrigir `docs/VILIGION-apresentacao-time.pdf` (claim de ineditismo)~~ — já corrigido desde 2026-10-03, só estava desatualizado neste checklist.
@@ -126,4 +127,12 @@ Ordenado por prioridade real, não por ordem de lembrança. Cada bloco trava o p
 - [ ] Preencher campos obrigatórios: nome, descrição em inglês, trilha (Tempo), o que já existia antes de 14/09, GitHub (já público), equipe, localização, go-to-market.
 - [ ] Confirmar que todo o time já se inscreveu em colosseum.com.
 
-**Fora do escopo até 12/10, de propósito** (não vale começar antes da submissão): botão de testar alerta, recuperação de conta, página pública explicativa, KMS de produção, cobrança — todos já registrados como roadmap pós-hackathon na seção 0.
+**Fora do escopo até 12/10, de propósito** (não vale começar antes da submissão): recuperação de conta, login por carteira, KMS de produção, cobrança, refino de UI das telas internas — registrados em [`docs/PRODUCT-FEASIBILITY.md`](./PRODUCT-FEASIBILITY.md) (esforço/risco/impacto item a item) e [`docs/UI-DESIGN-STUDY.md`](./UI-DESIGN-STUDY.md). "Botão de testar alerta" e "página pública explicativa" saíram desta lista: **os dois já existem** (o botão desde 04/10; a landing redesenhada de 07/10 cumpre o papel da página explicativa).
+
+### Feito entre 07/10 e 09/10, fora do checklist original
+Registrado porque muda o que dá pra mostrar no vídeo e o que um jurado encontra no repo:
+- **Landing redesenhada e no ar** (identidade própria dark/cyan, diagrama de funcionamento, comparativo com os concorrentes, preview do painel).
+- **Bug de confiabilidade do monitor corrigido** (issue #8): `eth_getLogs` paginado na raiz + health check com notificação de operação. Era um erro reproduzível que podia sabotar justamente a demo do canal crítico.
+- **Passagem de honestidade nas promessas públicas**: README, `SECURITY.md`, `ARCHITECTURE.md` e a landing afirmavam KMS gerenciado, números virtuais dedicados e detecção de "padrões de transferência" — nenhum dos três existe. Corrigido onde um jurado lê, e o `VIDEO-SCRIPT.md` agora avisa pra não repetir as claims na câmera.
+- **Contagem de testes corrigida**: o vitest coletava também as cópias compiladas em `dist/`, dobrando tudo. Número real: **187 testes em 29 arquivos** (`vitest.config.ts`).
+- **Acordo de colaborador** (divisão de premiação, intenção de equity, assinatura EIP-191) — documento privado, com registro público de quem assinou em `docs/signatures/`.
