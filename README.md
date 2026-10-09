@@ -12,10 +12,10 @@ At the same time, linking a phone number to an on-chain balance creates a real, 
 
 ## What this project does
 
-1. **Monitors** TIP-20 addresses on Tempo (balance, `ReceivePolicyGuard`/TIP-403 events, transfer patterns) via direct RPC (Viem) as the primary source.
-2. **Detects** anomalies against per-user configurable thresholds (private, never hardcoded).
+1. **Monitors** TIP-20 addresses on Tempo (balance and `ReceivePolicyGuard`/TIP-403 blocked-transfer events) via direct RPC (Viem) as the primary source.
+2. **Detects** two event types against per-user configurable thresholds (private, never hardcoded): an abnormal balance drop inside a rolling window, and a blocked transfer above a configured amount. Statistical baselining of transfer *patterns* (z-score style) is roadmap, not built — see [`docs/PRODUCT-FEASIBILITY.md`](./docs/PRODUCT-FEASIBILITY.md).
 3. **Alerts** through two channels, chosen by severity: a critical anomaly goes out by **real phone call** (Twilio Programmable Voice); a normal anomaly goes out by **email** (no per-message cost, no carrier call-log retention problem — see `SECURITY.md`). Content is **always generic** on both channels — never reveals balance or address.
-4. **Protects the owner's identity**: proof of address ownership required at signup (EIP-191 signature); alert recipients (dedicated virtual phone numbers, never the owner's personal one, plus email) are registered separately, after login, and stored encrypted via managed KMS — never in plaintext alongside the monitored address.
+4. **Protects the owner's identity**: proof of address ownership required at signup (EIP-191 signature); alert recipients (phone numbers and emails) are registered separately, after login, and stored with AES-256-GCM envelope encryption — never in plaintext alongside the monitored address. Two honest caveats about this line, because the threat model depends on them: the product **does not provision virtual numbers** — registering a dedicated number instead of the owner's personal one is a recommendation we make, not something the code enforces or supplies; and the encryption key today comes from `LocalDevKeyProvider`, **not a managed KMS** ([issue #9](https://github.com/JefersonCruz/VILIGION/issues/9) tracks that swap, required before any real customer data).
 5. Full details (real balance, history) are only visible after dashboard authentication — never through the alert channel.
 
 ## What this project **doesn't** do (by security decision, not lack of time)
@@ -35,7 +35,7 @@ Detection Engine (EVM core + Tempo adapter)
 Privacy Layer (resolves address→contact, decides what can go out)
         │ generic payload
         ▼
-Delivery Layer (Twilio Voice)
+Delivery Layer (Twilio Voice / email by severity)
         │
         ▼
 Dashboard/Auth (full detail only after login)

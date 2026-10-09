@@ -13,7 +13,7 @@ Desde a última revisão deste roteiro (03/10), o produto avançou bastante:
 - **Registro dinâmico de monitor**: adicionar uma conta em `/accounts` sobe o monitoramento na hora, sem precisar reiniciar nada — dá pra mostrar isso ao vivo (cadastra → já está monitorando).
 - **Tutorial inline**: `/signup`, `/accounts`, `/thresholds` e `/recipients` agora explicam o que cada campo faz antes de preencher.
 - **Canal crítico com entrega real do PIN**: a ligação toca e o código de confirmação chega por WhatsApp de verdade (antes, o script da ligação prometia isso mas nada enviava) — **só mostre isso no vídeo depois de validar com uma conta Twilio real configurada** (ver checklist no fim deste arquivo).
-- **176 testes automatizados**, CI verde.
+- **187 testes automatizados**, CI verde.
 
 ⚠️ **Antes de gravar**: o deploy do Railway está atrasado em relação a tudo isso. Redeploy + nova migration primeiro (ver `docs/DEPLOYMENT.md`), senão a demo ao vivo mostra a versão antiga.
 
@@ -31,12 +31,12 @@ Este é o que os jurados veem primeiro. Foco: founder-market fit, insight, posic
 
 **[0:25–0:55] Por que as soluções existentes não resolvem — nomeie os concorrentes**
 - Hexagate, Elliptic, TRM Labs: institucional, ACV tipicamente > US$50k. Não é pra PME.
-- Cryptocurrency Alerting: já faz alerta por ligação, US$4–49/mês — mas não suporta Tempo, e não foi desenhado contra o risco de coação física (sem número virtual, sem conteúdo genérico, sem prova de propriedade).
+- Cryptocurrency Alerting: já faz alerta por ligação, US$4–49/mês — mas não suporta Tempo, e não foi desenhado contra o risco de coação física (sem política de conteúdo genérico no alerta, sem prova de propriedade do endereço, sem separação entre identidade e destinatário). **Não diga "número virtual dedicado" como nosso diferencial** — o produto não provisiona número nenhum, isso é recomendação de uso, e um jurado técnico derruba a claim na primeira pergunta.
 - **Diga isso explicitamente no vídeo.** Reconhecer concorrente de cabeça erguida pontua mais em "Insight" do que fingir que ninguém mais existe — e evita um jurado técnico derrubar a claim na primeira pergunta.
 
 **[0:55–1:30] O que o VILIGION faz diferente**
 - Monitora tesouraria TIP-20 na Tempo, detecta anomalia (queda de saldo real via `balanceOf` — já filtrando taxa de transação, que na Tempo sai do próprio token monitorado — e transferência bloqueada via `ReceivePolicyGuard`/TIP-403).
-- Alerta por severidade: crítico vai por ligação telefônica + WhatsApp com o código de confirmação, normal vai por e-mail — decisão de produto, não limitação técnica (explique o porquê: nem toda anomalia justifica o custo e a exposição de uma ligação).
+- Alerta por severidade: crítico vai por ligação telefônica (com código de confirmação), normal vai por e-mail — decisão de produto, não limitação técnica (explique o porquê: nem toda anomalia justifica o custo e a exposição de uma ligação). **Sobre o PIN**: a entrega por WhatsApp exige um template aprovado pela Twilio (`TWILIO_WHATSAPP_CONTENT_SID`), que hoje **não está configurado em produção** — sem ele o código é falado na própria ligação, que funciona e é perfeitamente demonstrável. Só prometa WhatsApp no vídeo se o template estiver aprovado e testado até a gravação.
 - Privacidade desde a concepção: conteúdo do alerta nunca revela saldo/endereço, destinatários de alerta criptografados (o próprio usuário cadastra pelo painel), prova de propriedade por assinatura, PIN de uso único com limite de tentativas.
 
 **[1:30–2:00] Plano de negócio, resumido**
@@ -73,7 +73,7 @@ Foco: provar que funciona contra dado real, não simulação — e agora dá pra
 - Se o canal crítico ainda não estiver validado com conta Twilio real na hora da gravação: narre com transparência — "ligação é reservada pra severidade crítica; aqui o sistema já loga que faria a chamada e enviaria o código por WhatsApp" — e mostre o log do `dispatchAlert` com a severidade e o canal escolhido.
 
 **[2:30–2:50] Fechamento**
-- "Core testado — 176 testes automatizados, CI rodando a cada commit, repositório público." (Mostrar rapidamente o terminal do `npx vitest run` passando é mais forte que só falar.)
+- "Core testado — 187 testes automatizados, CI rodando a cada commit, repositório público." (Mostrar rapidamente o terminal do `npx vitest run` passando é mais forte que só falar.)
 
 ---
 

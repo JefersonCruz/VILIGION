@@ -709,7 +709,7 @@ ${shareMeta(params.baseUrl)}
     <div class="security-icon">${ICON_LOCK_BIG}</div>
     <div style="flex:1 1 420px;">
       <h2 style="margin:0 0 14px;">Desenhado pra funcionar mesmo sob coação</h2>
-      <p class="muted" style="max-width:620px;">O conteúdo do alerta nunca revela saldo, endereço ou número de telefone. Destinatários usam números virtuais dedicados — nunca o telefone pessoal do dono — e ficam criptografados via KMS gerenciado, nunca em texto puro junto ao endereço monitorado.</p>
+      <p class="muted" style="max-width:620px;">O conteúdo do alerta nunca revela saldo, endereço ou número de telefone — isso é garantido por teste automatizado, não por revisão manual. Os destinatários são cadastrados depois do login, separados do endereço monitorado, e ficam criptografados (AES-256-GCM) — nunca em texto puro ao lado dele. Recomendamos usar um número dedicado em vez do telefone pessoal do dono; o produto não provisiona esse número pra você.</p>
       <div class="check-list">
         <div class="row">${ICON_CHECK}Nunca executa transação a partir de resposta por voz ou SMS</div>
         <div class="row">${ICON_CHECK}Não é produto de custódia — nunca guardamos sua chave privada</div>
@@ -728,7 +728,7 @@ ${shareMeta(params.baseUrl)}
         <tr><th></th><th class="them">Hexagate · Elliptic · TRM · Blockaid</th><th class="us">VILIGION</th></tr>
         <tr><td class="row-label">Público-alvo</td><td class="them">Equipes de segurança institucional</td><td class="us">Dono de PME sem equipe de segurança</td></tr>
         <tr><td class="row-label">Canal de alerta</td><td class="them">Dashboard, Slack, webhook</td><td class="us">Ligação + e-mail, por severidade</td></tr>
-        <tr><td class="row-label">Privacidade do destinatário</td><td class="them">Não é o foco do produto</td><td class="us">Número virtual dedicado + criptografia KMS</td></tr>
+        <tr><td class="row-label">Privacidade do destinatário</td><td class="them">Não é o foco do produto</td><td class="us">Conteúdo genérico por desenho + destinatário criptografado, separado do endereço</td></tr>
         <tr><td class="row-label">Custo e complexidade</td><td class="them">Alto, requer integração dedicada</td><td class="us">Cadastro direto, sem time dedicado</td></tr>
       </table>
     </div>

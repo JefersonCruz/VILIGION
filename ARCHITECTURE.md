@@ -16,7 +16,7 @@ Source of truth: direct RPC via Viem, not Tempo's Indexer API (which the officia
 Reorg protection: an alert only fires after a minimum confirmation depth.
 
 ### 2. `/privacy` — Privacy layer
-- `encryption.ts` — encryption method for the phone↔address link (AES), publicly documented; the **key** lives in managed KMS (never in the same environment as the database).
+- `encryption.ts` — envelope encryption (AES-256-GCM) for the phone↔address link, method publicly documented. **Intended** design: the key-wrapping key lives in a managed KMS, never in the same environment as the database. **Today it does not**: `LocalDevKeyProvider` reads that key from an environment variable in the same deployment as the app (see "Architecture gaps" below and [issue #9](https://github.com/JefersonCruz/VILIGION/issues/9)) — required before any real customer data.
 - `ownership-proof.ts` — requires a signature (`signMessage`/`recoverAddress` via Viem) at signup, proving whoever registers the phone number actually controls the address.
 - `alert-content-policy.ts` — hard rule: no monetary value or address ever goes out in voice/SMS alert content, under any circumstance.
 

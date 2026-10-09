@@ -180,7 +180,7 @@ Manual (antes do deploy): abrir a tela, trocar de perfil, editar campo → "Pers
 - [x] Nenhum conjunto incoerente é gravado (teste automatizado).
 - [x] Dreno gradual é detectado (teste automatizado).
 - [x] Campos de transferência bloqueada em US$, sem unidade crua na tela.
-- [x] Suíte completa passa (176 testes) e `tsc` sem erro.
+- [x] Suíte completa passa (187 testes, contagem corrigida em 2026-10-08) e `tsc` sem erro.
 - [ ] Deploy feito com `railway up -s viligion-app --detach` e `/thresholds` verificado em produção.
 - [ ] `BUSINESS-PLAN.md` e `ARCHITECTURE.md` refletem a nova contagem de testes e a janela deslizante.
 
