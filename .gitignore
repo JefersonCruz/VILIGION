@@ -21,3 +21,4 @@ CONTRIBUTOR-AGREEMENT.md
 *.log
 .DS_Store
 coverage/
+.tmp-*
