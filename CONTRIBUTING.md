@@ -18,7 +18,53 @@ This project has two parts with different rules:
 
 ## Running locally
 
-(to be filled in once the final setup is settled: Tempo's Moderato testnet, a trial Twilio account, required environment variables)
+Requires Node.js 20+.
+
+```bash
+git clone https://github.com/JefersonCruz/VILIGION.git
+cd VILIGION
+npm install
+cp .env.example .env
+npm test        # should pass with zero setup - confirms your clone is sound before touching env vars
+```
+
+### Fastest path: demo mode, no database
+
+Fill in just these three variables in `.env` (see `.env.example` for the full list and why each one matters):
+
+```
+TEMPO_RPC_URL=https://rpc.moderato.tempo.xyz
+TEMPO_CHAIN_ID=42431
+DEMO_WATCHED_ADDRESS=0x0000000000000000000000000000000000dEaD
+```
+
+`DEMO_WATCHED_ADDRESS` can be any address - the engine will just watch its real TIP-20 balance on Tempo's public Moderato testnet, no account or faucet needed to observe it. Then:
+
+```bash
+npm run dev
+```
+
+The console prints a demo login (username, password, TOTP secret) the moment the server starts - use it at `http://localhost:3000/login`. Twilio and SMTP are intentionally optional here: without them, alerts just print to the console instead of actually calling or emailing anyone (see `SECURITY.md` for why this is a deliberate product decision, not a missing feature).
+
+### Full setup: with Postgres (multi-user portal, dynamic account registration)
+
+Add `DATABASE_URL` (any Postgres 14+ works; Railway/Neon/Supabase all have a free tier) and `ENCRYPTION_KEY_KMS_ARN` (generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` - this is a dev-only stand-in for a real KMS key, see issue #9), then:
+
+```bash
+npm run migrate   # applies privacy/mapping-schema.sql
+npm run dev
+```
+
+Sign up a real account at `/signup` instead of using the printed demo login.
+
+### Verifying a change before opening a PR
+
+```bash
+npm test                              # full suite
+npx tsc -p tsconfig.json --noEmit     # typecheck - CI runs both, catches most issues locally first
+```
+
+For anything touching chain interaction specifically, `scripts/verify-testnet.ts` confirms your change still decodes real events against Tempo's Moderato testnet, not just mocked data.
 
 ## Reporting bugs vs. security vulnerabilities
 
