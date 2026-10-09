@@ -14,7 +14,7 @@
 - **Pitch**: já corrigido de uma claim de "ineditismo" que não se sustentava — `docs/VILIGION-apresentacao-time.pdf` já tem essa correção desde 2026-10-03, mas sua tabela de status (seção 4.6) ficou desatualizada frente a tudo construído depois; vale atualizar antes de usar o deck de novo.
 - **Mercado**: a chain Tempo tem ~7 meses de existência (mainnet 18/03/2026). Não validamos ainda quantos negócios reais mantêm tesouraria TIP-20 nela hoje.
 - **Cobrança**: modelo decidido (mensal, sem anual por enquanto; TIP-20 nativo, não "qualquer cripto" — ver seção 1.3), mas **nenhum código de cobrança implementado de propósito** — depende da empresa estar formalizada primeiro (seção 3).
-- **Roadmap registrado, não construído ainda**: canal de push via PWA e nudge (som/vibração distintos por tipo de alerta), botão de "testar alerta", recuperação de conta (senha/TOTP perdidos), página pública explicativa antes do `/signup`, KMS de produção (hoje `LocalDevKeyProvider`, documentado como dev-only) — ver `ARCHITECTURE.md`. Avaliados e adiados conscientemente pra depois do prazo de submissão.
+- **Roadmap registrado, não construído ainda**: canal de push via PWA e nudge (som/vibração por tipo de alerta), recuperação de conta (senha/TOTP perdidos), login opcional por carteira, KMS de produção (hoje `LocalDevKeyProvider`, dev-only), refino de UI das telas internas — priorizados item a item em [`docs/PRODUCT-FEASIBILITY.md`](./PRODUCT-FEASIBILITY.md) e [`docs/UI-DESIGN-STUDY.md`](./UI-DESIGN-STUDY.md). Adiados conscientemente pra depois da submissão. *(Correção 2026-10-09: "botão de testar alerta" e "página pública explicativa" saíram desta lista — ambos já existem.)*
 
 ## 1. Modelo de negócio
 
