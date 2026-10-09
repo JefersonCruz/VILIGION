@@ -187,6 +187,7 @@ async function route(
     return send(res, 200, landingPage({ joined: url.includes("ok=1"), baseUrl: publicBaseUrl(), contributors: getContributors() }));
   }
   if (req.method === "GET" && path === "/og-image.png") return serveOgImage(res);
+  if (req.method === "GET" && path === "/healthz") return handleHealthz(res);
   if (req.method === "POST" && path === "/waitlist") return handleWaitlistSignup(req, res, deps, waitlistLimiter);
   if (req.method === "GET" && path === "/admin/waitlist") return handleWaitlistExport(req, res, deps);
   if (req.method === "GET" && path === "/admin/status") return handleAdminStatus(req, res, deps);
@@ -302,6 +303,19 @@ async function handleWaitlistSignup(
   const result = await deps.waitlist.add({ email, profile, note });
   console.log(`[waitlist] inscrição ${result} (perfil=${profile})`);
   redirect(res, "/?ok=1#lista");
+}
+
+const PROCESS_STARTED_AT = Date.now();
+
+/**
+ * Sem autenticação, de propósito: feito pra um monitor de uptime externo
+ * (UptimeRobot, Betterstack...) checar "o site está no ar?" sem precisar do
+ * token admin - não devolve nada sensível, só confirma que o processo está
+ * respondendo e há quanto tempo.
+ */
+function handleHealthz(res: ServerResponse): void {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ status: "ok", uptimeSeconds: Math.floor((Date.now() - PROCESS_STARTED_AT) / 1000) }));
 }
 
 /**

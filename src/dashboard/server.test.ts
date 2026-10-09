@@ -169,4 +169,13 @@ describe("dashboard server - registro dinâmico de monitor", () => {
     expect(res.status).toBe(302);
     expect(monitorControl.stopped).toHaveLength(0);
   });
+
+  it("GET /healthz responde 200 sem precisar de sessão nem token admin (pra monitor de uptime externo)", async () => {
+    const res = await fetch(`${baseUrl}/healthz`);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ status: "ok" });
+    expect(typeof body.uptimeSeconds).toBe("number");
+  });
 });
