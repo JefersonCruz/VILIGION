@@ -1,5 +1,7 @@
 # Contributing
 
+New here? Start with [`docs/TEAM-PLAYBOOK.md`](./docs/TEAM-PLAYBOOK.md) — roles, where to see the project's current state, which communication channel is for what (and what is never asked on any of them), and the tools that already exist. This file covers the technical rules only.
+
 ## Before anything
 
 This project has two parts with different rules:
