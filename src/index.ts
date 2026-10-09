@@ -460,6 +460,42 @@ async function mainWithDatabase(databaseUrl: string) {
     },
   };
 
+  /**
+   * Snapshot de observabilidade pro admin (`/admin/status`, protegido por
+   * WAITLIST_ADMIN_TOKEN). Sempre busca do banco na hora - nunca reusa
+   * `allAccounts` do boot, que fica velho assim que alguém adiciona/remove
+   * conta pelo painel.
+   */
+  async function adminStatus() {
+    const [accounts, totalUsers, alertsLast24h, recentAlerts] = await Promise.all([
+      monitoredAccounts.listAll(),
+      dashboardUsers.count(),
+      alertLog.countSince(24),
+      alertLog.recentAll(30),
+    ]);
+
+    const monitors = accounts.map((account) => ({
+      accountId: account.id,
+      userId: account.userId,
+      chainKey: account.chainKey,
+      watchedAddress: account.watchedAddress,
+      health: liveMonitors.get(account.id)?.getHealthStatus() ?? { running: false, consecutiveFailures: 0, lastError: "monitor não está na memória (reinício recente?)", lastCheckedBlock: null },
+    }));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totals: {
+        users: totalUsers,
+        monitoredAccounts: accounts.length,
+        liveMonitors: liveMonitors.size,
+        unhealthyMonitors: monitors.filter((m) => m.health.consecutiveFailures > 0).length,
+        alertsLast24h,
+      },
+      monitors,
+      recentAlerts,
+    };
+  }
+
   startCombinedServer(
     pinStore,
     (alertId, result) => {
@@ -478,6 +514,7 @@ async function mainWithDatabase(databaseUrl: string) {
       waitlist: new PostgresWaitlistRepository(pool),
       testAlert: (userId) =>
         makeDispatcher(userId)({ kind: "balance-drop", userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
+      adminStatus,
     },
   );
 }

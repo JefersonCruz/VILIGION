@@ -122,6 +122,8 @@ export interface DashboardServerDeps {
   testAlert?: (userId: string) => Promise<void>;
   /** Lista de espera da landing pública (/ e /waitlist). Sem isto a raiz volta a redirecionar pro login. */
   waitlist?: WaitlistPort;
+  /** Snapshot de observabilidade pro painel admin (`/admin/status`) - ver index.ts. Sem isto, a rota responde 404. */
+  adminStatus?: () => Promise<unknown>;
 }
 
 const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
@@ -187,6 +189,7 @@ async function route(
   if (req.method === "GET" && path === "/og-image.png") return serveOgImage(res);
   if (req.method === "POST" && path === "/waitlist") return handleWaitlistSignup(req, res, deps, waitlistLimiter);
   if (req.method === "GET" && path === "/admin/waitlist") return handleWaitlistExport(req, res, deps);
+  if (req.method === "GET" && path === "/admin/status") return handleAdminStatus(req, res, deps);
   if (req.method === "GET" && url === "/signup") return renderSignupPage(res);
   if (req.method === "POST" && url === "/signup") return handleSignup(req, res, deps.signup);
   if (req.method === "GET" && url === "/login") return send(res, 200, loginPage({}));
@@ -301,24 +304,62 @@ async function handleWaitlistSignup(
   redirect(res, "/?ok=1#lista");
 }
 
-/** Exporta as inscrições em JSON. Só habilitado com WAITLIST_ADMIN_TOKEN definido; sem ele a rota responde 404. */
-async function handleWaitlistExport(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps): Promise<void> {
+/**
+ * Autenticação de toda rota /admin/* - mesmo token pras duas rotas
+ * (WAITLIST_ADMIN_TOKEN, nome histórico de quando só existia a exportação
+ * da waitlist; agora gira observabilidade também, mas reusar evita precisar
+ * de uma variável nova na Railway pra isso funcionar hoje). `true` = pode
+ * seguir; `false` = a função já escreveu a resposta de erro (404 sem token
+ * configurado - não revela que a rota existe -, 401 com token errado).
+ */
+function checkAdminAuth(req: IncomingMessage, res: ServerResponse): boolean {
   const token = process.env.WAITLIST_ADMIN_TOKEN;
-  if (!token || !deps.waitlist) {
+  if (!token) {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Não encontrado.");
-    return;
+    return false;
   }
   const provided = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
   const expected = Buffer.from(token);
   if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
     res.writeHead(401, { "Content-Type": "text/plain" });
     res.end("Não autorizado.");
+    return false;
+  }
+  return true;
+}
+
+/** Exporta as inscrições em JSON. Só habilitado com WAITLIST_ADMIN_TOKEN definido; sem ele a rota responde 404. */
+async function handleWaitlistExport(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps): Promise<void> {
+  if (!checkAdminAuth(req, res)) return;
+  if (!deps.waitlist) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Não encontrado.");
     return;
   }
   const entries = await deps.waitlist.list();
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ total: entries.length, entries }));
+}
+
+/**
+ * Painel de observabilidade interna: contagens gerais, saúde ao vivo de
+ * cada monitor ativo (sem precisar vasculhar log) e os alertas mais
+ * recentes entre todos os usuários - pra administrador diagnosticar ou dar
+ * suporte sem precisar abrir o painel da Railway toda vez. Mesma auth de
+ * /admin/waitlist; 404 se ADMIN_STATUS não estiver configurado em index.ts
+ * (ex: modo demo sem Postgres).
+ */
+async function handleAdminStatus(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps): Promise<void> {
+  if (!checkAdminAuth(req, res)) return;
+  if (!deps.adminStatus) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Não encontrado.");
+    return;
+  }
+  const snapshot = await deps.adminStatus();
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(snapshot, null, 2));
 }
 
 // --- Cadastro ---

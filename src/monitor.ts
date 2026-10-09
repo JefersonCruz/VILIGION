@@ -63,6 +63,7 @@ export class Monitor {
   private lastCheckedBlock: bigint | null = null;
   private running = false;
   private consecutiveFailures = 0;
+  private lastError: unknown = null;
 
   constructor(
     private readonly adapter: EvmAdapter,
@@ -83,10 +84,14 @@ export class Monitor {
           console.log(`[monitor] recuperado depois de ${this.consecutiveFailures} falha(s) consecutiva(s)`);
         }
         this.consecutiveFailures = 0;
+        // lastError NÃO é limpo aqui de propósito - "recuperado, mas o
+        // último erro foi X há pouco" é informação útil pro painel admin;
+        // sumir com isso silenciosamente esconderia instabilidade recente.
       } catch (err) {
         // um erro de leitura não deve derrubar o monitor inteiro - loga e
         // tenta de novo no próximo ciclo.
         this.consecutiveFailures++;
+        this.lastError = err;
         console.error(`[monitor] erro no ciclo de verificação (falha consecutiva #${this.consecutiveFailures}):`, err);
 
         if (this.onUnhealthy && this.consecutiveFailures % UNHEALTHY_AFTER_CONSECUTIVE_FAILURES === 0) {
@@ -104,6 +109,16 @@ export class Monitor {
 
   stop(): void {
     this.running = false;
+  }
+
+  /** Leitura pura de estado, sem efeito colateral - usada pelo painel admin (`/admin/status`) pra observabilidade. */
+  getHealthStatus(): { running: boolean; consecutiveFailures: number; lastError: string | null; lastCheckedBlock: string | null } {
+    return {
+      running: this.running,
+      consecutiveFailures: this.consecutiveFailures,
+      lastError: this.lastError === null ? null : describeError(this.lastError),
+      lastCheckedBlock: this.lastCheckedBlock === null ? null : this.lastCheckedBlock.toString(),
+    };
   }
 
   private async resolveThresholds(): Promise<UserThresholds> {
@@ -188,4 +203,10 @@ export class Monitor {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Resumo de 1 linha de um erro desconhecido - pro painel admin, nunca o stack inteiro (isso já vai pro log do Railway). */
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
 }

@@ -98,6 +98,12 @@ export class PostgresDashboardUserRepository implements UserRepository {
       [input.userId, input.username, input.passwordHash, input.totpSecret],
     );
   }
+
+  /** Só contagem, pro painel admin (`/admin/status`) - nunca lista username/senha de todo mundo. */
+  async count(): Promise<number> {
+    const result = await this.db.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM dashboard_users`);
+    return Number(result.rows[0]?.count ?? 0);
+  }
 }
 
 export class PostgresThresholdsRepository {
@@ -344,6 +350,43 @@ export class PostgresAlertLog {
       [userId, limit],
     );
     return result.rows.map((row) => ({ kind: row.kind, createdAt: row.created_at }));
+  }
+
+  /** Visão entre todos os usuários, pro painel admin - inclui user_id (userId é um uuid, não dado pessoal). */
+  async recentAll(limit = 50): Promise<
+    Array<{ alertId: string; userId: string; kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: Date }>
+  > {
+    const result = await this.db.query<{
+      alert_id: string;
+      user_id: string;
+      kind: string;
+      severity: string;
+      delivered_via: string;
+      pin_status: string | null;
+      created_at: Date;
+    }>(
+      `SELECT alert_id, user_id, kind, severity, delivered_via, pin_status, created_at
+       FROM alert_log ORDER BY created_at DESC LIMIT $1`,
+      [limit],
+    );
+    return result.rows.map((row) => ({
+      alertId: row.alert_id,
+      userId: row.user_id,
+      kind: row.kind,
+      severity: row.severity,
+      deliveredVia: row.delivered_via,
+      pinStatus: row.pin_status,
+      createdAt: row.created_at,
+    }));
+  }
+
+  /** Quantos alertas desde N horas atrás - sinal rápido de "o sistema está disparando alertas" pro painel admin. */
+  async countSince(hoursAgo: number): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM alert_log WHERE created_at > now() - ($1 || ' hours')::interval`,
+      [hoursAgo],
+    );
+    return Number(result.rows[0]?.count ?? 0);
   }
 
   /** Versão completa pra tela de histórico (UI-SPEC.md item 4) - inclui severidade, canal e status do PIN. */

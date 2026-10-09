@@ -418,4 +418,38 @@ describe("Monitor", () => {
     // mesmo com o notificador explodindo, o monitor continuou rodando depois da recuperação
     expect(dispatched.some((e) => e.kind === "balance-drop")).toBe(true);
   });
+
+  it("getHealthStatus() reflete falha consecutiva e o último erro, pro painel admin", async () => {
+    const adapter = new FakeFailingAdapter(2, [1000n, 1000n, 1000n], 2);
+    const monitor = new Monitor(adapter, { address: TEST_ADDRESS, thresholds, pollIntervalMs: 1 }, async () => {});
+    adapter.monitor = monitor;
+
+    await monitor.start();
+
+    const status = monitor.getHealthStatus();
+    expect(status.consecutiveFailures).toBeGreaterThan(0);
+    expect(status.lastError).toMatch(/RPC fora do ar/);
+    expect(status.running).toBe(false); // adapter já mandou monitor.stop()
+  });
+
+  it("getHealthStatus() continua reportando o último erro mesmo depois de recuperado (não esconde instabilidade recente)", async () => {
+    const adapter = new FakeFailingAdapter(2, [1000n, 1000n, 1000n, 1000n], 5);
+    const monitor = new Monitor(adapter, { address: TEST_ADDRESS, thresholds, pollIntervalMs: 1 }, async () => {});
+    adapter.monitor = monitor;
+
+    await monitor.start();
+
+    const status = monitor.getHealthStatus();
+    expect(status.consecutiveFailures).toBe(0); // recuperado
+    expect(status.lastError).toMatch(/RPC fora do ar/); // mas o histórico recente continua visível
+  });
+
+  it("getHealthStatus() de um monitor que nunca rodou: sem falha, sem bloco verificado ainda", () => {
+    const adapter = new FakeAdapter([1000n]);
+    const monitor = new Monitor(adapter, { address: TEST_ADDRESS, thresholds, pollIntervalMs: 1000 }, async () => {});
+
+    const status = monitor.getHealthStatus();
+
+    expect(status).toEqual({ running: false, consecutiveFailures: 0, lastError: null, lastCheckedBlock: null });
+  });
 });

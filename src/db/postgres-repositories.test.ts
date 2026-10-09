@@ -145,6 +145,13 @@ describe("PostgresDashboardUserRepository", () => {
 
     expect(db.lastParams).toEqual(["u1", "dono", "hash", "secret"]);
   });
+
+  it("count() devolve número, não string - mesmo o Postgres retornando texto", async () => {
+    const db = fakeDb([{ count: "7" }]);
+    const repo = new PostgresDashboardUserRepository(db);
+
+    expect(await repo.count()).toBe(7);
+  });
 });
 
 describe("PostgresThresholdsRepository", () => {
@@ -230,6 +237,42 @@ describe("PostgresAlertLog", () => {
         createdAt: new Date("2026-10-03T00:00:00Z"),
       },
     ]);
+  });
+
+  it("recentAll() traz userId junto (painel admin vê entre todos os usuários, sem filtrar por um só)", async () => {
+    const db = fakeDb([
+      {
+        alert_id: "a1",
+        user_id: "u-qualquer",
+        kind: "transfer-blocked",
+        severity: "critical",
+        delivered_via: "voice",
+        pin_status: null,
+        created_at: new Date("2026-10-09T00:00:00Z"),
+      },
+    ]);
+    const log = new PostgresAlertLog(db);
+
+    expect(await log.recentAll(30)).toEqual([
+      {
+        alertId: "a1",
+        userId: "u-qualquer",
+        kind: "transfer-blocked",
+        severity: "critical",
+        deliveredVia: "voice",
+        pinStatus: null,
+        createdAt: new Date("2026-10-09T00:00:00Z"),
+      },
+    ]);
+    expect(db.lastSql).not.toMatch(/WHERE/); // sem filtro de usuário, de propósito
+  });
+
+  it("countSince() devolve número a partir do texto que o Postgres retorna", async () => {
+    const db = fakeDb([{ count: "12" }]);
+    const log = new PostgresAlertLog(db);
+
+    expect(await log.countSince(24)).toBe(12);
+    expect(db.lastParams).toEqual([24]);
   });
 });
 
