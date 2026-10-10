@@ -6,7 +6,7 @@ Built for the **Crypto World's Fair** hackathon (Colosseum), **Tempo** track.
 
 ## The problem
 
-Business owners who receive/hold stablecoin in on-chain treasuries on Tempo have no way to know, in real time, when something falls outside the norm — a sudden balance drop, a transfer blocked by a receive policy, out-of-pattern activity — unless they're watching a dashboard all day. Existing monitoring tools (Hexagate, Elliptic, TRM Labs, Blockaid) are built for institutional security teams, not for an SMB owner without one.
+Business owners who receive/hold stablecoin in on-chain treasuries on Tempo have no way to know, in real time, when something falls outside the norm — a sudden balance drop, a transfer blocked by a receive policy — unless they're watching a dashboard all day. Existing monitoring tools (Hexagate, Elliptic, TRM Labs, Blockaid) are built for institutional security teams, not for an SMB owner without one.
 
 At the same time, linking a phone number to an on-chain balance creates a real, documented risk: physical attacks tied to crypto ownership ("wrench attacks") grew more than 33% year-over-year in 2026 (CertiK), with more than $30M stolen in the first half alone (Chainalysis).
 
