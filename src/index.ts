@@ -65,6 +65,22 @@ function requireEnv(name: string): string {
 }
 
 /**
+ * placeAlertCall usa Promise.allSettled por design (uma falha não derruba as
+ * outras tentativas), o que significa que ninguém via a falha em lugar
+ * nenhum antes desta função existir - achado de produção em 2026-10-10:
+ * conta trial da Twilio rejeitou a ligação (número de destino não
+ * verificado) e isso nunca apareceu em log nem no painel admin.
+ */
+function logDeliveryFailures(alertId: string, channel: string, results: PromiseSettledResult<unknown>[]): void {
+  for (const result of results) {
+    if (result.status === "rejected") {
+      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      console.error(`[alerta] alertId=${alertId}: falha ao entregar por ${channel}: ${reason}`);
+    }
+  }
+}
+
+/**
  * Twilio fica OPCIONAL de propósito - decisão de produto: ligação telefônica
  * é o canal de severidade "critical", e custa dinheiro + fica registrada na
  * operadora por anos (ver SECURITY.md). Até configurar uma conta Twilio de
@@ -237,7 +253,9 @@ async function mainDemo() {
 
       if (voiceClient) {
         const toNumbers = (await recipients.listForUser(thresholds.userId)).filter((r) => r.kind === "phone").map((r) => r.value);
-        await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
+        const { callResults, whatsappResults } = await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
+        logDeliveryFailures(alertId, "ligação", callResults);
+        logDeliveryFailures(alertId, "WhatsApp", whatsappResults);
       } else {
         console.log("[alerta] ligação NÃO disparada - Twilio ainda não configurado (ver .env.example)");
       }
@@ -392,7 +410,25 @@ async function mainWithDatabase(databaseUrl: string) {
         pinStore.set(alertId, pending);
         if (voiceClient) {
           const toNumbers = (await recipientsRepo.listForUser(userId)).filter((r) => r.kind === "phone").map((r) => r.value);
-          await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
+          if (toNumbers.length === 0) {
+            console.error(`[alerta] alertId=${alertId}: nenhum telefone cadastrado, ligação não tem pra onde ir`);
+            await alertLog.updatePinStatus(alertId, "delivery-failed-no-recipient");
+            return;
+          }
+          const { callResults, whatsappResults } = await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
+          logDeliveryFailures(alertId, "ligação", callResults);
+          logDeliveryFailures(alertId, "WhatsApp", whatsappResults);
+          // Achado de produção 2026-10-10: placeAlertCall usa Promise.allSettled
+          // de propósito (uma falha não deve derrubar o resto), mas isso
+          // significa que ninguém via a falha em lugar nenhum antes desta
+          // correção - um erro de conta trial da Twilio (número não
+          // verificado) ficava completamente invisível, inclusive no painel
+          // admin. Se TODAS as tentativas de ligação falharam, registra isso
+          // no pin_status - o /admin/status e o histórico de alertas do
+          // próprio usuário passam a mostrar a falha, não um silêncio eterno.
+          if (callResults.length > 0 && callResults.every((r) => r.status === "rejected")) {
+            await alertLog.updatePinStatus(alertId, "delivery-failed");
+          }
         } else {
           console.log("[alerta] ligação NÃO disparada - Twilio ainda não configurado");
         }
