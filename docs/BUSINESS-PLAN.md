@@ -95,6 +95,7 @@ Uma empresa grande teria times dedicados de compliance, jurídico, vendas e segu
 | Núcleo nunca testado em rede real até o deadline | Alto — critério "Functionality" | Prioridade #1 desta semana, antes de qualquer polimento de pitch |
 | Founder solo sem backup técnico ou comercial | Médio | Documentação extensa já reduz risco de "bus factor"; buscar cofounder só depois de validação, não antes |
 | Dependência de Twilio como canal único de alerta | Médio | Já mitigado por desenho — múltiplos destinatários; redundância de canal (PWA push) é roadmap pós-hackathon, não prioridade agora |
+| Fricção de cadastro (carteira + TOTP obrigatórios) nunca medida com usuário real | Médio — pode ser maior barreira de entrada do que o pitch assume | Não mexer na lógica de segurança perto do deadline; validar com pergunta direta nas entrevistas da Fase 1 (ver `docs/FASE1-INTERVIEW-SCRIPT.md`, seção 4) em vez de adivinhar ou instrumentar sob pressão de prazo |
 
 ## 5. Métricas de sucesso por fase
 
