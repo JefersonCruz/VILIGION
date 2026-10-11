@@ -40,9 +40,21 @@ PORT=3000
 PUBLIC_BASE_URL=https://<domínio público gerado no Passo 5>
 
 # Twilio e SMTP - opcionais (ver ARCHITECTURE.md sobre por quê), preencher quando configurar
+
+# Web Push - canal crítico SEM número de telefone (opcional, mesma lógica).
+# Gere o par UMA VEZ por ambiente: npx tsx scripts/generate-vapid-keys.ts
+# Trocar o par depois obriga todo dispositivo já inscrito a se registrar de novo.
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:<seu e-mail de contato>
 ```
 
 `DATABASE_URL` não entra na lista — já veio do Passo 3.
+
+> **Push depende do Passo 6.** O canal por push grava destinatário com
+> `kind='push'`, e a constraint antiga de `alert_recipients` só aceitava
+> `'phone'` e `'email'`. Num banco que já existe, rodar a migration de novo é
+> obrigatório — ver a nota no Passo 6.
 
 ## Passo 5 — Gerar o domínio público
 
@@ -51,6 +63,15 @@ PUBLIC_BASE_URL=https://<domínio público gerado no Passo 5>
 ## Passo 6 — Rodar a migration
 
 Schema em `privacy/mapping-schema.sql`, aplicado via `scripts/migrate.ts`. Rode da sua máquina, contra o banco já hospedado:
+
+> **Rodar de novo num banco que já existe é necessário, não opcional** (desde 2026-10-11).
+> O `migrate.ts` reescreve `CREATE TABLE` para `CREATE TABLE IF NOT EXISTS`, então numa
+> tabela que já existe a definição nova é ignorada por inteiro — inclusive a constraint.
+> Por isso o schema termina com `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` +
+> `ADD CONSTRAINT`, idempotente, que libera `kind='push'` em `alert_recipients`.
+> **Sem isso, registrar um dispositivo falha com constraint violation em produção
+> e passa em qualquer teste com banco novo** — exatamente a classe de bug que só
+> aparece no ambiente real.
 
 ```bash
 npm install -g @railway/cli   # uma vez só

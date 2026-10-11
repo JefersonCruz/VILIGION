@@ -20,6 +20,9 @@ import { verifyTotp } from "./totp.js";
 import { renderOtpQrSvg } from "./otp-qr.js";
 import { RateLimiter } from "./rate-limiter.js";
 import { isValidEmail, isValidPhone } from "./recipient-validation.js";
+import { describePushSubscription, parsePushSubscription } from "./push-subscription.js";
+import { manifestJson, serviceWorkerSource } from "./pwa-assets.js";
+import { LOGO_ICON_DATA_URI } from "./logo-assets.js";
 import { SessionStore } from "./session.js";
 import { buildExpiredSessionCookie, buildSessionCookie, parseCookies } from "./cookies.js";
 import { getContributors } from "./contributors.js";
@@ -89,7 +92,7 @@ export interface ThresholdsPort {
   upsert(thresholds: UserThresholds): Promise<void>;
 }
 
-export type RecipientKind = "phone" | "email";
+export type RecipientKind = "phone" | "email" | "push";
 
 /** Destinatários de alerta cadastrados pelo usuário - substitui as env vars compartilhadas DEMO_ALERT_NUMBERS/DEMO_ALERT_EMAILS (ver index.ts). */
 export interface RecipientsPort {
@@ -124,6 +127,13 @@ export interface DashboardServerDeps {
   waitlist?: WaitlistPort;
   /** Snapshot de observabilidade pro painel admin (`/admin/status`) - ver index.ts. Sem isto, a rota responde 404. */
   adminStatus?: () => Promise<unknown>;
+  /**
+   * Chave VAPID pública do Web Push (canal crítico sem número de telefone).
+   * Sem isto, /push/* responde 404 e a tela de destinatários não oferece a
+   * opção - mesmo padrão de `testAlert`: capacidade ausente não aparece na UI
+   * em vez de aparecer e falhar.
+   */
+  pushPublicKey?: string;
 }
 
 const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
@@ -188,6 +198,14 @@ async function route(
   }
   if (req.method === "GET" && path === "/og-image.png") return serveOgImage(res);
   if (req.method === "GET" && path === "/healthz") return handleHealthz(res);
+  // PWA: o service worker precisa ser servido da raiz pra ter escopo "/".
+  if (req.method === "GET" && path === "/sw.js") return serveServiceWorker(res);
+  if (req.method === "GET" && path === "/manifest.json") return serveManifest(res);
+  if (req.method === "GET" && path === "/icon.png") return serveAppIcon(res);
+  if (req.method === "GET" && path === "/push/config") return handlePushConfig(res, deps);
+  if (req.method === "POST" && path === "/push/subscribe") {
+    return withSession(req, res, sessions, (userId) => handlePushSubscribe(req, res, deps, userId));
+  }
   if (req.method === "POST" && path === "/waitlist") return handleWaitlistSignup(req, res, deps, waitlistLimiter);
   if (req.method === "GET" && path === "/admin/waitlist") return handleWaitlistExport(req, res, deps);
   if (req.method === "GET" && path === "/admin/status") return handleAdminStatus(req, res, deps);
@@ -316,6 +334,94 @@ const PROCESS_STARTED_AT = Date.now();
 function handleHealthz(res: ServerResponse): void {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ status: "ok", uptimeSeconds: Math.floor((Date.now() - PROCESS_STARTED_AT) / 1000) }));
+}
+
+// --- PWA / Web Push (canal crítico sem número de telefone, ver alerts/web-push.ts) ---
+
+/**
+ * `Service-Worker-Allowed: /` é o que permite escopo de raiz. Sem cache: o
+ * worker não guarda nada, então revalidar sempre evita ficar com uma versão
+ * velha do handler de push num dispositivo já inscrito.
+ */
+function serveServiceWorker(res: ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Service-Worker-Allowed": "/",
+    "Cache-Control": "no-cache",
+  });
+  res.end(serviceWorkerSource());
+}
+
+function serveManifest(res: ServerResponse): void {
+  res.writeHead(200, { "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "public, max-age=3600" });
+  res.end(manifestJson({ iconPath: "/icon.png" }));
+}
+
+let appIconCache: Buffer | undefined;
+
+/** Mesmo PNG já embutido em logo-assets.ts, servido como arquivo porque manifest de PWA não aceita data URI de forma confiável. */
+function serveAppIcon(res: ServerResponse): void {
+  appIconCache ??= Buffer.from(LOGO_ICON_DATA_URI.replace(/^data:image\/png;base64,/, ""), "base64");
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": appIconCache.length, "Cache-Control": "public, max-age=3600" });
+  res.end(appIconCache);
+}
+
+/** A chave VAPID pública é pública por definição (vai em todo envio) - serve aqui pra permitir rotação sem rebuild do front. */
+function handlePushConfig(res: ServerResponse, deps: DashboardServerDeps): void {
+  if (!deps.pushPublicKey) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "push não configurado" }));
+    return;
+  }
+  res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify({ publicKey: deps.pushPublicKey }));
+}
+
+/**
+ * Guarda a inscrição como destinatário kind='push' - MESMA tabela e MESMA
+ * criptografia de telefone/e-mail, de propósito: um endpoint de push é uma
+ * capacidade (quem tem, notifica o dispositivo), não merece tratamento mais
+ * frouxo que um telefone.
+ *
+ * Responde JSON (não redirect) porque quem chama é o fetch de
+ * pwa-assets.ts#pushEnrollScript, não um formulário HTML.
+ */
+async function handlePushSubscribe(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deps: DashboardServerDeps,
+  userId: string,
+): Promise<void> {
+  if (!deps.pushPublicKey) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "push não configurado" }));
+    return;
+  }
+
+  const raw = await readJsonBody(req);
+  const subscription = parsePushSubscription(JSON.stringify(raw));
+  if (!subscription) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "inscrição de push inválida" }));
+    return;
+  }
+
+  // Idempotência por dispositivo: o navegador reemite a MESMA inscrição se o
+  // usuário clicar de novo, e sem isto a lista encheria de duplicata que o
+  // usuário não distingue (todas aparecem só pelo host).
+  const existing = await deps.recipients.listForUser(userId);
+  const already = existing.some((r) => r.kind === "push" && safeEndpointOf(r.value) === subscription.endpoint);
+  if (!already) {
+    await deps.recipients.add({ userId, kind: "push", value: JSON.stringify(subscription) });
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ status: "ok" }));
+}
+
+/** Lê o endpoint de um valor guardado sem deixar JSON corrompido derrubar a rota. */
+function safeEndpointOf(storedValue: string): string | null {
+  return parsePushSubscription(storedValue)?.endpoint ?? null;
 }
 
 /**
@@ -603,7 +709,19 @@ async function renderRecipients(
   notice?: string,
 ): Promise<void> {
   const recipients = await deps.recipients.listForUser(userId);
-  send(res, 200, recipientsPage({ recipients, error, notice, canTest: Boolean(deps.testAlert) }));
+  // Push nunca vai pra tela com o endpoint inteiro - o endpoint é uma
+  // capacidade de notificar o dispositivo, então a lista mostra só o host
+  // (ver push-subscription.ts#describePushSubscription).
+  const display = recipients.map((r) => {
+    if (r.kind !== "push") return r;
+    const parsed = parsePushSubscription(r.value);
+    return { ...r, value: parsed ? describePushSubscription(parsed) : "dispositivo desconhecido" };
+  });
+  send(
+    res,
+    200,
+    recipientsPage({ recipients: display, error, notice, canTest: Boolean(deps.testAlert), canPush: Boolean(deps.pushPublicKey) }),
+  );
 }
 
 const TEST_ALERT_COOLDOWN_MS = 60_000; // ligação custa dinheiro e incomoda - evita spam acidental ou abusivo
@@ -616,12 +734,20 @@ async function handleTestAlert(res: ServerResponse, deps: DashboardServerDeps, u
     return renderRecipients(res, deps, userId, "Aguarde 1 minuto entre alertas de teste.");
   }
   const recipients = await deps.recipients.listForUser(userId);
-  if (!recipients.some((r) => r.kind === "phone")) {
-    return renderRecipients(res, deps, userId, "Cadastre pelo menos um telefone antes de testar.");
+  // Push conta como canal crítico: quem registrou só o dispositivo (sem
+  // telefone) também precisa poder testar - era justamente o ponto de
+  // registrar um canal sem número.
+  const hasPhone = recipients.some((r) => r.kind === "phone");
+  const hasPush = recipients.some((r) => r.kind === "push");
+  if (!hasPhone && !hasPush) {
+    return renderRecipients(res, deps, userId, "Cadastre um telefone ou registre este dispositivo antes de testar.");
   }
   lastTestAlertAt.set(userId, Date.now());
   await deps.testAlert(userId);
-  return renderRecipients(res, deps, userId, undefined, "Alerta de teste disparado: a ligação deve tocar em instantes e o código chega por WhatsApp.");
+  const notice = hasPhone
+    ? "Alerta de teste disparado: a ligação deve tocar em instantes e o código chega por WhatsApp."
+    : "Alerta de teste disparado: a notificação deve chegar neste dispositivo em instantes.";
+  return renderRecipients(res, deps, userId, undefined, notice);
 }
 
 async function handleAddRecipient(req: IncomingMessage, res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {

@@ -103,10 +103,16 @@ CREATE TABLE alert_log (
 -- wrench attack). Sem UNIQUE por valor em claro - como cada criptografia usa
 -- IV/DEK novos, duplicar o mesmo destino não é detectável no banco; aceito
 -- (o próprio usuário vê e remove duplicata na tela /recipients).
+-- 'push' (2026-10-11) é o canal crítico SEM número de telefone: o destino é
+-- um endpoint opaco do navegador (Web Push), não um dado atribuível à pessoa.
+-- Entra nesta MESMA tabela, com a MESMA criptografia, de propósito - um
+-- endpoint de push é uma capacidade (quem tem, notifica o dispositivo), então
+-- merece o mesmo tratamento do telefone, não uma tabela "menos sensível".
+-- Ver alerts/web-push.ts e dashboard/push-subscription.ts.
 CREATE TABLE alert_recipients (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id             UUID NOT NULL REFERENCES phone_mappings (id),
-    kind                TEXT NOT NULL CHECK (kind IN ('phone', 'email')),
+    kind                TEXT NOT NULL CHECK (kind IN ('phone', 'email', 'push')),
     encrypted_data_key  BYTEA NOT NULL,
     iv                  BYTEA NOT NULL,
     auth_tag            BYTEA NOT NULL,
@@ -115,3 +121,14 @@ CREATE TABLE alert_recipients (
 );
 
 CREATE INDEX idx_alert_recipients_user ON alert_recipients (user_id);
+
+-- Migrations incrementais, idempotentes.
+--
+-- Por que precisam existir: scripts/migrate.ts reescreve "CREATE TABLE" pra
+-- "CREATE TABLE IF NOT EXISTS", então num banco que JÁ tem alert_recipients a
+-- definição acima é ignorada por inteiro - inclusive o CHECK novo. Sem o ALTER
+-- abaixo, inserir kind='push' falharia em produção com constraint violation,
+-- mas passaria em qualquer teste com banco novo. Padrão DROP IF EXISTS + ADD
+-- pra poder rodar quantas vezes quiser.
+ALTER TABLE alert_recipients DROP CONSTRAINT IF EXISTS alert_recipients_kind_check;
+ALTER TABLE alert_recipients ADD CONSTRAINT alert_recipients_kind_check CHECK (kind IN ('phone', 'email', 'push'));

@@ -12,6 +12,7 @@ import { WAITLIST_PROFILES } from "./waitlist.js";
 import { THRESHOLD_PRESETS, WINDOW_CHOICES_MINUTES } from "../engine/rules/threshold-presets.js";
 import { formatUsdDisplay } from "../engine/rules/token-units.js";
 import { THRESHOLDS_HEAD, thresholdsScript } from "./thresholds-ui.js";
+import { pushEnrollScript } from "./pwa-assets.js";
 import { LOGO_FULL_DATA_URI, LOGO_ICON_DATA_URI } from "./logo-assets.js";
 import type { Contributor } from "./contributors.js";
 
@@ -132,6 +133,9 @@ function layout(params: { title: string; body: string; authed?: boolean; active?
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VILIGION — ${escapeHtml(params.title)}</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.png" type="image/png">
+<meta name="theme-color" content="#0b1220">
 ${params.head ?? ""}
 <style>${BASE_STYLE}</style>
 </head>
@@ -1094,25 +1098,33 @@ ${thresholdsScript(cfg)}`;
   return layout({ title: "Quando você quer ser avisado", body, authed: true, active: "/thresholds", error: params.error, head: THRESHOLDS_HEAD });
 }
 
+const RECIPIENT_LABELS: Record<string, { text: string; pill: string }> = {
+  phone: { text: "Telefone (ligação)", pill: "critical" },
+  push: { text: "Dispositivo (notificação)", pill: "critical" },
+  email: { text: "E-mail", pill: "normal" },
+};
+
 export function recipientsPage(params: {
   recipients: Array<{ id: string; kind: string; value: string }>;
   error?: string;
   notice?: string;
   canTest?: boolean;
+  canPush?: boolean;
 }): string {
   const rows =
     params.recipients.length === 0
-      ? `<tr><td colspan="3" class="muted">Nenhum destinatário cadastrado ainda.</td></tr>`
+      ? `<tr><td colspan="3" class="muted">Nenhum destinatário cadastrado — hoje nenhum alerta sairia. Cadastre abaixo um dispositivo (sem telefone), um número ou um e-mail.</td></tr>`
       : params.recipients
-          .map(
-            (r) => `<tr>
-        <td><span class="pill ${r.kind === "phone" ? "critical" : "normal"}">${r.kind === "phone" ? "Telefone (ligação)" : "E-mail"}</span></td>
+          .map((r) => {
+            const label = RECIPIENT_LABELS[r.kind] ?? { text: r.kind, pill: "normal" };
+            return `<tr>
+        <td><span class="pill ${label.pill}">${escapeHtml(label.text)}</span></td>
         <td><code>${escapeHtml(r.value)}</code></td>
         <td><form method="POST" action="/recipients/${escapeHtml(r.id)}/delete" style="margin:0">
           <button type="submit" class="secondary danger" style="margin-top:0">Remover</button>
         </form></td>
-      </tr>`,
-          )
+      </tr>`;
+          })
           .join("");
 
   const body = `
@@ -1121,7 +1133,18 @@ export function recipientsPage(params: {
   <p class="muted" style="margin:0;">Pode cadastrar mais de um telefone e mais de um e-mail — todos recebem o alerta, não só o primeiro. Use um número com WhatsApp ativo, senão o código de confirmação não chega.</p>
   <table><thead><tr><th>Canal</th><th>Destino</th><th></th></tr></thead>
   <tbody>${rows}</tbody></table>
-</div>
+</div>${
+    params.canPush
+      ? `
+<div class="card">
+  <p class="muted">Alerta crítico sem telefone <span class="pill critical">mais privado</span></p>
+  <p class="muted" style="margin-bottom:10px;">Registra <strong>este dispositivo</strong> para receber o alerta crítico como notificação em tela cheia, com som e vibração — <strong>sem número de telefone envolvido</strong>. Não existe número para vincular à sua conta, nem registro de operadora: o destino é um endereço opaco que o seu navegador emite e que você pode revogar aqui a qualquer momento.</p>
+  <p class="muted" style="margin-bottom:10px;">Em troca, depende do navegador aceitar notificação e não é tão garantido quanto uma ligação — por isso os dois canais convivem. Em iPhone, adicione o app à tela de início antes de ativar.</p>
+  <button type="button" id="pushEnable">Registrar este dispositivo</button>
+  <p class="muted" id="pushMsg" style="margin:10px 0 0;"></p>
+</div>`
+      : ""
+  }
 <div class="card">
   <p class="muted">Adicionar destinatário</p>
   <form method="POST" action="/recipients">
@@ -1145,7 +1168,7 @@ export function recipientsPage(params: {
   <form method="POST" action="/recipients/test"><button type="submit">Enviar alerta de teste</button></form>
 </div>`
       : ""
-  }`;
+  }${params.canPush ? pushEnrollScript() : ""}`;
   return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="card"><p>${escapeHtml(params.notice)}</p></div>${body}` : body, authed: true, active: "/recipients", error: params.error });
 }
 

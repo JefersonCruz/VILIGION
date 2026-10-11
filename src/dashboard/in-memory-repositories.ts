@@ -168,7 +168,7 @@ export class InMemoryThresholdsRepository implements ThresholdsStore {
   }
 }
 
-export type RecipientKind = "phone" | "email";
+export type RecipientKind = "phone" | "email" | "push";
 
 export interface AlertRecipient {
   id: string;

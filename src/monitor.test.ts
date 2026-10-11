@@ -8,6 +8,21 @@ import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-ru
 const TEST_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 
 /**
+ * Espera até a condição virar verdadeira, em vez de dormir um tempo fixo e
+ * torcer. Sleep fixo acoplado a `pollIntervalMs` é a receita de teste
+ * intermitente: o tempo de parede necessário pra N ciclos de poll depende de
+ * quanta CPU a suíte está disputando no momento (aqui, até 33 workers em
+ * paralelo), não só do intervalo configurado.
+ */
+async function waitFor(condition: () => boolean, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`waitFor: condição não foi satisfeita em ${timeoutMs}ms`);
+    await new Promise((r) => setTimeout(r, 2));
+  }
+}
+
+/**
  * Adapter falso - nunca toca rede de verdade, só devolve saldos e blocos
  * confirmados pré-programados em sequência. `confirmedBlocks` é opcional -
  * sem ele, fica fixo em 1n (suficiente pros testes que não olham a extensão).
@@ -315,7 +330,12 @@ describe("Monitor", () => {
     const monitor = new Monitor(adapter, { address: TEST_ADDRESS, thresholds: source, pollIntervalMs: 5 }, async (e) => { dispatched.push(e); });
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 40));
+    // Espera pela CONDIÇÃO, não por tempo de parede: este teste precisa de 3
+    // ciclos de poll (1000 → 1000 → 700) e um sleep fixo de 40ms falhava de
+    // forma intermitente quando a suíte roda com 33 workers disputando CPU -
+    // passava 5/5 isolado e quebrava ~1 em 3 na suíte completa. O teto alto
+    // nunca é alcançado no caminho de sucesso, só evita travar se regredir.
+    await waitFor(() => dispatched.some((e) => e.kind === "balance-drop"));
     monitor.stop();
     await run;
 

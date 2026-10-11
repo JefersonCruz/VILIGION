@@ -243,7 +243,7 @@ function mapAccountRow(row: {
   };
 }
 
-export type RecipientKind = "phone" | "email";
+export type RecipientKind = "phone" | "email" | "push";
 
 export interface AlertRecipientInput {
   userId: string;
@@ -325,7 +325,13 @@ export interface AlertLogRecordInput {
   userId: string;
   kind: string;
   severity: "normal" | "critical";
-  deliveredVia: "voice" | "email";
+  /**
+   * Canais TENTADOS, não o que entregou. Deixou de ser união fechada em
+   * 2026-10-11 com a entrada do push (canal crítico sem telefone): um alerta
+   * crítico pode sair por "push", "voice" ou "push+voice". A coluna no banco
+   * é TEXT sem CHECK, então não há migration associada a esta mudança de tipo.
+   */
+  deliveredVia: string;
 }
 
 export class PostgresAlertLog {

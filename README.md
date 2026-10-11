@@ -14,7 +14,9 @@ At the same time, linking a phone number to an on-chain balance creates a real, 
 
 1. **Monitors** TIP-20 addresses on Tempo (balance and `ReceivePolicyGuard`/TIP-403 blocked-transfer events) via direct RPC (Viem) as the primary source.
 2. **Detects** two event types against per-user configurable thresholds (private, never hardcoded): an abnormal balance drop inside a rolling window, and a blocked transfer above a configured amount. Statistical baselining of transfer *patterns* (z-score style) is roadmap, not built — see [`docs/PRODUCT-FEASIBILITY.md`](./docs/PRODUCT-FEASIBILITY.md).
-3. **Alerts** through two channels, chosen by severity: a critical anomaly goes out by **real phone call** (Twilio Programmable Voice); a normal anomaly goes out by **email** (no per-message cost, no carrier call-log retention problem — see `SECURITY.md`). Content is **always generic** on both channels — never reveals balance or address.
+3. **Alerts** through three channels, chosen by severity: a critical anomaly goes out by **real phone call** (Twilio Programmable Voice) and, if the owner registered a device, by **Web Push notification — no phone number involved at all**; a normal anomaly goes out by **email** (no per-message cost, no carrier call-log retention problem — see `SECURITY.md`). Content is **always generic** on every channel — never reveals balance or address, enforced by automated test rather than review.
+
+   The push channel exists for a specific reason, and it isn't channel redundancy: a phone number is the one piece of data in the alert path that we cannot protect after the fact. It is attributable to a person, and it persists in carrier records and in Twilio's call logs — nothing in our code erases that. A push endpoint is an opaque address the browser issues and the owner can revoke, so there is no number to link to an account. The privacy property comes from the data not existing, not from stronger encryption. **Honest caveat:** push is implemented and tested (including a real VAPID/RFC-8291 integration test), but has not yet been exercised against a real device in production, and it is inherently less reliable than a phone call — notably on iOS, where the app must be added to the home screen first. The two channels coexist on purpose; the more private channel is the less guaranteed one, and the owner chooses with that stated on screen.
 4. **Protects the owner's identity**: proof of address ownership required at signup (EIP-191 signature); alert recipients (phone numbers and emails) are registered separately, after login, and stored with AES-256-GCM envelope encryption — never in plaintext alongside the monitored address. Two honest caveats about this line, because the threat model depends on them: the product **does not provision virtual numbers** — registering a dedicated number instead of the owner's personal one is a recommendation we make, not something the code enforces or supplies; and the encryption key today comes from `LocalDevKeyProvider`, **not a managed KMS** ([issue #9](https://github.com/JefersonCruz/VILIGION/issues/9) tracks that swap, required before any real customer data).
 5. Full details (real balance, history) are only visible after dashboard authentication — never through the alert channel.
 
@@ -35,7 +37,7 @@ Detection Engine (EVM core + Tempo adapter)
 Privacy Layer (resolves address→contact, decides what can go out)
         │ generic payload
         ▼
-Delivery Layer (Twilio Voice / email by severity)
+Delivery Layer (Twilio Voice + Web Push / email by severity)
         │
         ▼
 Dashboard/Auth (full detail only after login)

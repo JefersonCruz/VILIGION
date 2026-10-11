@@ -25,6 +25,20 @@ This project handles data that, if leaked or poorly designed, can expose users t
 - We never reveal balance or address in an alert's content.
 - We never store credentials in plaintext in the repository or in the same environment as the data they protect.
 
+## The push channel, and what it does and does not solve
+
+Added 2026-10-11. The CDR row above describes the one exposure in the alert path we cannot engineer away while the channel is a phone call: a phone number is attributable to a person, and its retention is regulatory, not a vendor setting. Encrypting our copy harder does not help — the record isn't ours.
+
+So the mitigation is to make the data unnecessary. Web Push (`src/alerts/web-push.ts`) delivers the critical alert to a device through an opaque endpoint the browser issues and the owner can revoke. There is no phone number to subpoena, no carrier record, and nothing in our database that links a person to an account through a number. **The property comes from the data not existing.**
+
+What it does **not** solve, stated plainly:
+
+- **It is not immunity from legal process, and we do not claim that.** We operate the service and hold the keys; what shrinks is the set of data we have to produce, not anyone's authority to ask. The defensible claim is data minimization — standard privacy-by-design, which LGPD/GDPR reward — not that a court order fails.
+- **The push endpoint is itself a capability**, not a harmless identifier: whoever holds it can notify the device. It is therefore stored with the **same** AES-256-GCM envelope encryption as phone numbers, in the same table, and is never rendered in full in the UI or written to logs (only the push service hostname is displayed).
+- **Reliability is strictly worse than a phone call.** It requires notification permission, and on iOS the app must be added to the home screen first. The most private channel is the least guaranteed one; both channels coexist and the owner is told this on `/recipients` rather than having it chosen for them.
+- **Not yet exercised against a real device in production.** The RFC 8291 encryption and VAPID signing are verified by integration test against a local push service, not by a delivered notification on a real handset.
+- The encryption key still comes from `LocalDevKeyProvider`, not a managed KMS ([issue #9](https://github.com/JefersonCruz/VILIGION/issues/9)) — this applies to push subscriptions exactly as it applies to phone numbers, and remains required before any real customer data.
+
 ## Known limitations
 
 Detection thresholds are "obscured, not secret" — a patient attacker could empirically probe the limits with test transfers. This is an accepted, documented limitation, not a guarantee that evasion is impossible.

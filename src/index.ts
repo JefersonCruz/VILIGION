@@ -32,6 +32,8 @@ import { Monitor, type HealthListener } from "./monitor.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { InMemoryWaitlistRepository, PostgresWaitlistRepository } from "./dashboard/waitlist.js";
 import { createEmailNotifier } from "./alerts/email-notifier.js";
+import { createWebPushNotifier, type PushSubscriptionRecord } from "./alerts/web-push.js";
+import { parsePushSubscription } from "./dashboard/push-subscription.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
 import { handleWebhookRequest, type PinStore, type WebhookServerConfig } from "./webhook-server.js";
 import { createDashboardRequestHandler, type DashboardServerDeps } from "./dashboard/server.js";
@@ -103,6 +105,48 @@ function buildVoiceClientIfConfigured() {
     whatsappFromNumber: process.env.TWILIO_WHATSAPP_NUMBER,
     whatsappContentSid: process.env.TWILIO_WHATSAPP_CONTENT_SID,
   });
+}
+
+/**
+ * Canal crítico SEM número de telefone (Web Push). Mesma lógica de
+ * opcionalidade do voice client: sem as chaves VAPID configuradas, não
+ * existe - a tela de destinatários não oferece a opção e nada finge
+ * funcionar (ver alerts/web-push.ts sobre por que este canal existe).
+ *
+ * Gere o par de chaves com: npx tsx scripts/generate-vapid-keys.ts
+ */
+function buildWebPushNotifierIfConfigured() {
+  const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+  const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+  const vapidSubject = process.env.VAPID_SUBJECT;
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+  if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject || !publicBaseUrl) return null;
+
+  return createWebPushNotifier({
+    vapidPublicKey,
+    vapidPrivateKey,
+    vapidSubject,
+    dashboardUrl: `${publicBaseUrl.replace(/\/+$/, "")}/dashboard`,
+  });
+}
+
+/**
+ * Extrai as inscrições de push dos destinatários do usuário. Uma inscrição
+ * corrompida (ou de um formato antigo) é ignorada em vez de derrubar o
+ * alerta inteiro - num alerta crítico, entregar nos dispositivos que ainda
+ * funcionam vale mais que falhar por causa de uma linha ruim.
+ */
+function collectPushSubscriptions(
+  recipients: Array<{ kind: string; value: string }>,
+): PushSubscriptionRecord[] {
+  const subscriptions: PushSubscriptionRecord[] = [];
+  for (const recipient of recipients) {
+    if (recipient.kind !== "push") continue;
+    const parsed = parsePushSubscription(recipient.value);
+    if (parsed) subscriptions.push(parsed);
+    else console.error("[alerta] inscrição de push inválida ignorada (formato inesperado no banco)");
+  }
+  return subscriptions;
 }
 
 /** Mesma lógica de opcionalidade do voice client, pro canal "normal" (e-mail). */
@@ -235,7 +279,9 @@ async function mainDemo() {
 
   const voiceClient = buildVoiceClientIfConfigured();
   const emailNotifier = buildEmailNotifierIfConfigured();
+  const pushNotifier = buildWebPushNotifierIfConfigured();
   console.log(`[alertas] canal crítico (ligação): ${voiceClient ? "ativo" : "NÃO configurado - só logará"}`);
+  console.log(`[alertas] canal crítico sem telefone (push): ${pushNotifier ? "ativo" : "NÃO configurado"}`);
   console.log(`[alertas] canal normal (e-mail): ${emailNotifier ? "ativo" : "NÃO configurado - só logará"}`);
 
   const pinStore: PinStore = new Map();
@@ -251,8 +297,20 @@ async function mainDemo() {
       pinStore.set(alertId, pending);
       console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
 
+      const demoRecipients = await recipients.listForUser(thresholds.userId);
+
+      // Canal sem telefone, tentado independente da ligação - ver
+      // alerts/web-push.ts. Os dois convivem de propósito.
+      if (pushNotifier) {
+        const subscriptions = collectPushSubscriptions(demoRecipients);
+        if (subscriptions.length > 0) {
+          const pushResults = await pushNotifier.sendAlert({ subscriptions, event, alertId });
+          logDeliveryFailures(alertId, "push", pushResults);
+        }
+      }
+
       if (voiceClient) {
-        const toNumbers = (await recipients.listForUser(thresholds.userId)).filter((r) => r.kind === "phone").map((r) => r.value);
+        const toNumbers = demoRecipients.filter((r) => r.kind === "phone").map((r) => r.value);
         const { callResults, whatsappResults } = await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
         logDeliveryFailures(alertId, "ligação", callResults);
         logDeliveryFailures(alertId, "WhatsApp", whatsappResults);
@@ -354,6 +412,7 @@ async function mainDemo() {
       monitorControl,
       waitlist: new InMemoryWaitlistRepository(),
       testAlert: () => dispatchAlert({ kind: "balance-drop", userId: thresholds.userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
+      pushPublicKey: process.env.VAPID_PUBLIC_KEY,
     },
   );
 
@@ -392,7 +451,9 @@ async function mainWithDatabase(databaseUrl: string) {
 
   const voiceClient = buildVoiceClientIfConfigured();
   const emailNotifier = buildEmailNotifierIfConfigured();
+  const pushNotifier = buildWebPushNotifierIfConfigured();
   console.log(`[alertas] canal crítico (ligação): ${voiceClient ? "ativo" : "NÃO configurado - só logará"}`);
+  console.log(`[alertas] canal crítico sem telefone (push): ${pushNotifier ? "ativo" : "NÃO configurado"}`);
   console.log(`[alertas] canal normal (e-mail): ${emailNotifier ? "ativo" : "NÃO configurado - só logará"}`);
 
   const pinStore: PinStore = new Map();
@@ -401,36 +462,63 @@ async function mainWithDatabase(databaseUrl: string) {
   function makeDispatcher(userId: string) {
     return async (event: DetectionEvent) => {
       const alertId = randomUUID();
-      const deliveredVia = event.severity === "critical" ? "voice" : "email";
+      // Registra quais canais críticos foram TENTADOS (não qual entregou) -
+      // computado a partir do que está configurado, antes de qualquer await,
+      // pra manter a garantia de que o alerta é logado mesmo se a entrega
+      // falhar depois.
+      const criticalChannels = [pushNotifier ? "push" : null, voiceClient ? "voice" : null].filter(Boolean).join("+");
+      const deliveredVia = event.severity === "critical" ? criticalChannels || "voice" : "email";
       await alertLog.record({ alertId, userId, kind: event.kind, severity: event.severity, deliveredVia });
       console.log(`[alerta] user=${userId} ${event.kind} (severidade=${event.severity}, alertId=${alertId})`);
 
       if (event.severity === "critical") {
         const pending: PendingPin = generatePin(alertId);
         pinStore.set(alertId, pending);
-        if (voiceClient) {
-          const toNumbers = (await recipientsRepo.listForUser(userId)).filter((r) => r.kind === "phone").map((r) => r.value);
-          if (toNumbers.length === 0) {
-            console.error(`[alerta] alertId=${alertId}: nenhum telefone cadastrado, ligação não tem pra onde ir`);
-            await alertLog.updatePinStatus(alertId, "delivery-failed-no-recipient");
-            return;
-          }
+
+        if (!voiceClient && !pushNotifier) {
+          console.log("[alerta] nenhum canal crítico configurado (nem Twilio nem push) - só logando");
+          return;
+        }
+
+        const recipients = await recipientsRepo.listForUser(userId);
+        const toNumbers = recipients.filter((r) => r.kind === "phone").map((r) => r.value);
+        const subscriptions = pushNotifier ? collectPushSubscriptions(recipients) : [];
+
+        let attempted = false;
+        let delivered = false;
+
+        // Push primeiro: não envolve número de telefone, não custa por
+        // mensagem e não deixa registro em operadora. Se funcionar, o dono
+        // já foi acordado sem que exista um número pra vincular à conta.
+        if (pushNotifier && subscriptions.length > 0) {
+          attempted = true;
+          const pushResults = await pushNotifier.sendAlert({ subscriptions, event, alertId });
+          logDeliveryFailures(alertId, "push", pushResults);
+          if (pushResults.some((r) => r.status === "fulfilled")) delivered = true;
+        }
+
+        if (voiceClient && toNumbers.length > 0) {
+          attempted = true;
           const { callResults, whatsappResults } = await voiceClient.placeAlertCall({ toNumbers, event, alertId, pin: pending.pin });
           logDeliveryFailures(alertId, "ligação", callResults);
           logDeliveryFailures(alertId, "WhatsApp", whatsappResults);
-          // Achado de produção 2026-10-10: placeAlertCall usa Promise.allSettled
-          // de propósito (uma falha não deve derrubar o resto), mas isso
-          // significa que ninguém via a falha em lugar nenhum antes desta
-          // correção - um erro de conta trial da Twilio (número não
-          // verificado) ficava completamente invisível, inclusive no painel
-          // admin. Se TODAS as tentativas de ligação falharam, registra isso
-          // no pin_status - o /admin/status e o histórico de alertas do
-          // próprio usuário passam a mostrar a falha, não um silêncio eterno.
-          if (callResults.length > 0 && callResults.every((r) => r.status === "rejected")) {
-            await alertLog.updatePinStatus(alertId, "delivery-failed");
-          }
-        } else {
-          console.log("[alerta] ligação NÃO disparada - Twilio ainda não configurado");
+          if (callResults.some((r) => r.status === "fulfilled")) delivered = true;
+        }
+
+        // Achado de produção 2026-10-10: os envios usam Promise.allSettled de
+        // propósito (uma falha não deve derrubar o resto), mas isso significa
+        // que ninguém via a falha em lugar nenhum antes desta correção - um
+        // erro de conta trial da Twilio (número não verificado) ficava
+        // completamente invisível, inclusive no painel admin. Agora o
+        // pin_status registra os dois casos distintos: sem destinatário
+        // nenhum, ou destinatário existente e nenhuma entrega bem-sucedida.
+        if (!attempted) {
+          console.error(`[alerta] alertId=${alertId}: nenhum destinatário crítico cadastrado (sem telefone e sem dispositivo registrado)`);
+          await alertLog.updatePinStatus(alertId, "delivery-failed-no-recipient");
+          return;
+        }
+        if (!delivered) {
+          await alertLog.updatePinStatus(alertId, "delivery-failed");
         }
         return;
       }
@@ -551,6 +639,7 @@ async function mainWithDatabase(databaseUrl: string) {
       testAlert: (userId) =>
         makeDispatcher(userId)({ kind: "balance-drop", userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
       adminStatus,
+      pushPublicKey: process.env.VAPID_PUBLIC_KEY,
     },
   );
 }
