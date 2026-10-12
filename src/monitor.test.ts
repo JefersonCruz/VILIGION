@@ -31,6 +31,19 @@ class FakeAdapter extends EvmAdapter {
   private callIndex = 0;
   private blockCallIndex = 0;
 
+  /**
+   * Quantos ciclos de `tick` ja COMPLETARAM a leitura de saldo.
+   *
+   * Existe pra que um teste possa esperar "ja rodaram N ciclos" em vez de
+   * dormir um tempo de parede e torcer. Os testes que afirmam uma AUSENCIA
+   * ("nada disparou", "a extensao foi consultada uma vez so") precisam disso:
+   * nao da pra esperar por um evento que, se o codigo estiver correto, nunca
+   * vai acontecer - entao espera-se pelo progresso do monitor.
+   */
+  get cycles(): number {
+    return this.callIndex;
+  }
+
   constructor(
     private readonly balances: bigint[],
     private readonly confirmedBlocks: bigint[] = [1n],
@@ -124,7 +137,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() => adapter.cycles >= 3);
     monitor.stop();
     await run;
 
@@ -141,7 +154,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 40));
+    await waitFor(() => dispatched.some((e) => e.kind === "balance-drop"));
     monitor.stop();
     await run;
 
@@ -159,7 +172,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 40));
+    await waitFor(() => adapter.cycles >= 3);
     monitor.stop();
     await run;
 
@@ -177,7 +190,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 40));
+    await waitFor(() => dispatched.some((e) => e.kind === "balance-drop"));
     monitor.stop();
     await run;
 
@@ -201,7 +214,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() => adapter.cycles >= 2);
     monitor.stop();
     await run;
 
@@ -228,7 +241,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 40));
+    await waitFor(() => dispatched.length > 0);
     monitor.stop();
     await run;
 
@@ -247,7 +260,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() => extension.lastCall !== null);
     monitor.stop();
     await run;
 
@@ -266,7 +279,10 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 50)); // várias voltas do loop, mas o bloco confirmado só muda uma vez
+    // espera o bloco mudar (1a consulta) e entao mais ciclos com o bloco parado:
+    // se a extensao fosse consultada por ciclo, `calls` passaria de 1 aqui.
+    await waitFor(() => extension.calls >= 1);
+    await waitFor(() => adapter.cycles >= 5);
     monitor.stop();
     await run;
 
@@ -287,7 +303,7 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() => extension.lastCall !== null);
     monitor.stop();
     await run;
 
@@ -308,10 +324,11 @@ describe("Monitor", () => {
     );
 
     const run = monitor.start();
-    await new Promise((r) => setTimeout(r, 50)); // 30% de queda com limiar de 90%: nada dispara
+    // 3 ciclos ja observaram a queda de 30% - com limiar de 90%, nada dispara.
+    await waitFor(() => adapter.cycles >= 3);
     expect(dispatched).toHaveLength(0);
     current = { ...thresholds, maxBalanceDropPct: 10, criticalBalanceDropPct: 50 };
-    await new Promise((r) => setTimeout(r, 100));
+    await waitFor(() => dispatched.some((e) => e.kind === "balance-drop"));
     monitor.stop();
     await run;
 
