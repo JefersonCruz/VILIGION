@@ -51,15 +51,13 @@ Project under construction for the Crypto World's Fair hackathon (submission by 
 
 ## Try it live
 
-A demo account is open for testers and developers at **https://viligion.com**. It watches a test wallet on the Tempo **Moderato testnet** (no real funds involved), so feel free to log in and explore the dashboard.
+The product is live at **https://viligion.com**. It watches a test wallet on the Tempo **Moderato testnet** — no real funds involved.
 
-- **Username:** `henri`
-- **Password:** `dSjmGANqxMSdAwzTsTUJ`
-- **2FA (TOTP):** this account requires a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password...). Add it via "enter code manually" with:
-  - Secret: `XSKAP6LIQMO3CRLYXP3GLT5DMOES52PS`
-  - Type: time-based, 6 digits, 30s period
+**Judges and reviewers:** demo credentials are in the hackathon submission form, which is private to you. If you are reviewing outside that channel, open an issue and we will share access.
 
-This is a shared demo account with synthetic/test data only — don't register real recipients or treat its content as private. See [`SECURITY.md`](./SECURITY.md) for why personal alert data never works this way in a real deployment.
+Credentials are deliberately **not published here.** A shared account whose password and TOTP secret sit in a public README is not a demo account, it is a credential leak — and this repository belongs to a product whose `SECURITY.md` promises never to store credentials in plaintext. Publishing them would contradict the same page a reviewer reads to judge the work. It would also let any visitor register an alert recipient and trigger real phone calls on our Twilio account.
+
+The demo holds synthetic data only. See [`SECURITY.md`](./SECURITY.md) for why personal alert data never works this way in a real deployment.
 
 ## License
 
