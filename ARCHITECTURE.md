@@ -4,10 +4,15 @@
 
 **Generic core + per-chain adapter**, not a "universal" engine. Balance/pattern detection logic is shareable across EVM chains (Tempo, Base, Arbitrum, Ethereum L1), but protocol-specific rules — like decoding Tempo's `ReceivePolicyGuard` (TIP-403) events — **don't exist** on other chains and live isolated in the adapter.
 
+Since 2026-10-12 that principle is enforced by a published contract rather than by convention: `engine/chains/chain-adapter.ts` defines `MonitoredChainAdapter`, the core depends on that interface instead of a concrete EVM class, and a network declares what it can and cannot observe. See "Extensible chain contract" below, plus [`docs/ADAPTER_SPEC.md`](./docs/ADAPTER_SPEC.md) and [`docs/CHAIN-SUPPORT-MATRIX.md`](./docs/CHAIN-SUPPORT-MATRIX.md).
+
 ## Modules
 
 ### 1. `/engine` — Detection engine
-- `chains/evm-adapter.ts` — balance/event reads via RPC (Viem), generic across EVM chains.
+- `chains/chain-adapter.ts` — the integration contract every network implements (`MonitoredChainAdapter`, `ChainCapabilities`, `BalanceSnapshot`). EVM-agnostic.
+- `chains/chain-registry.ts` — maps a chain key to a built adapter + optional extension, and records each network's real maturity (`supportStatus`) and maintainer.
+- `chains/adapter-conformance.ts` — reusable test suite any new adapter runs against the contract.
+- `chains/evm-adapter.ts` — balance/event reads via RPC (Viem), generic across EVM chains; reference implementation of the contract.
 - `chains/tempo.adapter.ts` — Tempo-specific: decodes `ReceivePolicyGuard` contract events; handles the fact that Tempo has no native gas token (fees come out of the TIP-20 itself, which requires distinguishing a fee deduction from a real outbound transfer of value).
 - `rules/detection-rules.ts` — **open** rule logic (e.g. "percentage drop", "transfer redirected to the Guard"). Each user's exact numeric thresholds stay out of this file, in private per-user configuration.
 
@@ -192,3 +197,54 @@ Full design in `docs/THRESHOLDS.md`. Summary of what changed in the code:
 - **USD instead of raw units**: `rules/token-units.ts` converts "2000", "20,5" ⇄ token base units with `bigint` only (6 decimals assumed).
 - **UI**: `rules/threshold-presets.ts` (Conservador/Equilibrado/Tolerante) and `dashboard/thresholds-ui.ts` (scoped CSS + client script) render a live preview using the user's real balance and a "simulate an outflow" slider. The preview only exists inside the authenticated dashboard; alerts themselves never carry balance or address.
 - z-score is intentionally not used for critical alerts (see roadmap in `docs/THRESHOLDS.md`).
+
+## Extensible chain contract (2026-10-12)
+
+Work done to prepare the project for independent contributors to add network support without the founder in the loop. Audit first, then the smallest changes that removed each real coupling. Nothing about Tempo's behaviour changed.
+
+### What the audit found
+
+Five couplings, all verified in code rather than assumed:
+
+- **`Monitor` depended on the concrete `EvmAdapter` class.** Fine while every supported network was EVM-compatible, but it made a non-EVM network (Solana) impossible to integrate without editing `monitor.ts` — the one file an external contributor should never have to touch to add a network.
+- **`MAX_LOG_RANGE_BLOCKS`, an EVM-specific constant, was imported by the generic monitor.** The history-window limit is a property of each network's provider and protocol; the core cannot know it for a network it has never seen.
+- **`rules/detection-rules.ts` imported `TransferBlockedEvent` from `chains/tempo.adapter.ts`.** The layer of rules common to all networks had a compile-time dependency on one network's module. Any other network would have had to either imitate Tempo's event shape (wrong — the semantics differ) or edit the core rules file (wrong — it is the core).
+- **`index.ts` chose the adapter with `if (account.chainKey === "tempo")`.** Supporting a network meant editing the application entry point.
+- **`known-chains.ts` carried `hasTempoStyleExtensions`, which production code never read** — it appeared only in test assertions, while the `===` above made the real decision. Dead data that implied the choice was configurable. A network "registered" that way is not a supported network.
+
+### What changed
+
+- **`chain-adapter.ts`** — the contract. Deliberately minimal: the three methods `monitor.ts` actually calls per cycle, plus metadata, declared capabilities and `maxHistoryWindow`. It avoids assuming a network has blocks, logs, ERC-20 tokens or a native currency: the cursor is an opaque monotonic value (a block on EVM, a slot on Solana) that the core compares and advances but never interprets.
+- **`ChainCapabilities`** — what a network can and cannot observe, declared rather than described in prose. `false` is a legitimate answer. The failure this prevents is an adapter returning a plausible `0n` for a balance it cannot really read, which makes the core treat "did not observe" as "nothing moved" and leaves a user unprotected while the dashboard says otherwise. Tempo now declares `nativeBalance: false` — `eth_getBalance` answers on the real network, but the number is unrelated to the TIP-20 treasury balance.
+- **`TempoAdapter` validates its own config in the constructor.** Without `tokenAddress` it used to fall through to `eth_getBalance` and read a meaningless number; the account would look monitored and no balance alert would ever fire. A silently blind monitor is the worst failure mode this product has, so the invalid configuration is now rejected while whoever configured it is still looking.
+- **`rules/normalized-events.ts`** — the normalized observation model, so generic rules never see a network-specific type. Translation happens in each network's bridge (`tempo-extension.ts`), which already knows both ends. `details` preserves the original for audit and is documented as **data, never command**: it comes from the chain, i.e. from anyone who can emit an event, including an attacker — so nothing in it may decide severity, pick a channel, or become alert text.
+- **`chain-registry.ts`** — one table mapping a chain key to a built adapter plus optional extension. `index.ts` no longer names a network. `hasTempoStyleExtensions` is now tied to reality by a test asserting the flag agrees with which integrations actually build an extension.
+- **`supportStatus` per network** — `experimental` / `validating` / `stable`, based on evidence. Tempo is `validating`; Base, Arbitrum and Ethereum L1 are `experimental`, because the only real-network smoke test the project has (`scripts/verify-testnet.ts`) touches Tempo alone. Nothing is `stable`. `index.ts` logs a warning at boot when a monitor starts on an experimental network. Full table in [`docs/CHAIN-SUPPORT-MATRIX.md`](./docs/CHAIN-SUPPORT-MATRIX.md).
+- **`maintainer: string | null` per integration** — `null` where nobody has taken responsibility, which is information (a network nobody checks when its protocol changes), not a blank to fill in with a name that never agreed to it.
+- **Test seams in `EvmAdapter`** — `rawReadTokenBalance`, `rawReadNativeBalance` and `rawGetBlockNumber`, following the same reasoning as the existing `rawGetLogs`: isolating each raw RPC call lets the conformance suite exercise the real `getBalance`/`getConfirmedBlockNumber` logic offline instead of a reimplementation of it inside a mock.
+
+### Duplicate alert delivery (found and fixed in this pass)
+
+Writing the duplicate-event tests the work called for surfaced a real bug in extension-event delivery.
+
+When an extension returned several events for one cursor range and dispatch of one of them failed, the error propagated out of `tick` and `lastCheckedBlock` did not advance — correct in itself, since the failed event had reached nobody and would otherwise be lost forever. But the next cycle re-queried the same range, got the same events back, and re-delivered the ones already delivered. Measured in test: **a single blocked transfer produced five alerts** — five real phone calls to the owner for one occurrence.
+
+`Monitor` now remembers the keys of successfully delivered extension events in a bounded set (`MAX_REMEMBERED_DELIVERED_EVENTS = 1_000`, oldest evicted; an unbounded set in a process that runs indefinitely is a slow memory leak). Marking happens **after** successful delivery, never before — marking first would turn a delivery failure into a silently discarded event, the opposite and worse failure mode. Events without a stable identifier (`balance-drop`, which comes from balance sampling and has its own anti-repeat logic in `balance-window.ts`) are never deduplicated: between repeating an alert and swallowing one, repeating is the less harmful error.
+
+Covered by `monitor-event-delivery.test.ts`: no redelivery after a mid-batch dispatch failure, out-of-order events all delivered, a repeated event (reorg/duplicate log) alerting once, and different event kinds sharing an identifier not deduplicating each other.
+
+### Proof that the contract is not EVM-shaped
+
+`adapter-conformance.test.ts` includes `FakeSlotChainAdapter`: a non-EVM adapter that does not inherit from `EvmAdapter`, knows nothing about blocks, logs or ABIs, declares `family: "svm"` with `reorgPossible: false`, and is driven by the same unmodified `Monitor` through a real balance-drop detection. If the contract had been designed around EVM, that file would not compile. It exists only as a test fixture — registering a network nobody has validated against the real thing is precisely what the support matrix exists to prevent.
+
+### Results
+
+- Tests: **248 → 358**, all passing. Typecheck and `npm run build` clean.
+- Tempo's behaviour unchanged; its existing tests pass untouched except for fixtures that had to supply the now-mandatory `tokenAddress`.
+- Adding a network is now a new module plus one registry row, with no core edit.
+
+### Still open
+
+- Reorg **rewind** is not implemented on any network: the cursor only moves forward, so an event that disappears in a reorg after an alert fired is not retracted. `minConfirmations` reduces the window; it does not close it.
+- The generic confirmation depth of 3 is inherited, not justified per network — likely too shallow for Ethereum L1 treasury monitoring.
+- `close()` is in the contract but no current adapter needs it (all are plain HTTP). The first websocket-based adapter will be the real test of it.

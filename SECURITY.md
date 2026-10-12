@@ -40,6 +40,19 @@ What it does **not** solve, stated plainly:
 - **The notification cannot carry its own sound.** The Notification API has no custom-sound property, so a critical alert plays the device's default notification sound — the same one as a chat message — and Do Not Disturb silences it. A phone call can be configured to break through. This is why the two channels coexist: push is the private channel, the call is the reliable one.
 - The encryption key still comes from `LocalDevKeyProvider`, not a managed KMS ([issue #9](https://github.com/JefersonCruz/VILIGION/issues/9)) — this applies to push subscriptions exactly as it applies to phone numbers, and remains required before any real customer data.
 
+## Community-contributed chain adapters (added 2026-10-12)
+
+The project wants external contributors to add network support (see [`docs/ADAPTER_SPEC.md`](./docs/ADAPTER_SPEC.md)). That means third-party code in the same process as the alert pipeline and the encrypted recipient data, which is a threat worth stating rather than assuming away.
+
+The boundary, and how each half is enforced:
+
+- **Adapters are read-only.** No private key, mnemonic, signer or wallet; no `sendTransaction`/`signMessage`/`signTypedData`/`writeContract`. The conformance suite (`adapter-conformance.ts`) checks this structurally, on the adapter's whole prototype chain.
+- **Adapters receive an address and nothing else.** Not a phone number, not an email, not a user ID, not a threshold value. There is no reason for an adapter to import from `privacy/`, `alerts/` or `dashboard/`, and a PR that does gets rejected on that basis alone.
+- **Chain data is data, never command.** Normalized observations carry the original event in `details` for audit, and nothing in `details` may decide severity, select a delivery channel, become alert message text, or be interpolated into a log or HTML without escaping. The reason is direct: an event payload comes from whoever can emit an event, which includes whoever is attacking the monitored treasury. Only the detection rules, reading normalized numeric fields against the user's own thresholds, decide an alert.
+- **An adapter that cannot read must say so, not guess.** Returning `0n` for a balance it cannot actually read makes the core treat "did not observe" as "nothing moved" — the user's dashboard says protected, and they are not. Capabilities are declared (`ChainCapabilities`), network failures propagate, and the conformance suite requires a deliberately failing adapter fixture to prove it.
+
+**Honest limit of these controls:** the structural checks catch the good-faith mistake — someone parking a signer on an adapter because they expect to need it later. They do not stop a deliberately malicious adapter, which can hide from a name-based check. For that, the control is **mandatory human review of every adapter before merge**, plus the requirement that an adapter's tests run offline with no credentials so a reviewer can actually run them. A new runtime dependency introduced by an adapter is new attack surface in the alert path and is reviewed as such.
+
 ## Known limitations
 
 Detection thresholds are "obscured, not secret" — a patient attacker could empirically probe the limits with test transfers. This is an accepted, documented limitation, not a guarantee that evasion is impossible.

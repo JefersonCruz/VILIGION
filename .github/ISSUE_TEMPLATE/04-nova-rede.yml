@@ -1,0 +1,113 @@
+name: "🔗 Suporte a uma nova rede (adaptador)"
+description: Propor, reivindicar ou discutir a integração de uma blockchain. Zona 1 (aberta).
+title: "[rede] "
+labels:
+  - new-chain
+  - zona-1-engine
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de preencher, vale olhar:
+
+        - [`docs/CHAIN-SUPPORT-MATRIX.md`](../blob/master/docs/CHAIN-SUPPORT-MATRIX.md) — o que já existe, até onde foi verificado, e o que cada rede não suportada exigiria
+        - [`docs/DEVELOPING_ADAPTERS.md`](../blob/master/docs/DEVELOPING_ADAPTERS.md) — o passo a passo
+        - [`docs/ADAPTER_SPEC.md`](../blob/master/docs/ADAPTER_SPEC.md) — o contrato
+
+        Você **não** precisa de autorização pra começar. Esta issue serve pra evitar trabalho duplicado e pra discutir as decisões de design antes de você investir tempo nelas.
+
+  - type: input
+    id: rede
+    attributes:
+      label: Qual rede
+      placeholder: "ex: Solana, Optimism, Polygon zkEVM"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: familia
+    attributes:
+      label: Família técnica
+      description: Define se o núcleo EVM genérico dá pra reaproveitar. Se não souber, escolha a última opção — é uma resposta legítima e a gente descobre junto.
+      options:
+        - "EVM-compatível, comportamento padrão (gas token nativo de verdade, eth_getLogs, balanceOf)"
+        - "EVM-compatível, mas com particularidade de protocolo (taxa no token monitorado, eventos próprios, etc.)"
+        - "Não-EVM (precisa implementar MonitoredChainAdapter do zero)"
+        - "Não tenho certeza ainda"
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivo
+    attributes:
+      label: Por que esta rede
+      description: Existe tesouraria/ativo real que alguém precisaria monitorar nela? Resposta honesta é melhor que resposta impressionante.
+    validations:
+      required: true
+
+  - type: textarea
+    id: particularidades
+    attributes:
+      label: O que nesta rede NÃO é igual às já suportadas
+      description: |
+        A parte mais útil desta issue. Exemplos do tipo de coisa que importa:
+
+        - Como se lê o saldo do ativo monitorado? (`balanceOf`? conta própria? outra coisa?)
+        - A taxa sai do ativo monitorado ou de uma moeda nativa separada?
+        - Como se enumera eventos históricos? Tem limite de intervalo por consulta?
+        - Qual o modelo de finalidade? Reorg é possível?
+        - Existe evento de restrição/bloqueio de transferência, e ele reverte a transação ou desvia o valor?
+        - O que a rede simplesmente **não** permite observar?
+
+        "Não sei ainda" é resposta aceitável em qualquer item.
+      placeholder: |
+        ex (Solana): não tem eth_getLogs; cursor é slot, não bloco; saldo de token SPL
+        mora numa token account separada, não dá pra mapear em balanceOf; finalidade
+        tem três níveis (processed/confirmed/finalized); histórico de eventos
+        normalmente exige indexer, o que conflita com manter terceiros fora do
+        caminho crítico do alerta.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: intencao
+    attributes:
+      label: Você pretende implementar?
+      options:
+        - "Sim, quero implementar e abrir o PR"
+        - "Sim, mas quero discutir o design antes de escrever código"
+        - "Não — estou propondo pra que outra pessoa pegue"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: manutencao
+    attributes:
+      label: Você poderia se declarar mantenedor desta integração?
+      description: |
+        Mantenedor é quem revisa quando o protocolo da rede muda. **"Não" é resposta honesta e aceita** — afeta só o status de maturidade que a integração pode alcançar (ver ADAPTER_SPEC.md §7), não se a contribuição é bem-vinda.
+      options:
+        - "Sim"
+        - "Não — contribuição pontual"
+        - "Ainda não sei"
+    validations:
+      required: true
+
+  - type: textarea
+    id: ambiente
+    attributes:
+      label: Testnet pública e faucet disponíveis
+      description: |
+        Testes determinísticos rodam offline, mas a validação contra rede real precisa de um endpoint **público**. O projeto não aceita verificação que dependa de credencial pessoal ou endpoint privado, porque ninguém mais consegue reproduzi-la.
+      placeholder: "ex: Sepolia — RPC público https://... , faucet https://..."
+
+  - type: checkboxes
+    id: limites
+    attributes:
+      label: Limites do adaptador
+      description: Os dois pontos não negociáveis, verificados pela suíte de conformidade.
+      options:
+        - label: Entendi que um adaptador é somente leitura — nenhuma chave privada, signer ou caminho de escrita na cadeia
+          required: true
+        - label: Entendi que falha de rede precisa propagar, nunca virar `0n` ou valor em cache
+          required: true
