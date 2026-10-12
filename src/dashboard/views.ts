@@ -1101,7 +1101,13 @@ ${shareMeta(params.baseUrl)}
       <p class="col-title">Canais oficiais</p>
       <a href="https://x.com/viligion" target="_blank" rel="noopener">X · @viligion</a>
       <a href="https://t.me/viligionOficial" target="_blank" rel="noopener">Telegram · @viligionOficial</a>
-      <a href="mailto:jefersonhenri1@gmail.com">jefersonhenri1@gmail.com</a>
+      <!-- Sem e-mail pessoal aqui (removido em 2026-10-12). O dominio
+           viligion.com nao tem MX, entao um contato@viligion.com so
+           devolveria bounce - pior que nenhum endereco. Os canais abaixo
+           funcionam hoje. E a ofuscacao de e-mail do Cloudflare nao resolvia
+           nada: o XOR do data-cfemail e reversivel em segundos. -->
+      <a href="https://github.com/JefersonCruz/VILIGION/issues" target="_blank" rel="noopener">Suporte · GitHub Issues</a>
+      <a href="https://github.com/JefersonCruz/VILIGION/security/advisories/new" target="_blank" rel="noopener">Falha de segurança · relato privado</a>
       <p class="muted" style="font-size:0.78rem; margin:10px 0 0; max-width:240px;">Estes são os únicos canais oficiais. Nunca pedimos endereço, saldo, seed ou código 2FA — por canal nenhum — e nunca iniciamos conversa por mensagem privada.</p>
     </div>
   </div>

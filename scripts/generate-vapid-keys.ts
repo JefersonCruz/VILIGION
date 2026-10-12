@@ -18,6 +18,6 @@ const { publicKey, privateKey } = webpush.generateVAPIDKeys();
 console.log("Chaves VAPID geradas. Configure no ambiente (Railway / .env):\n");
 console.log(`VAPID_PUBLIC_KEY=${publicKey}`);
 console.log(`VAPID_PRIVATE_KEY=${privateKey}`);
-console.log("VAPID_SUBJECT=mailto:seu-email-de-contato@exemplo.com");
+console.log("VAPID_SUBJECT=https://seu-dominio.com");
 console.log("\nA chave PÚBLICA pode ir pro front (é servida em /push/config).");
 console.log("A chave PRIVADA é segredo - trate igual TWILIO_AUTH_TOKEN.");

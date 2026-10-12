@@ -46,4 +46,6 @@ Detection thresholds are "obscured, not secret" — a patient attacker could emp
 
 ## Responsible disclosure
 
-Found a security flaw? Open a private issue (GitHub Security Advisory) or contact [email to be defined]. Don't open a public issue for unpatched vulnerabilities.
+Found a security flaw? Report it privately through [GitHub Security Advisories](https://github.com/JefersonCruz/VILIGION/security/advisories/new). Don't open a public issue for an unpatched vulnerability.
+
+There is deliberately no contact email: the `viligion.com` domain has no MX record, so an address on it would bounce, and publishing a founder's personal address on a product about not linking identities to treasuries would be the wrong trade. A role address replaces this once domain email exists.
