@@ -18,5 +18,16 @@ jobs:
           cache: "npm"
 
       - run: npm ci
+
+      # Antes do build e dos testes de proposito: o lint falha em segundos,
+      # e nao faz sentido esperar a suite inteira pra descobrir um erro que
+      # o typechecker do lint ja tinha visto.
+      #
+      # Falha so em ERRO. Os avisos aparecem na saida e nao barram o merge -
+      # sao achados legitimos em codigo preexistente, documentados um por um
+      # em eslint.config.js, cada um pra subir a "error" num PR proprio. Ver
+      # a secao "Ratchet" lá.
+      - run: npm run lint
+
       - run: npm run build
       - run: npx vitest run

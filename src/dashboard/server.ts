@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isAddress, type Address } from "viem";
 import { verifyPassword } from "./password.js";
+import { asRequestListener } from "../async-request-handler.js";
 import { verifyTotp } from "./totp.js";
 import { renderOtpQrSvg } from "./otp-qr.js";
 import { RateLimiter } from "./rate-limiter.js";
@@ -214,7 +215,12 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
 
 /** Servidor standalone, só painel - usado quando não há servidor combinado (ex: o smoke test manual). */
 export function createDashboardServer(deps: DashboardServerDeps) {
-  return createServer(createDashboardRequestHandler(deps));
+  // Mesmo defeito corrigido em index.ts e webhook-server.ts: o handler do
+  // painel ja trata erro internamente (ver createDashboardRequestHandler),
+  // mas devolve Promise, e o RequestListener do Node espera void - entao
+  // qualquer falha FORA daquele try/catch viraria rejeicao nao tratada, que
+  // encerra o processo. Rede de seguranca, nao duplicacao.
+  return createServer(asRequestListener(createDashboardRequestHandler(deps), "painel"));
 }
 
 async function route(
