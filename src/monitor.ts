@@ -13,7 +13,7 @@
  */
 
 import type { Address } from "viem";
-import { MAX_LOG_RANGE_BLOCKS, type EvmAdapter, type BalanceSnapshot } from "./engine/chains/evm-adapter.js";
+import type { BalanceSnapshot, MonitoredChainAdapter } from "./engine/chains/chain-adapter.js";
 import type { ChainExtension } from "./engine/chain-extension.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { BalanceWindow } from "./engine/rules/balance-window.js";
@@ -40,6 +40,7 @@ export type AlertDispatcher = (event: DetectionEvent) => Promise<void>;
  * numa falha longa, mas também não espamar a cada 15s.
  */
 export const UNHEALTHY_AFTER_CONSECUTIVE_FAILURES = 3;
+
 
 /** Chamado quando o monitor cruza (ou segue cruzando) o limiar de falhas consecutivas - index.ts decide o que "avisar alguém" significa de verdade (hoje: e-mail de ops, se configurado). */
 export type HealthListener = (info: { consecutiveFailures: number; lastError: unknown }) => void;
@@ -73,7 +74,17 @@ export class Monitor {
   private lastSuccessAt: Date | null = null;
 
   constructor(
-    private readonly adapter: EvmAdapter,
+    /**
+     * Qualquer coisa que cumpra `MonitoredChainAdapter` - não a classe
+     * concreta `EvmAdapter`, como era antes. Era a razão pela qual uma rede
+     * de outra família (Solana) não conseguia ser monitorada sem editar este
+     * arquivo, que é justamente o núcleo que um colaborador externo não
+     * deveria precisar tocar pra integrar uma rede. Ver chain-adapter.ts e o
+     * teste de conformidade, que monitora um adaptador não-EVM de mentira
+     * exatamente pra provar que este construtor não tem mais preferência por
+     * família de rede.
+     */
+    private readonly adapter: MonitoredChainAdapter,
     private readonly config: MonitorConfig,
     private readonly dispatchAlert: AlertDispatcher,
     /** Opcional - só chains com particularidade de protocolo (ex: Tempo) passam uma */
@@ -193,14 +204,20 @@ export class Monitor {
         // consulta só. Em vez de voltar a falhar pra sempre como antes,
         // aceita perder eventos mais antigos que o limite e segue andando -
         // um monitor que se recupera sozinho é melhor que um que trava.
+        //
+        // O limite vem do ADAPTADOR (`maxHistoryWindow`), não de uma
+        // constante de EVM importada aqui como era antes: o teto é uma
+        // propriedade do provedor/protocolo de cada rede, e o núcleo não
+        // tem como saber o de uma rede que ele nunca viu.
+        const maxWindow = this.adapter.maxHistoryWindow;
         const fromBlock =
-          confirmedBlock - this.lastCheckedBlock > MAX_LOG_RANGE_BLOCKS
-            ? confirmedBlock - MAX_LOG_RANGE_BLOCKS + 1n
+          confirmedBlock - this.lastCheckedBlock > maxWindow
+            ? confirmedBlock - maxWindow + 1n
             : this.lastCheckedBlock + 1n;
 
         if (fromBlock > this.lastCheckedBlock + 1n) {
           console.error(
-            `[monitor] gap de blocos maior que o limite de consulta (${MAX_LOG_RANGE_BLOCKS} blocos) - ` +
+            `[monitor] gap de blocos maior que o limite de consulta (${maxWindow} blocos) - ` +
               `pulando de ${this.lastCheckedBlock} pra ${fromBlock - 1n}, eventos nesse intervalo foram perdidos`,
           );
         }
