@@ -15,6 +15,31 @@ This project has two parts with different rules:
 - `.env.example` must contain only variable names, never real values.
 - User-specific detection thresholds never go hardcoded into public code.
 - PRs touching `/privacy` or `/alerts` need at least one additional review before merge.
+- Don't claim a capability that isn't verified. If you didn't run it against the real thing, say so — in the code, in the PR, and in the docs. An honest gap gets reviewed quickly; an undisclosed one is what makes a review slow and uncomfortable for everyone.
+
+## Adding support for a new network
+
+This is the contribution the project most wants right now, and it's designed to need no coordination with the maintainer.
+
+Start here:
+
+1. [`docs/DEVELOPING_ADAPTERS.md`](./docs/DEVELOPING_ADAPTERS.md) — the step-by-step walkthrough, with a complete worked example.
+2. [`docs/ADAPTER_SPEC.md`](./docs/ADAPTER_SPEC.md) — the normative contract, and the reasoning behind each rule.
+3. [`docs/CHAIN-SUPPORT-MATRIX.md`](./docs/CHAIN-SUPPORT-MATRIX.md) — what's actually supported today, and what each unsupported network would need.
+
+The short version:
+
+- Implement `MonitoredChainAdapter` (`src/engine/chains/chain-adapter.ts`). You do **not** need to inherit from `EvmAdapter` — if your network isn't EVM, you shouldn't.
+- Run the reusable conformance suite (`describeAdapterConformance`) plus your own decoding tests. Both must pass offline, with no credentials.
+- Add one row to `src/engine/chains/chain-registry.ts`. Start at `supportStatus: "experimental"` — that's the accurate description of code that has never touched the real network, not a demotion.
+- Add your row to the support matrix in the same PR.
+
+**You shouldn't have to modify `monitor.ts`, `detection-rules.ts`, or anything under `/alerts`, `/privacy` or `/dashboard`.** If you do, that's a finding about the architecture rather than something to work around — open an issue describing it. Those reports are more useful to the project than the workaround would be.
+
+Two rules that are non-negotiable for adapters, both enforced by the conformance suite:
+
+- **Read-only.** No private key, mnemonic, signer or wallet, and no transaction-sending path. Adapters receive an address and nothing else — never a phone number, email, user ID or threshold.
+- **Network failure must propagate.** Never return `0n` or a cached value when a read fails. A monitor that looks healthy and sees nothing is the worst failure this product can have, and swallowing an RPC error is the usual way to build one.
 
 ## Running locally
 

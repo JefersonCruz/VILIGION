@@ -45,6 +45,33 @@ Dashboard/Auth (full detail only after login)
 
 Full technical detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
+## Chain support — what works, and what is only registered
+
+The detection core is network-agnostic: it depends on a published contract (`MonitoredChainAdapter`), not on any one chain's classes. A non-EVM network can be integrated without modifying the core, and there is a test that proves it by driving the unmodified monitor with a non-EVM adapter.
+
+Being *registered* is not the same as being *supported*, so the two are tracked separately:
+
+| Network | Verified against the real network | Status |
+|---|---|---|
+| **Tempo** | Yes — Moderato testnet: RPC, chain ID, Guard address cross-checked against `viem/tempo`, TIP-403 `TransferBlocked` decoding | `validating` |
+| Base, Arbitrum One, Ethereum L1 | **No** — they run the generic EVM adapter, which is tested, but no one has exercised these chains specifically | `experimental` |
+
+**No network is marked stable, and there has been no external security audit.** The per-network detail, including known limitations and what each unsupported network would require, is in [`docs/CHAIN-SUPPORT-MATRIX.md`](./docs/CHAIN-SUPPORT-MATRIX.md).
+
+## Contributing — especially new networks
+
+The core is generic; what's missing is networks. That's the contribution the project most wants, and it's set up to need no coordination with the maintainer: there's a documented contract, a reusable conformance test suite your adapter runs for free, and a reference adapter (Tempo) showing how to contain a protocol's quirks without spreading them into the core. Adding a network is a new module plus one registry row.
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — environment setup, how to run the tests, the two project zones and their rules
+- [`docs/DEVELOPING_ADAPTERS.md`](./docs/DEVELOPING_ADAPTERS.md) — step-by-step walkthrough with a worked example
+- [`docs/ADAPTER_SPEC.md`](./docs/ADAPTER_SPEC.md) — the normative contract, and the reasoning behind each rule
+
+Two non-negotiable rules for adapters, both enforced by the conformance suite: **read-only** (no private key, signer, or transaction-sending path) and **network failures must propagate** (never return `0n` for a read that failed — a monitor that looks healthy and sees nothing is the worst failure this product can have).
+
+Want to propose a network? Open an issue with the "Suporte a uma nova rede" template. Contributions don't carry compensation, equity, tokens, or prizes — see [`GOVERNANCE.md`](./GOVERNANCE.md).
+
+**Security vulnerabilities never go in a public issue.** Use the responsible disclosure process in [`SECURITY.md`](./SECURITY.md).
+
 ## Status
 
 Project under construction for the Crypto World's Fair hackathon (submission by 2026-10-13). See [`docs/TEAM-PLAYBOOK.md`](./docs/TEAM-PLAYBOOK.md) for how the team works (roles, communication channels and what is never asked on them, available tooling), [`GOVERNANCE.md`](./GOVERNANCE.md) for how decisions are made at this stage, [`docs/BUSINESS-PLAN.md`](./docs/BUSINESS-PLAN.md) for the phased business and development plan, [`docs/PRODUCT-FEASIBILITY.md`](./docs/PRODUCT-FEASIBILITY.md) for the effort/risk/impact study behind what gets built next, [`docs/VIDEO-SCRIPT.md`](./docs/VIDEO-SCRIPT.md) for the submission video script, [`docs/UI-SPEC.md`](./docs/UI-SPEC.md) for the portal/dashboard structure, [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for how to host it, and [`TERMS-OF-USE.md`](./TERMS-OF-USE.md) for the service's terms (draft, pending legal review — see the notice at the top of that file). There's also an internal Contributor Agreement covering hackathon prize money and future equity intentions, shared privately with signed-in contributors only — not published in this public repo (see `docs/signatures/README.md` for the public, non-financial record of who signed).

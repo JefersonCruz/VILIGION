@@ -13,7 +13,7 @@
  */
 
 import type { Address } from "viem";
-import { MAX_LOG_RANGE_BLOCKS, type EvmAdapter, type BalanceSnapshot } from "./engine/chains/evm-adapter.js";
+import type { BalanceSnapshot, MonitoredChainAdapter } from "./engine/chains/chain-adapter.js";
 import type { ChainExtension } from "./engine/chain-extension.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { BalanceWindow } from "./engine/rules/balance-window.js";
@@ -40,6 +40,39 @@ export type AlertDispatcher = (event: DetectionEvent) => Promise<void>;
  * numa falha longa, mas também não espamar a cada 15s.
  */
 export const UNHEALTHY_AFTER_CONSECUTIVE_FAILURES = 3;
+
+/**
+ * Quantos eventos de extensão já entregues o monitor lembra, pra não entregar
+ * o mesmo duas vezes (ver `extensionEventKey` e o campo
+ * `deliveredExtensionEvents`).
+ *
+ * Limitado porque um monitor roda indefinidamente: um conjunto que só cresce
+ * é um vazamento de memória lento, do tipo que só aparece semanas depois em
+ * produção. Com um evento de bloqueio por ciclo de 15s, 1.000 chaves cobrem
+ * mais de 4 horas de histórico - muito mais que a janela em que uma
+ * reentrega plausível acontece (um ciclo falho, ou uma reorg), que é da ordem
+ * de minutos.
+ */
+export const MAX_REMEMBERED_DELIVERED_EVENTS = 1_000;
+
+/**
+ * Chave estável de um evento de extensão já entregue, ou `null` quando o
+ * evento não tem identificador próprio.
+ *
+ * `null` significa "não dá pra desduplicar isto", e nesse caso o evento é
+ * entregue sempre. É deliberadamente conservador: numa dúvida entre repetir
+ * um alerta e engolir um, repetir é o erro menos grave. `balance-drop` cai
+ * aqui - é derivado de amostragem de saldo (ver balance-window.ts, que já tem
+ * a própria proteção contra repetição), não de uma ocorrência identificável
+ * na cadeia.
+ *
+ * O `kind` entra na chave pra que dois eventos de tipos diferentes que por
+ * acaso compartilhem o mesmo identificador não se desduplifiquem entre si.
+ */
+function extensionEventKey(event: DetectionEvent): string | null {
+  if (event.kind === "transfer-blocked") return `${event.kind}:${event.blockedNonce}`;
+  return null;
+}
 
 /** Chamado quando o monitor cruza (ou segue cruzando) o limiar de falhas consecutivas - index.ts decide o que "avisar alguém" significa de verdade (hoje: e-mail de ops, se configurado). */
 export type HealthListener = (info: { consecutiveFailures: number; lastError: unknown }) => void;
@@ -71,9 +104,40 @@ export class Monitor {
    * nao distingue um monitor saudavel de um travado no meio de um tick.
    */
   private lastSuccessAt: Date | null = null;
+  /**
+   * Eventos de extensão já ENTREGUES com sucesso, pra não entregar de novo.
+   *
+   * Bug real que isto corrige (encontrado por teste nesta etapa, ver
+   * monitor-event-delivery.test.ts): quando a extensão devolve vários eventos
+   * no mesmo intervalo e a entrega de UM deles falha, o erro sobe do `tick` e
+   * `lastCheckedBlock` não avança - o que é correto, porque o evento que
+   * falhou ainda não chegou a ninguém e seria perdido pra sempre. Mas o ciclo
+   * seguinte reconsulta o mesmo intervalo, recebe os mesmos eventos, e
+   * reentrega os que JÁ tinham sido entregues. Medido no teste: um único
+   * bloqueio de transferência gerava cinco alertas - cinco ligações
+   * telefônicas pro dono pela mesma ocorrência.
+   *
+   * A marcação acontece DEPOIS da entrega bem-sucedida, nunca antes: marcar
+   * antes transformaria uma falha de entrega em evento silenciosamente
+   * descartado, que é o modo de falha oposto e pior.
+   *
+   * Set, não array, pela busca; e a ordem de inserção do Set é o que permite
+   * descartar a chave mais antiga quando passa do limite.
+   */
+  private readonly deliveredExtensionEvents = new Set<string>();
 
   constructor(
-    private readonly adapter: EvmAdapter,
+    /**
+     * Qualquer coisa que cumpra `MonitoredChainAdapter` - não a classe
+     * concreta `EvmAdapter`, como era antes. Era a razão pela qual uma rede
+     * de outra família (Solana) não conseguia ser monitorada sem editar este
+     * arquivo, que é justamente o núcleo que um colaborador externo não
+     * deveria precisar tocar pra integrar uma rede. Ver chain-adapter.ts e o
+     * teste de conformidade, que monitora um adaptador não-EVM de mentira
+     * exatamente pra provar que este construtor não tem mais preferência por
+     * família de rede.
+     */
+    private readonly adapter: MonitoredChainAdapter,
     private readonly config: MonitorConfig,
     private readonly dispatchAlert: AlertDispatcher,
     /** Opcional - só chains com particularidade de protocolo (ex: Tempo) passam uma */
@@ -136,6 +200,16 @@ export class Monitor {
     };
   }
 
+  /** Anota uma chave como entregue, descartando as mais antigas acima do limite (ver MAX_REMEMBERED_DELIVERED_EVENTS). */
+  private rememberDelivered(key: string): void {
+    this.deliveredExtensionEvents.add(key);
+    while (this.deliveredExtensionEvents.size > MAX_REMEMBERED_DELIVERED_EVENTS) {
+      const oldest = this.deliveredExtensionEvents.values().next();
+      if (oldest.done) break;
+      this.deliveredExtensionEvents.delete(oldest.value);
+    }
+  }
+
   private async resolveThresholds(): Promise<UserThresholds> {
     const source = this.config.thresholds;
     if (typeof source !== "function") return source;
@@ -193,14 +267,20 @@ export class Monitor {
         // consulta só. Em vez de voltar a falhar pra sempre como antes,
         // aceita perder eventos mais antigos que o limite e segue andando -
         // um monitor que se recupera sozinho é melhor que um que trava.
+        //
+        // O limite vem do ADAPTADOR (`maxHistoryWindow`), não de uma
+        // constante de EVM importada aqui como era antes: o teto é uma
+        // propriedade do provedor/protocolo de cada rede, e o núcleo não
+        // tem como saber o de uma rede que ele nunca viu.
+        const maxWindow = this.adapter.maxHistoryWindow;
         const fromBlock =
-          confirmedBlock - this.lastCheckedBlock > MAX_LOG_RANGE_BLOCKS
-            ? confirmedBlock - MAX_LOG_RANGE_BLOCKS + 1n
+          confirmedBlock - this.lastCheckedBlock > maxWindow
+            ? confirmedBlock - maxWindow + 1n
             : this.lastCheckedBlock + 1n;
 
         if (fromBlock > this.lastCheckedBlock + 1n) {
           console.error(
-            `[monitor] gap de blocos maior que o limite de consulta (${MAX_LOG_RANGE_BLOCKS} blocos) - ` +
+            `[monitor] gap de blocos maior que o limite de consulta (${maxWindow} blocos) - ` +
               `pulando de ${this.lastCheckedBlock} pra ${fromBlock - 1n}, eventos nesse intervalo foram perdidos`,
           );
         }
@@ -209,7 +289,12 @@ export class Monitor {
         // deixar a extensão perguntar de novo à RPC (achado de performance
         // de 2026-10-03 - essa segunda chamada era pura duplicação).
         const extraEvents = await this.extension.checkExtra(fromBlock, confirmedBlock, thresholds);
-        for (const event of extraEvents) await this.dispatchAlert(event);
+        for (const event of extraEvents) {
+          const key = extensionEventKey(event);
+          if (key !== null && this.deliveredExtensionEvents.has(key)) continue;
+          await this.dispatchAlert(event);
+          if (key !== null) this.rememberDelivered(key);
+        }
         this.lastCheckedBlock = confirmedBlock;
       }
     }

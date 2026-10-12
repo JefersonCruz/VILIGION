@@ -7,8 +7,8 @@
  * "obscurecido, não secreto".
  */
 
-import type { BalanceSnapshot } from "../chains/evm-adapter.js";
-import type { TransferBlockedEvent } from "../chains/tempo.adapter.js";
+import type { BalanceSnapshot } from "../chains/chain-adapter.js";
+import type { RestrictedTransferObservation } from "./normalized-events.js";
 
 /**
  * Nível de urgência do alerta — decide o CANAL de entrega (ver dispatch em
@@ -47,6 +47,15 @@ export type DetectionEvent =
       kind: "transfer-blocked";
       userId: string;
       amount: bigint;
+      /**
+       * `sequence` da observação normalizada (ver normalized-events.ts) - o
+       * `blockedNonce` do TIP-403 quando a origem é a Tempo. O nome com sabor
+       * de Tempo ficou de propósito: este tipo é o contrato que a camada de
+       * alertas e o painel consomem, e renomeá-lo mexeria em módulos que não
+       * têm nada a ver com extensibilidade de rede, sem ganho funcional
+       * nenhum (hoje nenhum consumidor LÊ este campo - alerta nunca cita
+       * valor nem identificador, ver alert-content-policy.ts).
+       */
       blockedNonce: bigint;
       severity: AlertSeverity;
     };
@@ -97,18 +106,29 @@ export function balanceDropEvent(
   };
 }
 
-/** Transferência bloqueada pelo ReceivePolicyGuard (evento TransferBlocked) acima do limiar do usuário. */
-export function checkBlockedTransfer(
-  event: TransferBlockedEvent,
+/**
+ * Transferência restringida pela política da rede, acima do limiar do usuário.
+ *
+ * Genérica por design: recebe a observação NORMALIZADA
+ * (`RestrictedTransferObservation`), não o evento de uma rede. Antes recebia
+ * `TransferBlockedEvent` direto do adaptador da Tempo, o que fazia este
+ * arquivo - a camada de regras comum a todas as redes - depender em tempo de
+ * compilação de um módulo de uma rede só. A tradução do evento de cada rede
+ * pra esta forma é responsabilidade da extensão dela (ver tempo-extension.ts),
+ * que já conhece as duas pontas. Ver docs/ADAPTER_SPEC.md.
+ */
+export function checkRestrictedTransfer(
+  observation: RestrictedTransferObservation,
   thresholds: UserThresholds,
 ): DetectionEvent | null {
-  if (event.amount < thresholds.blockedTransferAlertThreshold) return null;
+  if (observation.amount < thresholds.blockedTransferAlertThreshold) return null;
 
   return {
     kind: "transfer-blocked",
     userId: thresholds.userId,
-    amount: event.amount,
-    blockedNonce: event.blockedNonce,
-    severity: event.amount >= thresholds.criticalBlockedTransferThreshold ? "critical" : "normal",
+    amount: observation.amount,
+    blockedNonce: observation.sequence,
+    severity:
+      observation.amount >= thresholds.criticalBlockedTransferThreshold ? "critical" : "normal",
   };
 }

@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Address } from "viem";
 import { TempoAdapter, type TransferBlockedEvent } from "./tempo.adapter.js";
-import { TempoBlockedTransferExtension } from "./tempo-extension.js";
-import type { UserThresholds } from "../rules/detection-rules.js";
+import { TempoBlockedTransferExtension, toRestrictedTransferObservation } from "./tempo-extension.js";
+import { checkRestrictedTransfer, type UserThresholds } from "../rules/detection-rules.js";
 
 const GUARD_ADDRESS = "0xB10C000000000000000000000000000000000000" as Address;
+/**
+ * Obrigatório desde que TempoAdapter passou a validar a própria configuração
+ * no construtor: a Tempo não tem gas token nativo, então um adaptador sem
+ * endereço de token leria um saldo que não é o da tesouraria (ver
+ * TEMPO_CAPABILITIES). Mesmo um adaptador falso, que nunca lê saldo, precisa
+ * ser configurado de forma válida - um fake que aceita configuração que a
+ * produção rejeita é um fake que testa outra coisa.
+ */
+const TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001" as Address;
 
 /** TempoAdapter falso - devolve eventos TransferBlocked pré-programados, nunca toca rede. */
 class FakeTempoAdapter extends TempoAdapter {
@@ -12,7 +21,13 @@ class FakeTempoAdapter extends TempoAdapter {
   lastCall: { fromBlock: bigint; toBlock: bigint } | null = null;
 
   constructor(private readonly events: TransferBlockedEvent[]) {
-    super({ rpcUrl: "http://localhost:1", chainId: 1, minConfirmations: 1, receivePolicyGuardAddress: GUARD_ADDRESS });
+    super({
+      rpcUrl: "http://localhost:1",
+      chainId: 1,
+      minConfirmations: 1,
+      receivePolicyGuardAddress: GUARD_ADDRESS,
+      tokenAddress: TOKEN_ADDRESS,
+    });
   }
 
   override async getBlockedTransfers(fromBlock: bigint, toBlock: bigint): Promise<TransferBlockedEvent[]> {
@@ -92,5 +107,54 @@ describe("TempoBlockedTransferExtension", () => {
     await extension.checkExtra(5n, 42n, thresholds);
 
     expect(adapter.lastCall).toEqual({ fromBlock: 5n, toBlock: 42n });
+  });
+});
+
+describe("tradução do evento da Tempo pra observação normalizada", () => {
+  /**
+   * Esta é a camada que substituiu o import de `TransferBlockedEvent` dentro
+   * de detection-rules.ts. A regra genérica agora só vê `amount`/`sequence`;
+   * tudo que é do TIP-403 fica preservado em `details`, pra auditoria, sem
+   * virar campo do núcleo.
+   */
+  it("mapeia os campos genéricos: valor, sequência, cursor e referência da transação", () => {
+    const observation = toRestrictedTransferObservation(makeEvent(3_000_000n));
+
+    expect(observation.kind).toBe("transfer-restricted");
+    expect(observation.chainKey).toBe("tempo");
+    expect(observation.amount).toBe(3_000_000n);
+    expect(observation.sequence).toBe(1n); // blockedNonce do TIP-403
+    expect(observation.cursor).toBe(1n); // blockNumber
+    expect(observation.txRef).toBe("0x00");
+  });
+
+  it("preserva o witness decodificado em details, pra auditoria, sem promovê-lo a campo genérico", () => {
+    const observation = toRestrictedTransferObservation(makeEvent(3_000_000n));
+    const details = observation.details as Record<string, unknown>;
+
+    expect(details.protocolEvent).toBe("tempo/TransferBlocked");
+    expect(details.receiptDecoded).toMatchObject({ blockedReason: "receivePolicy", kind: "transfer" });
+    // Os campos do TIP-403 NÃO vazam pro nível de cima do modelo normalizado.
+    expect(observation).not.toHaveProperty("receiptDecoded");
+    expect(observation).not.toHaveProperty("blockedNonce");
+    expect(observation).not.toHaveProperty("receiver");
+  });
+
+  it("a severidade sai só do valor contra os limiares - nada vindo de details a influencia", () => {
+    // `details` carrega dado da cadeia, ou seja, dado que quem ataca a conta
+    // também consegue influenciar (o memo, por exemplo, vem de quem originou
+    // a transferência). Dois eventos de mesmo valor precisam dar a mesma
+    // severidade independente do que venha no recibo. Ver SECURITY.md.
+    const base = makeEvent(2_000_000n);
+    const withHostileMemo: TransferBlockedEvent = {
+      ...base,
+      receiptDecoded: { ...base.receiptDecoded, blockedReason: "tokenFilter", memo: "0xdead" },
+    };
+
+    const a = checkRestrictedTransfer(toRestrictedTransferObservation(base), thresholds);
+    const b = checkRestrictedTransfer(toRestrictedTransferObservation(withHostileMemo), thresholds);
+
+    expect(a?.severity).toBe("normal");
+    expect(b?.severity).toBe("normal");
   });
 });

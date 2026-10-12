@@ -27,6 +27,7 @@ import { RECEIVE_POLICY_GUARD_ADDRESS, TempoAdapter } from "./engine/chains/temp
 import { TempoBlockedTransferExtension } from "./engine/chains/tempo-extension.js";
 import { EvmAdapter } from "./engine/chains/evm-adapter.js";
 import { getKnownChain, resolveRpcUrl } from "./engine/chains/known-chains.js";
+import { buildChainIntegration, getChainIntegration } from "./engine/chains/chain-registry.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { Monitor, type HealthListener } from "./monitor.js";
 import { asRequestListener } from "./async-request-handler.js";
@@ -361,10 +362,13 @@ async function mainDemo() {
   const monitors = [tempoMonitor.start()];
 
   if (process.env.DEMO_SECOND_CHAIN_ADDRESS) {
-    const baseAdapter = new EvmAdapter({
-      rpcUrl: resolveRpcUrl("base", process.env.BASE_RPC_URL),
-      chainId: 8453,
+    // Via registro, não `new EvmAdapter` com chainId na mão: o 8453 que
+    // estava escrito aqui duplicava o que known-chains.ts já sabe, e duas
+    // cópias do mesmo número divergem na primeira vez que uma delas muda.
+    const { adapter: baseAdapter } = buildChainIntegration({
+      chainKey: "base",
       minConfirmations: 3,
+      rpcUrlOverride: process.env.BASE_RPC_URL,
     });
     const baseMonitor = new Monitor(
       baseAdapter,
@@ -717,8 +721,6 @@ async function startMonitorForAccount(
   thresholdsRepo: PostgresThresholdsRepository,
   dispatchAlert: (event: DetectionEvent) => Promise<void>,
 ): Promise<Monitor> {
-  const chain = getKnownChain(account.chainKey);
-  const rpcUrl = resolveRpcUrl(account.chainKey, undefined);
   const thresholds = async (): Promise<UserThresholds> =>
     (await thresholdsRepo.get(account.userId)) ?? {
       userId: account.userId,
@@ -732,34 +734,41 @@ async function startMonitorForAccount(
   const monitorLabel = `usuário=${account.userId} chain=${account.chainKey} conta=${account.id}`;
   const onUnhealthy = buildUnhealthyNotifierIfConfigured(monitorLabel);
 
-  if (account.chainKey === "tempo") {
-    const adapter = new TempoAdapter({
-      rpcUrl,
-      chainId: chain.chainId,
-      minConfirmations: 3,
-      receivePolicyGuardAddress: RECEIVE_POLICY_GUARD_ADDRESS,
-      tokenAddress: account.tokenAddress as Address,
-    });
-    const monitor = new Monitor(
-      adapter,
-      { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
-      dispatchAlert,
-      new TempoBlockedTransferExtension(adapter),
-      onUnhealthy,
-    );
-    console.log(`[monitor] ativo: ${monitorLabel} token=${account.tokenAddress}`);
-    return monitor;
-  }
+  /**
+   * Nenhuma rede é citada por nome aqui, de propósito. Antes esta função
+   * tinha um `if (account.chainKey === "tempo")` que escolhia adaptador e
+   * extensão - ou seja, suportar uma rede nova exigia editar o ponto de
+   * entrada da aplicação. Agora a escolha vive no registro
+   * (engine/chains/chain-registry.ts), e uma integração nova é um módulo novo
+   * mais uma linha de tabela, sem toque no núcleo. Ver docs/ADAPTER_SPEC.md.
+   */
+  const { adapter, extension } = buildChainIntegration({
+    chainKey: account.chainKey,
+    tokenAddress: account.tokenAddress as Address,
+    minConfirmations: 3,
+  });
 
-  const adapter = new EvmAdapter({ rpcUrl, chainId: chain.chainId, minConfirmations: 3, tokenAddress: account.tokenAddress as Address });
   const monitor = new Monitor(
     adapter,
     { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
     dispatchAlert,
-    undefined,
+    extension,
     onUnhealthy,
   );
-  console.log(`[monitor] ativo: ${monitorLabel} token=${account.tokenAddress}`);
+  const integration = getChainIntegration(account.chainKey);
+  console.log(
+    `[monitor] ativo: ${monitorLabel} token=${account.tokenAddress} ` +
+      `rede=${integration.displayName} suporte=${integration.supportStatus}` +
+      (extension ? " (com extensão de protocolo)" : ""),
+  );
+  if (integration.supportStatus === "experimental") {
+    // Quem opera precisa saber que esta rede nunca foi exercitada contra a
+    // rede real - "registrada" não é "suportada" (ver chain-registry.ts).
+    console.warn(
+      `[monitor] ATENÇÃO: a rede "${account.chainKey}" está marcada como experimental. ` +
+        `${integration.validationEvidence}`,
+    );
+  }
   return monitor;
 }
 

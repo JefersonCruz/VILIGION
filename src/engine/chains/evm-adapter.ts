@@ -15,15 +15,20 @@ import {
   http,
   parseAbi,
 } from "viem";
+import type {
+  AdapterMetadata,
+  BalanceSnapshot,
+  ChainCapabilities,
+  MonitoredChainAdapter,
+} from "./chain-adapter.js";
 
-export interface BalanceSnapshot {
-  address: Address;
-  /** saldo bruto, na menor unidade do token monitorado */
-  raw: bigint;
-  blockNumber: bigint;
-  /** quando essa leitura foi feita, pra permitir detectar atraso de indexação */
-  observedAt: Date;
-}
+/**
+ * Reexportado daqui por compatibilidade: `BalanceSnapshot` passou a morar em
+ * `chain-adapter.ts` quando o tipo deixou de ser "snapshot de saldo EVM" e
+ * virou parte do contrato comum a qualquer rede. Os chamadores existentes
+ * (monitor.ts, rules/) seguem importando do mesmo lugar de antes.
+ */
+export type { BalanceSnapshot } from "./chain-adapter.js";
 
 const ERC20_BALANCE_OF_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -59,21 +64,62 @@ export interface EvmAdapterConfig {
    * campo é obrigatório na prática.
    */
   tokenAddress?: Address;
+  /**
+   * Chave estável da rede (a mesma de `known-chains.ts` e da coluna
+   * `monitored_accounts.chain_key`). Opcional pra não quebrar os chamadores
+   * que já existiam antes do contrato comum; sem ela, o metadata cai num
+   * identificador derivado do chainId, que serve pra log mas não pro registro.
+   */
+  chainKey?: string;
+  displayName?: string;
 }
+
+/**
+ * Capacidades de uma rede EVM "normal" - com moeda nativa de verdade, logs
+ * históricos e possibilidade de reorg (Base, Arbitrum, Ethereum L1).
+ *
+ * `feePaidInMonitoredAsset: false` é o ponto que separa essas redes da Tempo:
+ * a taxa sai da moeda nativa, nunca do token monitorado, então `getFeeAdjustment`
+ * devolver `0n` aqui é a resposta CORRETA e não um placeholder. Ver
+ * `TEMPO_CAPABILITIES` em tempo.adapter.ts pro contraste.
+ */
+export const GENERIC_EVM_CAPABILITIES: ChainCapabilities = {
+  tokenBalance: true,
+  nativeBalance: true,
+  historicalEvents: true,
+  feePaidInMonitoredAsset: false,
+  reorgPossible: true,
+  requiresTokenAddress: false,
+};
 
 /**
  * Adaptador EVM genérico. Cada chain concreta (ex: TempoAdapter) estende isto
  * e adiciona suas regras próprias de protocolo.
+ *
+ * Cumpre `MonitoredChainAdapter` - é a implementação de referência do contrato
+ * comum, e a prova de que o contrato não foi desenhado em torno de uma rede
+ * só (ver docs/ADAPTER_SPEC.md).
  */
-export class EvmAdapter {
+export class EvmAdapter implements MonitoredChainAdapter {
   protected readonly client: PublicClient;
   protected readonly config: EvmAdapterConfig;
+
+  readonly metadata: AdapterMetadata;
+  /** Sobrescrito por subclasse quando a rede foge do EVM "normal" - ver TempoAdapter. */
+  readonly capabilities: ChainCapabilities = GENERIC_EVM_CAPABILITIES;
+  readonly maxHistoryWindow: bigint = MAX_LOG_RANGE_BLOCKS;
 
   constructor(config: EvmAdapterConfig) {
     this.config = config;
     this.client = createPublicClient({
       transport: http(config.rpcUrl),
     }) as PublicClient;
+    this.metadata = {
+      chainKey: config.chainKey ?? `evm-${config.chainId}`,
+      displayName: config.displayName ?? config.chainKey ?? `EVM chain ${config.chainId}`,
+      family: "evm",
+      chainId: config.chainId,
+    };
   }
 
   /**
@@ -83,16 +129,10 @@ export class EvmAdapter {
    * isso importa na Tempo.
    */
   async getBalance(address: Address): Promise<BalanceSnapshot> {
+    const token = this.config.tokenAddress;
     const [raw, blockNumber] = await Promise.all([
-      this.config.tokenAddress
-        ? this.client.readContract({
-            address: this.config.tokenAddress,
-            abi: ERC20_BALANCE_OF_ABI,
-            functionName: "balanceOf",
-            args: [address],
-          })
-        : this.client.getBalance({ address }),
-      this.client.getBlockNumber(),
+      token ? this.rawReadTokenBalance(token, address) : this.rawReadNativeBalance(address),
+      this.rawGetBlockNumber(),
     ]);
 
     return { address, raw, blockNumber, observedAt: new Date() };
@@ -100,9 +140,39 @@ export class EvmAdapter {
 
   /** Número do bloco mais recente já confirmado o suficiente pra confiar (ver minConfirmations). */
   async getConfirmedBlockNumber(): Promise<bigint> {
-    const latest = await this.client.getBlockNumber();
+    const latest = await this.rawGetBlockNumber();
     const confirmed = latest - BigInt(this.config.minConfirmations);
     return confirmed > 0n ? confirmed : 0n;
+  }
+
+  /*
+   * Os três seams abaixo existem pelo mesmo motivo que `rawGetLogs` (ver nota
+   * nele): isolar cada chamada RPC crua num método substituível permite
+   * testar a LÓGICA de `getBalance`/`getConfirmedBlockNumber` - a escolha
+   * entre saldo de token e saldo nativo, o clamp do cursor em 0, a
+   * propagação de erro - sem mockar o client do viem inteiro e sem tocar
+   * rede. É o que a suíte de conformidade (adapter-conformance.ts) precisa
+   * pra exercitar o caminho real em vez de uma reimplementação do fake.
+   */
+
+  /** Saldo de token via `balanceOf`. */
+  protected async rawReadTokenBalance(token: Address, account: Address): Promise<bigint> {
+    return this.client.readContract({
+      address: token,
+      abi: ERC20_BALANCE_OF_ABI,
+      functionName: "balanceOf",
+      args: [account],
+    });
+  }
+
+  /** Saldo da moeda nativa via `eth_getBalance` - ver a nota em `EvmAdapterConfig.tokenAddress`. */
+  protected async rawReadNativeBalance(account: Address): Promise<bigint> {
+    return this.client.getBalance({ address: account });
+  }
+
+  /** Altura atual da cadeia. */
+  protected async rawGetBlockNumber(): Promise<bigint> {
+    return this.client.getBlockNumber();
   }
 
   /**
