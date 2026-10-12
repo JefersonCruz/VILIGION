@@ -29,6 +29,7 @@ import { EvmAdapter } from "./engine/chains/evm-adapter.js";
 import { getKnownChain, resolveRpcUrl } from "./engine/chains/known-chains.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { Monitor, type HealthListener } from "./monitor.js";
+import { asRequestListener } from "./async-request-handler.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { InMemoryWaitlistRepository, PostgresWaitlistRepository } from "./dashboard/waitlist.js";
 import { createEmailNotifier } from "./alerts/email-notifier.js";
@@ -229,10 +230,18 @@ function startCombinedServer(
   const dashboardHandler = createDashboardRequestHandler(dashboardDeps);
   void warmupContributors(); // esquenta o cache de colaboradores do GitHub antes do 1º visitante, sem atrasar o listen()
 
-  const server = createServer(async (req, res) => {
-    const handledByWebhook = await handleWebhookRequest(req, res, webhookConfig, pinStore, onPinResult);
-    if (!handledByWebhook) await dashboardHandler(req, res);
-  });
+  // `asRequestListener`, e nao `createServer(async ...)`: o segundo entrega
+  // uma Promise ao Node, que a descarta, e a rejeicao nao tratada ENCERRA o
+  // processo - que aqui e o mesmo processo que roda todos os monitores de
+  // tesouraria. `handleWebhookRequest` nao tem try/catch proprio, entao esse
+  // caminho era alcancavel por requisicao malformada ao webhook. Ver
+  // async-request-handler.ts.
+  const server = createServer(
+    asRequestListener(async (req, res) => {
+      const handledByWebhook = await handleWebhookRequest(req, res, webhookConfig, pinStore, onPinResult);
+      if (!handledByWebhook) await dashboardHandler(req, res);
+    }, "servidor"),
+  );
 
   server.listen(port, () => console.log(`[servidor] painel + webhook escutando na porta ${port}`));
   return port;

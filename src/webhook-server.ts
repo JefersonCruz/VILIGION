@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { assertValidTwilioWebhook } from "./alerts/twilio-webhook-validator.js";
 import { checkPin, type PendingPin } from "./alerts/pin.js";
 import { getPendingTwiml } from "./alerts/twilio-voice.js";
+import { asRequestListener } from "./async-request-handler.js";
 
 export interface WebhookServerConfig {
   port: number;
@@ -81,13 +82,17 @@ export function createWebhookServer(
   pinStore: PinStore,
   onPinResult: (alertId: string, result: ReturnType<typeof checkPin>) => void,
 ) {
-  return createServer(async (req, res) => {
-    const handled = await handleWebhookRequest(req, res, config, pinStore, onPinResult);
-    if (!handled) {
-      res.writeHead(404);
-      res.end();
-    }
-  });
+  // Ver async-request-handler.ts: handler async direto no createServer faz
+  // rejeicao nao tratada derrubar o processo.
+  return createServer(
+    asRequestListener(async (req, res) => {
+      const handled = await handleWebhookRequest(req, res, config, pinStore, onPinResult);
+      if (!handled) {
+        res.writeHead(404);
+        res.end();
+      }
+    }, "webhook"),
+  );
 }
 
 async function handleGather(
