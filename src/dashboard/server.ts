@@ -230,6 +230,7 @@ async function route(
   if (req.method === "GET" && path === "/sw.js") return serveServiceWorker(res);
   if (req.method === "GET" && path === "/manifest.json") return serveManifest(res);
   if (req.method === "GET" && path === "/icon.png") return serveAppIcon(res);
+  if (req.method === "GET" && path !== undefined && STATIC_IMAGES[path]) return serveStaticImage(res, path);
   if (req.method === "GET" && path === "/push/config") return handlePushConfig(res, deps);
   if (req.method === "POST" && path === "/push/subscribe") {
     return withSession(req, res, sessions, (userId) => handlePushSubscribe(req, res, deps, userId));
@@ -393,6 +394,43 @@ function serveAppIcon(res: ServerResponse): void {
   appIconCache ??= Buffer.from(LOGO_ICON_DATA_URI.replace(/^data:image\/png;base64,/, ""), "base64");
   res.writeHead(200, { "Content-Type": "image/png", "Content-Length": appIconCache.length, "Cache-Control": "public, max-age=3600" });
   res.end(appIconCache);
+}
+
+/**
+ * Ícones de PWA e badge de notificação, gerados a partir da arte em alta
+ * resolução (`docs/assets/logo-ful.png`, 1254px) - ver scripts/generate-icons.mjs.
+ *
+ * Recortam a marca "V" SOZINHA, não o lockup: a ~48px numa notificação, a
+ * palavra "VILIGION" vira borrão ilegível. O "V" ocupa 62% do quadrado, que é
+ * a zona segura de ícone adaptativo do Android (a máscara corta até ~33% da
+ * borda dependendo do formato do aparelho).
+ *
+ * O badge é silhueta BRANCA sobre transparente, porque o Android o mascara
+ * pelo canal alpha - um PNG opaco viraria um quadrado sólido na barra de
+ * status. A luminância da arte original virou o alpha.
+ */
+const STATIC_IMAGES: Record<string, string> = {
+  "/icon-192.png": "../../assets/icon-192.png",
+  "/icon-512.png": "../../assets/icon-512.png",
+  "/badge.png": "../../assets/badge-96.png",
+};
+
+const staticImageCache = new Map<string, Buffer>();
+
+function serveStaticImage(res: ServerResponse, route: string): void {
+  let bytes = staticImageCache.get(route);
+  if (!bytes) {
+    try {
+      bytes = readFileSync(fileURLToPath(new URL(STATIC_IMAGES[route] as string, import.meta.url)));
+      staticImageCache.set(route, bytes);
+    } catch {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Não encontrado.");
+      return;
+    }
+  }
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": bytes.length, "Cache-Control": "public, max-age=86400" });
+  res.end(bytes);
 }
 
 /** A chave VAPID pública é pública por definição (vai em todo envio) - serve aqui pra permitir rotação sem rebuild do front. */

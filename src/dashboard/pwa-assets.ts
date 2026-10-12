@@ -8,12 +8,12 @@
  * inteira de bug que não precisamos. O service worker existe por um motivo
  * só: receber push quando a aba está fechada.
  *
- * Limitação conhecida e honesta: o ícone disponível hoje é 128x128
- * (logo-assets.ts). Android/Chrome só oferecem "instalar" com 192px+ e o iOS
- * exige o app na tela de início pra aceitar push. Então push funciona hoje em
- * Android/desktop sem instalar, e no iOS depende de instalação manual - é o
- * trade-off registrado em alerts/web-push.ts (o canal mais privado é o menos
- * garantido). Gerar 192/512 é item de acompanhamento, não bloqueio.
+ * Ícones (2026-10-12): 192 e 512 gerados da arte em alta resolução, mais um
+ * badge monocromático - ver scripts/generate-icons.mjs e a nota em
+ * server.ts#STATIC_IMAGES. Com 192px+ declarado, o Chrome passa a oferecer
+ * "instalar". No iOS o app ainda precisa ir pra tela de início manualmente
+ * antes de aceitar push - é o trade-off registrado em alerts/web-push.ts (o
+ * canal mais privado é o menos garantido).
  */
 
 /**
@@ -47,14 +47,13 @@ self.addEventListener("push", function (event) {
     self.registration.showNotification(title, {
       body: data.body || "",
       // Sem "icon" o Android mostra o icone generico do navegador - o alerta
-      // mais importante do produto chegava sem marca nenhuma. /icon.png e a
-      // marca "V" sozinha (128x128); o logo completo, de 360px, NAO serve
-      // aqui: a ~48px a palavra "VILIGION" vira borrao ilegivel.
-      icon: "/icon.png",
-      // "badge" fica de fora de proposito: ele e mascarado por ALPHA, e o
-      // PNG atual e RGB sem transparencia - viraria um quadrado solido na
-      // barra de status, pior que o padrao. Precisa de um asset monocromatico
-      // com fundo transparente.
+      // mais importante do produto chegava sem marca nenhuma. E a marca "V"
+      // SOZINHA: o lockup com a palavra "VILIGION", a ~48px, vira borrao.
+      icon: "/icon-192.png",
+      // Silhueta branca sobre transparente: o Android mascara o badge pelo
+      // canal ALPHA, entao um PNG opaco viraria quadrado solido na barra de
+      // status. Gerado a partir da luminancia da arte original.
+      badge: "/badge.png",
       tag: "viligion-alert",
       renotify: true,
       requireInteraction: true,
@@ -98,9 +97,17 @@ export function manifestJson(params: { iconPath: string }): string {
       start_url: "/dashboard",
       scope: "/",
       display: "standalone",
-      background_color: "#0b1220",
-      theme_color: "#0b1220",
-      icons: [{ src: params.iconPath, sizes: "128x128", type: "image/png", purpose: "any" }],
+      background_color: "#0A0E17",
+      theme_color: "#0A0E17",
+      icons: [
+        { src: params.iconPath, sizes: "128x128", type: "image/png", purpose: "any" },
+        { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        // "maskable" so vale porque o "V" ocupa 62% do quadrado - dentro da
+        // zona segura que o Android preserva ao recortar com a mascara do
+        // aparelho. Declarar maskable num icone que usa a borda toda faz o
+        // sistema cortar a marca.
+        { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
     },
     null,
     2,
