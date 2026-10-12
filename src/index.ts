@@ -412,6 +412,27 @@ async function mainDemo() {
       monitorControl,
       waitlist: new InMemoryWaitlistRepository(),
       testAlert: () => dispatchAlert({ kind: "balance-drop", userId: thresholds.userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
+      /**
+       * No modo demo existe UM monitor fixo (a conta de DEMO_WATCHED_ADDRESS),
+       * então a faixa de monitoramento do painel pode mostrar estado medido de
+       * verdade aqui também - em vez de cair no caso "sem medição", que
+       * existe pra quando o processo realmente não sabe.
+       */
+      monitorHealth: {
+        async forUser() {
+          const health = tempoMonitor.getHealthStatus();
+          return [
+            {
+              accountId: `demo:${watchedAddress}`,
+              chainKey: "tempo",
+              running: health.running,
+              consecutiveFailures: health.consecutiveFailures,
+              lastSuccessAt: health.lastSuccessAt,
+              lastCheckedBlock: health.lastCheckedBlock,
+            },
+          ];
+        },
+      },
       pushPublicKey: process.env.VAPID_PUBLIC_KEY,
     },
   );
@@ -590,6 +611,32 @@ async function mainWithDatabase(databaseUrl: string) {
    * `allAccounts` do boot, que fica velho assim que alguém adiciona/remove
    * conta pelo painel.
    */
+  /**
+   * Saude medida dos monitores DO usuario logado, pra faixa de monitoramento
+   * do painel. Mesma fonte do /admin/status (liveMonitors + getHealthStatus),
+   * recortada por user_id - um usuario nunca ve o monitor de outro.
+   *
+   * Conta sem monitor na memoria (reinicio recente, ou monitor que nunca
+   * subiu) aparece como running: false em vez de ser omitida: a tela precisa
+   * poder dizer "parado", nao fingir que a conta nao existe.
+   */
+  const monitorHealth: DashboardServerDeps["monitorHealth"] = {
+    async forUser(userId) {
+      const accounts = await monitoredAccounts.listForUser(userId);
+      return accounts.map((account) => {
+        const health = liveMonitors.get(account.id)?.getHealthStatus();
+        return {
+          accountId: account.id,
+          chainKey: account.chainKey,
+          running: health?.running ?? false,
+          consecutiveFailures: health?.consecutiveFailures ?? 0,
+          lastSuccessAt: health?.lastSuccessAt ?? null,
+          lastCheckedBlock: health?.lastCheckedBlock ?? null,
+        };
+      });
+    },
+  };
+
   async function adminStatus() {
     const [accounts, totalUsers, alertsLast24h, recentAlerts] = await Promise.all([
       monitoredAccounts.listAll(),
@@ -639,6 +686,7 @@ async function mainWithDatabase(databaseUrl: string) {
       testAlert: (userId) =>
         makeDispatcher(userId)({ kind: "balance-drop", userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
       adminStatus,
+      monitorHealth,
       pushPublicKey: process.env.VAPID_PUBLIC_KEY,
     },
   );

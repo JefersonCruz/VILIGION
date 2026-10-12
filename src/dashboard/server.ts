@@ -20,6 +20,10 @@ import { verifyTotp } from "./totp.js";
 import { renderOtpQrSvg } from "./otp-qr.js";
 import { RateLimiter } from "./rate-limiter.js";
 import { isValidEmail, isValidPhone } from "./recipient-validation.js";
+import { buildAlertMessage } from "../alerts/alert-content-policy.js";
+import { buildAlertEmail } from "../alerts/email-notifier.js";
+import { buildPushPayload } from "../alerts/web-push.js";
+import { resolveLocale } from "../alerts/locale.js";
 import { describePushSubscription, parsePushSubscription } from "./push-subscription.js";
 import { manifestJson, serviceWorkerSource } from "./pwa-assets.js";
 import { LOGO_ICON_DATA_URI } from "./logo-assets.js";
@@ -28,6 +32,7 @@ import { buildExpiredSessionCookie, buildSessionCookie, parseCookies } from "./c
 import { getContributors } from "./contributors.js";
 import {
   accountsPage,
+  alertPreviewPage,
   alertsHistoryPage,
   dashboardPage,
   landingPage,
@@ -101,6 +106,27 @@ export interface RecipientsPort {
   remove(id: string, userId: string): Promise<boolean>;
 }
 
+/**
+ * Saude dos monitores DO PROPRIO usuario. O /admin/status ja expunha isso pra
+ * todas as contas atras de token de admin; esta porta e o recorte do dono, pro
+ * painel poder PROVAR que a vigilancia esta viva em vez de so afirmar.
+ *
+ * Opcional em DashboardServerDeps: sem ela a faixa de monitoramento mostra
+ * apenas a contagem de contas, sem inventar um estado que nao foi medido.
+ */
+export interface MonitorHealthPort {
+  forUser(userId: string): Promise<
+    Array<{
+      accountId: string;
+      chainKey: string;
+      running: boolean;
+      consecutiveFailures: number;
+      lastSuccessAt: string | null;
+      lastCheckedBlock: string | null;
+    }>
+  >;
+}
+
 export interface AlertHistoryPort {
   detailedForUser(
     userId: string,
@@ -123,6 +149,8 @@ export interface DashboardServerDeps {
   monitorControl: MonitorControlPort;
   /** Dispara um alerta crítico sintético pro usuário (ligação + PIN) - botão de teste em /recipients. */
   testAlert?: (userId: string) => Promise<void>;
+  /** Saúde medida dos monitores do usuário - alimenta a faixa de monitoramento do painel. */
+  monitorHealth?: MonitorHealthPort;
   /** Lista de espera da landing pública (/ e /waitlist). Sem isto a raiz volta a redirecionar pro login. */
   waitlist?: WaitlistPort;
   /** Snapshot de observabilidade pro painel admin (`/admin/status`) - ver index.ts. Sem isto, a rota responde 404. */
@@ -231,6 +259,7 @@ async function route(
     const recipientId = recipientDeleteMatch[1] as string;
     return withSession(req, res, sessions, (userId) => handleDeleteRecipient(res, deps, userId, recipientId));
   }
+  if (req.method === "GET" && url === "/alerts/preview") return withSession(req, res, sessions, (userId) => renderAlertPreview(res, deps, userId));
   if (req.method === "GET" && url === "/alerts") return withSession(req, res, sessions, (userId) => renderAlerts(res, deps, userId));
 
   res.writeHead(404, { "Content-Type": "text/plain" });
@@ -554,9 +583,10 @@ async function handleLogout(req: IncomingMessage, res: ServerResponse, sessions:
 // --- Painel principal ---
 
 async function renderDashboard(res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
-  const [details, monitoredAccounts] = await Promise.all([
+  const [details, monitoredAccounts, monitors] = await Promise.all([
     deps.accounts.getDetails(userId),
     deps.monitoredAccounts.listForUser(userId),
+    deps.monitorHealth ? deps.monitorHealth.forUser(userId) : Promise.resolve(null),
   ]);
   send(
     res,
@@ -566,6 +596,7 @@ async function renderDashboard(res: ServerResponse, deps: DashboardServerDeps, u
       balanceRaw: details.balanceRaw,
       accountsCount: monitoredAccounts.length,
       recentAlerts: details.lastAlerts,
+      monitors,
     }),
   );
 }
@@ -776,6 +807,44 @@ async function handleAddRecipient(req: IncomingMessage, res: ServerResponse, dep
 async function handleDeleteRecipient(res: ServerResponse, deps: DashboardServerDeps, userId: string, recipientId: string): Promise<void> {
   await deps.recipients.remove(recipientId, userId);
   redirect(res, "/recipients");
+}
+
+/**
+ * "Ver como funciona": monta o preview a partir das MESMAS funções que a
+ * entrega real usa. Nada é enviado - nem ligação, nem push, nem e-mail.
+ *
+ * Os eventos abaixo são sintéticos, e isso não enfraquece o preview: o
+ * conteúdo de alerta nunca contém saldo, valor nem endereço (garantido por
+ * alert-content-policy.ts e por teste), então o texto real para um evento de
+ * verdade é idêntico a este. É exatamente a lição que a tela ensina.
+ */
+async function renderAlertPreview(res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
+  const locale = resolveLocale();
+  const criticalEvent = { kind: "balance-drop", userId, pctDropped: 40, windowMinutes: 60, severity: "critical" } as const;
+  const normalEvent = { kind: "transfer-blocked", userId, amount: 0n, blockedNonce: 0n, severity: "normal" } as const;
+
+  const push = JSON.parse(buildPushPayload(criticalEvent, { dashboardUrl: `${publicBaseUrl()}/dashboard` }, locale)) as {
+    title: string;
+    body: string;
+  };
+  const email = buildAlertEmail(normalEvent, locale);
+  const recipients = await deps.recipients.listForUser(userId);
+
+  send(
+    res,
+    200,
+    alertPreviewPage({
+      voiceMessage: buildAlertMessage(criticalEvent, locale),
+      pushTitle: push.title,
+      pushBody: push.body,
+      emailSubject: email.subject,
+      emailText: email.text,
+      hasPhone: recipients.some((r) => r.kind === "phone"),
+      hasPush: recipients.some((r) => r.kind === "push"),
+      hasEmail: recipients.some((r) => r.kind === "email"),
+      canTest: Boolean(deps.testAlert),
+    }),
+  );
 }
 
 // --- Histórico de alertas ---

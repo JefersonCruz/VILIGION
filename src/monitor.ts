@@ -64,6 +64,13 @@ export class Monitor {
   private running = false;
   private consecutiveFailures = 0;
   private lastError: unknown = null;
+  /**
+   * Quando o ultimo ciclo COMPLETOU com sucesso. Existe pra o painel do
+   * usuario poder provar que a vigilancia esta viva ("ultimo ciclo ha 12s")
+   * em vez de so afirmar que esta - o produto e vigilancia, e "running:true"
+   * nao distingue um monitor saudavel de um travado no meio de um tick.
+   */
+  private lastSuccessAt: Date | null = null;
 
   constructor(
     private readonly adapter: EvmAdapter,
@@ -80,6 +87,7 @@ export class Monitor {
     while (this.running) {
       try {
         await this.tick();
+        this.lastSuccessAt = new Date();
         if (this.consecutiveFailures > 0) {
           console.log(`[monitor] recuperado depois de ${this.consecutiveFailures} falha(s) consecutiva(s)`);
         }
@@ -111,13 +119,20 @@ export class Monitor {
     this.running = false;
   }
 
-  /** Leitura pura de estado, sem efeito colateral - usada pelo painel admin (`/admin/status`) pra observabilidade. */
-  getHealthStatus(): { running: boolean; consecutiveFailures: number; lastError: string | null; lastCheckedBlock: string | null } {
+  /** Leitura pura de estado, sem efeito colateral - usada pelo painel admin (`/admin/status`) e pela faixa de monitoramento do painel do usuario. */
+  getHealthStatus(): {
+    running: boolean;
+    consecutiveFailures: number;
+    lastError: string | null;
+    lastCheckedBlock: string | null;
+    lastSuccessAt: string | null;
+  } {
     return {
       running: this.running,
       consecutiveFailures: this.consecutiveFailures,
       lastError: this.lastError === null ? null : describeError(this.lastError),
       lastCheckedBlock: this.lastCheckedBlock === null ? null : this.lastCheckedBlock.toString(),
+      lastSuccessAt: this.lastSuccessAt === null ? null : this.lastSuccessAt.toISOString(),
     };
   }
 

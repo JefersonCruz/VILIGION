@@ -470,6 +470,6 @@ describe("Monitor", () => {
 
     const status = monitor.getHealthStatus();
 
-    expect(status).toEqual({ running: false, consecutiveFailures: 0, lastError: null, lastCheckedBlock: null });
+    expect(status).toEqual({ running: false, consecutiveFailures: 0, lastError: null, lastCheckedBlock: null, lastSuccessAt: null });
   });
 });

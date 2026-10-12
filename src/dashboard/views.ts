@@ -1175,11 +1175,112 @@ export function loginPage(params: { error?: string }): string {
   return authLayout({ title: "Entrar", subtitle: "Acesse o painel de monitoramento da sua tesouraria.", body, error: params.error });
 }
 
+/** Monitor do usuário como medido pelo processo - ver MonitorHealthPort em server.ts. */
+export interface MonitorHealthView {
+  accountId: string;
+  chainKey: string;
+  running: boolean;
+  consecutiveFailures: number;
+  lastSuccessAt: string | null;
+  lastCheckedBlock: string | null;
+}
+
+/**
+ * Faixa de monitoramento com estado MEDIDO, não decorativo.
+ *
+ * O produto é vigilância, então a prova de que está vigiando é a informação
+ * mais importante da tela - e "running: true" não distingue monitor saudável
+ * de monitor travado no meio de um ciclo. Por isso o critério é o horário do
+ * último ciclo COMPLETO (Monitor.lastSuccessAt).
+ *
+ * `monitors === null` significa que o processo não expõe essa medição (modo
+ * demo): nesse caso a faixa mostra só a contagem de contas, em vez de afirmar
+ * um estado que ninguém mediu.
+ */
+function watchbar(accountsCount: number, monitors: MonitorHealthView[] | null): string {
+  if (monitors === null) {
+    return `<div class="watchbar">
+  <span class="dot" style="background:var(--text-muted); box-shadow:none; animation:none;" aria-hidden="true"></span>
+  <span>${accountsCount} conta(s) monitorada(s) — <a class="link" href="/accounts">ver redes e endereços</a></span>
+</div>`;
+  }
+
+  if (monitors.length === 0) {
+    return `<div class="watchbar" style="border-color:color-mix(in srgb, var(--warning) 35%, transparent);">
+  <span class="dot" style="background:var(--warning); box-shadow:0 0 0 3px var(--warning-bg); animation:none;" aria-hidden="true"></span>
+  <span><strong style="color:var(--text); font-weight:600;">Nada está sendo vigiado.</strong> Nenhuma conta monitorada — <a class="link" href="/accounts">adicione a primeira</a>.</span>
+</div>`;
+  }
+
+  const degraded = monitors.filter((m) => m.consecutiveFailures > 0);
+  const stopped = monitors.filter((m) => !m.running);
+  // O ciclo mais ANTIGO entre os monitores, não o mais recente: se uma conta
+  // está parada há 10 minutos, dizer "há 3s" porque outra acabou de rodar
+  // esconderia exatamente o problema que esta faixa existe pra mostrar.
+  const oldest = monitors
+    .map((m) => m.lastSuccessAt)
+    .filter((v): v is string => typeof v === "string")
+    .sort()[0];
+
+  if (stopped.length === monitors.length) {
+    return `<div class="watchbar" style="border-color:color-mix(in srgb, var(--critical) 40%, transparent);">
+  <span class="dot" style="background:var(--critical); box-shadow:0 0 0 3px var(--critical-bg); animation:none;" aria-hidden="true"></span>
+  <span><strong style="color:var(--text); font-weight:600;">Monitoramento parado.</strong> ${monitors.length} conta(s) cadastrada(s), nenhuma sendo verificada agora.</span>
+</div>`;
+  }
+
+  const relative = oldest
+    ? `último ciclo <time class="ago" datetime="${escapeHtml(oldest)}">agora</time>`
+    : "primeiro ciclo ainda rodando";
+
+  if (degraded.length > 0) {
+    const worst = Math.max(...degraded.map((m) => m.consecutiveFailures));
+    return `<div class="watchbar" style="border-color:color-mix(in srgb, var(--warning) 35%, transparent);">
+  <span class="dot" style="background:var(--warning); box-shadow:0 0 0 3px var(--warning-bg);" aria-hidden="true"></span>
+  <span><strong style="color:var(--text); font-weight:600;">Monitoramento degradado</strong> — ${worst} falha(s) consecutiva(s) de leitura em ${degraded.length} de ${monitors.length} conta(s). ${relative}. Alertas podem atrasar.</span>
+</div>`;
+  }
+
+  return `<div class="watchbar">
+  <span class="dot" aria-hidden="true"></span>
+  <span><strong style="color:var(--text); font-weight:600;">Monitorando</strong> ${monitors.length} conta(s) — ${relative}.</span>
+</div>`;
+}
+
+/**
+ * Mantém o "há Xs" vivo no cliente. Renderizar o relativo no servidor
+ * entregaria um número que fica velho no segundo seguinte - e numa tela cuja
+ * função é provar que a vigilância está acordada, isso é pior que não mostrar.
+ */
+function agoScript(): string {
+  return `<script>
+(function () {
+  function render() {
+    var nodes = document.querySelectorAll("time.ago");
+    for (var i = 0; i < nodes.length; i++) {
+      var iso = nodes[i].getAttribute("datetime");
+      var secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+      var text;
+      if (secs < 60) text = "há " + secs + "s";
+      else if (secs < 3600) text = "há " + Math.floor(secs / 60) + "min";
+      else if (secs < 86400) text = "há " + Math.floor(secs / 3600) + "h";
+      else text = "há " + Math.floor(secs / 86400) + "d";
+      nodes[i].textContent = text;
+      nodes[i].setAttribute("title", new Date(iso).toLocaleString());
+    }
+  }
+  render();
+  setInterval(render, 1000);
+})();
+</script>`;
+}
+
 export function dashboardPage(params: {
   address: string;
   balanceRaw: string;
   accountsCount: number;
   recentAlerts: Array<{ kind: string; createdAt: string }>;
+  monitors?: MonitorHealthView[] | null;
 }): string {
   const alertsRows =
     params.recentAlerts.length === 0
@@ -1201,14 +1302,7 @@ export function dashboardPage(params: {
   const balanceLabel = balanceUnits === null ? "—" : `US$ ${formatUsdDisplay(balanceUnits)}`;
 
   const body = `
-<div class="watchbar">
-  <span class="dot" aria-hidden="true"></span>
-  <!-- Sem nome de rede aqui de propósito: dashboardPage não recebe a chain nos
-       parâmetros, e afirmar "testnet" pra quem está em mainnet (ou o contrário)
-       seria informação errada na tela principal. A chain de cada conta aparece
-       como badge em /accounts, onde o dado realmente existe. -->
-  <span><strong style="color:var(--text); font-weight:600;">Monitorando</strong> ${params.accountsCount} conta(s) — <a class="link" href="/accounts">ver redes e endereços</a></span>
-</div>
+${watchbar(params.accountsCount, params.monitors ?? null)}
 <div class="grid-2">
   <div class="card">
     <p class="eyebrow">Saldo monitorado</p>
@@ -1226,7 +1320,7 @@ export function dashboardPage(params: {
   <div class="table-wrap">
     <table><thead><tr><th>Tipo</th><th>Quando</th></tr></thead><tbody>${alertsRows}</tbody></table>
   </div>
-</div>${copyScript()}`;
+</div>${copyScript()}${agoScript()}`;
   return layout({ title: "Painel", body, authed: true, active: "/dashboard" });
 }
 
@@ -1464,7 +1558,8 @@ export function recipientsPage(params: {
   const body = `
 <div class="card">
   <p class="muted" style="margin-bottom:10px;">Alertas críticos (ex: queda forte de saldo) ligam pros números cadastrados aqui <strong>e também mandam o código de confirmação por WhatsApp</strong> pro mesmo número; alertas normais vão por e-mail — ver <a class="link" href="/thresholds">limiares</a> pra ajustar o que conta como crítico.</p>
-  <p class="muted" style="margin:0;">Pode cadastrar mais de um telefone e mais de um e-mail — todos recebem o alerta, não só o primeiro. Use um número com WhatsApp ativo, senão o código de confirmação não chega.</p>
+  <p class="muted" style="margin:0 0 10px;">Pode cadastrar mais de um telefone e mais de um e-mail — todos recebem o alerta, não só o primeiro. Use um número com WhatsApp ativo, senão o código de confirmação não chega.</p>
+  <p class="muted" style="margin:0;">Quer ver o que cada canal diz, sem disparar nada? <a class="link" href="/alerts/preview">Veja como o alerta funciona</a>.</p>
   <div class="table-wrap">
     <table><thead><tr><th>Canal</th><th>Destino</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>
@@ -1508,6 +1603,96 @@ export function recipientsPage(params: {
   return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="notice" style="margin-top:16px;">${escapeHtml(params.notice)}</div>${body}` : body, authed: true, active: "/recipients", error: params.error });
 }
 
+/**
+ * "Ver como funciona" — mostra o conteúdo EXATO de cada canal sem enviar nada.
+ *
+ * Por que existe, já havendo o botão de alerta de teste: o teste dispara um
+ * alerta de verdade (ligação que custa dinheiro, toca o telefone de todos os
+ * destinatários e entra no histórico). Isso serve pra PROVAR que funciona, não
+ * pra ENTENDER o que vai acontecer. Quem acabou de cadastrar um destinatário
+ * precisa do segundo antes do primeiro.
+ *
+ * O conteúdo aqui vem das mesmas funções que a entrega usa de verdade
+ * (buildAlertMessage, buildPushPayload, buildAlertEmail) — nunca de texto
+ * reescrito nesta tela. Se o conteúdo real mudar, esta tela muda com ele; um
+ * preview que mente é pior que não ter preview.
+ *
+ * E o preview ensina o diferencial do produto melhor que qualquer parágrafo de
+ * marketing: o usuário vê, com os próprios olhos, que nenhuma mensagem contém
+ * saldo, valor ou endereço.
+ */
+export function alertPreviewPage(params: {
+  voiceMessage: string;
+  pushTitle: string;
+  pushBody: string;
+  emailSubject: string;
+  emailText: string;
+  hasPhone: boolean;
+  hasPush: boolean;
+  hasEmail: boolean;
+  canTest?: boolean;
+}): string {
+  function channel(opts: { title: string; registered: boolean; severity: "critical" | "normal"; body: string; note: string }): string {
+    return `
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <h2 style="margin:0;">${escapeHtml(opts.title)}</h2>
+    <span class="pill ${opts.registered ? "ok" : "normal"}">${opts.registered ? "cadastrado" : "não cadastrado"}</span>
+  </div>
+  <p class="eyebrow" style="margin:14px 0 6px;">Severidade ${opts.severity === "critical" ? "crítica" : "normal"} · conteúdo entregue</p>
+  <blockquote style="margin:0; padding:12px 14px; background:var(--surface-2); border-left:3px solid var(--accent); border-radius:var(--r-control); font-size:14px; line-height:1.6;">${opts.body}</blockquote>
+  <p class="muted" style="margin:12px 0 0; font-size:13px;">${opts.note}</p>
+</div>`;
+  }
+
+  const body = `
+<p class="muted" style="margin:0 0 4px; max-width:70ch;">Isto é exatamente o que cada canal entrega — gerado pelas mesmas funções que o envio real usa, e <strong>sem disparar nada</strong>. Repare no que falta em todas as mensagens: nenhuma diz o saldo, o valor ou o endereço. Esse é o ponto.</p>
+
+${channel({
+  title: "Ligação telefônica",
+  registered: params.hasPhone,
+  severity: "critical",
+  body: escapeHtml(params.voiceMessage),
+  note: "Em seguida a ligação pede um código de 4 dígitos para confirmar que você recebeu o alerta. Digitar o código <strong>não</strong> move fundo nenhum — só confirma o recebimento.",
+})}
+
+${channel({
+  title: "Notificação no dispositivo",
+  registered: params.hasPush,
+  severity: "critical",
+  body: `<strong>${escapeHtml(params.pushTitle)}</strong><br>${escapeHtml(params.pushBody)}`,
+  note: "Chega em tela cheia, com som e vibração, e <strong>sem nenhum número de telefone envolvido</strong> — não existe número para vincular à sua conta.",
+})}
+
+${channel({
+  title: "E-mail",
+  registered: params.hasEmail,
+  severity: "normal",
+  body: `<strong>${escapeHtml(params.emailSubject)}</strong><br>${escapeHtml(params.emailText).replace(/\n/g, "<br>")}`,
+  note: "Severidade normal não liga nem notifica — o e-mail não tem custo por mensagem e não deixa registro em operadora.",
+})}
+
+<div class="card">
+  <h2>Onde o detalhe real aparece</h2>
+  <p class="muted" style="margin:0 0 4px;">Em nenhum desses canais. Saldo, endereço e histórico completo só no painel, depois do login — é por isso que um alerta interceptado não entrega informação a quem o leu.</p>
+  <div class="row" style="margin-top:16px; gap:10px;">
+    <a class="link" href="/recipients">Gerenciar destinatários</a>
+    <span class="muted">·</span>
+    <a class="link" href="/thresholds">Quando avisar</a>
+  </div>
+</div>${
+    params.canTest
+      ? `
+<div class="card" style="border-color:color-mix(in srgb, var(--warning) 35%, transparent);">
+  <h2>Disparar de verdade <span class="pill warn">custa uma ligação</span></h2>
+  <p class="muted" style="margin:0 0 10px;">O teste real liga para todos os telefones cadastrados, notifica os dispositivos registrados e entra no histórico de alertas. Use quando quiser <strong>provar</strong> que o canal funciona — o preview acima já mostra o que ele diz.</p>
+  <form method="POST" action="/recipients/test"><button type="submit" class="secondary">Enviar alerta de teste</button></form>
+</div>`
+      : ""
+  }`;
+  return layout({ title: "Como o alerta funciona", body, authed: true, active: "/alerts" });
+}
+
 export function alertsHistoryPage(params: {
   alerts: Array<{ kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: string }>;
 }): string {
@@ -1537,6 +1722,6 @@ export function alertsHistoryPage(params: {
     <tbody>${rows}</tbody></table>
   </div>
 </div>
-<p class="muted" style="margin-top:12px;">A coluna <strong>Confirmação</strong> mostra se o alerta crítico chegou ao destinatário e se o código foi digitado. "Falha na entrega" significa que nenhum canal crítico conseguiu entregar.</p>`;
+<p class="muted" style="margin-top:12px;">A coluna <strong>Confirmação</strong> mostra se o alerta crítico chegou ao destinatário e se o código foi digitado. "Falha na entrega" significa que nenhum canal crítico conseguiu entregar. <a class="link" href="/alerts/preview">Veja o conteúdo de cada canal</a>.</p>`;
   return layout({ title: "Histórico de alertas", body, authed: true, active: "/alerts" });
 }

@@ -32,9 +32,14 @@ const SUBJECT: Record<AlertLocale, string> = {
   pt: "VILIGION: atividade detectada na sua tesouraria",
 };
 
+/**
+ * Nao nomeia "ligacao" como canal critico unico desde 2026-10-12: com o Web
+ * Push, um usuario pode ter registrado so o dispositivo, e prometer ligacao
+ * pra quem nao cadastrou telefone seria mentira no proprio alerta.
+ */
 const FOOTER: Record<AlertLocale, string> = {
-  en: "\n\nThis is a normal-severity alert. Critical alerts arrive by phone call.",
-  pt: "\n\nEste é um alerta de severidade normal. Alertas críticos chegam por ligação telefônica.",
+  en: "\n\nThis is a normal-severity alert. Critical alerts go out through the critical channels you registered.",
+  pt: "\n\nEste é um alerta de severidade normal. Alertas críticos saem pelos canais críticos que você cadastrou.",
 };
 
 /** Monta o e-mail do alerta - função pura, testável sem SMTP de verdade. */

@@ -114,9 +114,23 @@ export function pushEnrollScript(): string {
 
   function say(text) { if (msg) msg.textContent = text; }
 
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+  // Checagem de capacidade ANTES de qualquer clique. "Notification" entrou
+  // nesta lista em 2026-10-12: sem ele, Notification.requestPermission()
+  // lançava de forma SÍNCRONA (ReferenceError), fora da cadeia de promise -
+  // o .catch() nunca rodava e a tela congelava em "Pedindo permissão..." com
+  // o botão desabilitado e nenhuma explicação. É o caso do webview do VS Code
+  // (Simple Browser) e de qualquer contexto que não expõe a API.
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     btn.disabled = true;
-    say("Este navegador não suporta notificação push. Em iPhone, adicione o app à tela de início primeiro.");
+    say("Este navegador não expõe a API de notificação. Abra em Chrome, Edge ou Firefox - visualizadores embutidos (como o navegador do VS Code ou de apps) costumam bloquear. Em iPhone, adicione o app à tela de início primeiro.");
+    return;
+  }
+
+  // Permissão já negada antes: o navegador NÃO mostra prompt de novo, então
+  // sem esta checagem o usuário clica e nada acontece visivelmente.
+  if (Notification.permission === "denied") {
+    btn.disabled = true;
+    say("Notificações estão bloqueadas para este site. Libere no ícone de cadeado da barra de endereço e recarregue.");
     return;
   }
 
@@ -130,13 +144,43 @@ export function pushEnrollScript(): string {
     return output;
   }
 
+  /**
+   * Safari antigo (e alguns webviews) ainda usam a forma de CALLBACK de
+   * requestPermission, que devolve undefined - chamar .then() nela lança, e o
+   * erro cai fora de qualquer catch. Normaliza as duas formas numa promise.
+   */
+  function askPermission() {
+    var pending = null;
+    try {
+      var result = Notification.requestPermission(function (p) {
+        pending = p;
+      });
+      if (result && typeof result.then === "function") return result;
+      return Promise.resolve(pending || Notification.permission);
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+
   btn.addEventListener("click", function () {
     btn.disabled = true;
     say("Pedindo permissão...");
 
-    Notification.requestPermission()
+    // try/catch em volta de TUDO: qualquer lançamento síncrono aqui deixaria
+    // o botão desabilitado sem mensagem, que é exatamente o sintoma
+    // "cliquei e não aparece nada".
+    try {
+      run();
+    } catch (err) {
+      btn.disabled = false;
+      say("Não deu: " + (err && err.message ? err.message : String(err)));
+    }
+  });
+
+  function run() {
+    askPermission()
       .then(function (permission) {
-        if (permission !== "granted") throw new Error("Permissão de notificação negada no navegador.");
+        if (permission !== "granted") throw new Error("permissão de notificação não concedida (" + permission + ")");
         say("Registrando dispositivo...");
         return navigator.serviceWorker.register("/sw.js", { scope: "/" });
       })
@@ -168,9 +212,9 @@ export function pushEnrollScript(): string {
       })
       .catch(function (err) {
         btn.disabled = false;
-        say("Não deu: " + err.message);
+        say("Não deu: " + (err && err.message ? err.message : String(err)));
       });
-  });
+  }
 })();
 </script>`;
 }
