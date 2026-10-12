@@ -41,6 +41,38 @@ export type AlertDispatcher = (event: DetectionEvent) => Promise<void>;
  */
 export const UNHEALTHY_AFTER_CONSECUTIVE_FAILURES = 3;
 
+/**
+ * Quantos eventos de extensão já entregues o monitor lembra, pra não entregar
+ * o mesmo duas vezes (ver `extensionEventKey` e o campo
+ * `deliveredExtensionEvents`).
+ *
+ * Limitado porque um monitor roda indefinidamente: um conjunto que só cresce
+ * é um vazamento de memória lento, do tipo que só aparece semanas depois em
+ * produção. Com um evento de bloqueio por ciclo de 15s, 1.000 chaves cobrem
+ * mais de 4 horas de histórico - muito mais que a janela em que uma
+ * reentrega plausível acontece (um ciclo falho, ou uma reorg), que é da ordem
+ * de minutos.
+ */
+export const MAX_REMEMBERED_DELIVERED_EVENTS = 1_000;
+
+/**
+ * Chave estável de um evento de extensão já entregue, ou `null` quando o
+ * evento não tem identificador próprio.
+ *
+ * `null` significa "não dá pra desduplicar isto", e nesse caso o evento é
+ * entregue sempre. É deliberadamente conservador: numa dúvida entre repetir
+ * um alerta e engolir um, repetir é o erro menos grave. `balance-drop` cai
+ * aqui - é derivado de amostragem de saldo (ver balance-window.ts, que já tem
+ * a própria proteção contra repetição), não de uma ocorrência identificável
+ * na cadeia.
+ *
+ * O `kind` entra na chave pra que dois eventos de tipos diferentes que por
+ * acaso compartilhem o mesmo identificador não se desduplifiquem entre si.
+ */
+function extensionEventKey(event: DetectionEvent): string | null {
+  if (event.kind === "transfer-blocked") return `${event.kind}:${event.blockedNonce}`;
+  return null;
+}
 
 /** Chamado quando o monitor cruza (ou segue cruzando) o limiar de falhas consecutivas - index.ts decide o que "avisar alguém" significa de verdade (hoje: e-mail de ops, se configurado). */
 export type HealthListener = (info: { consecutiveFailures: number; lastError: unknown }) => void;
@@ -72,6 +104,27 @@ export class Monitor {
    * nao distingue um monitor saudavel de um travado no meio de um tick.
    */
   private lastSuccessAt: Date | null = null;
+  /**
+   * Eventos de extensão já ENTREGUES com sucesso, pra não entregar de novo.
+   *
+   * Bug real que isto corrige (encontrado por teste nesta etapa, ver
+   * monitor-event-delivery.test.ts): quando a extensão devolve vários eventos
+   * no mesmo intervalo e a entrega de UM deles falha, o erro sobe do `tick` e
+   * `lastCheckedBlock` não avança - o que é correto, porque o evento que
+   * falhou ainda não chegou a ninguém e seria perdido pra sempre. Mas o ciclo
+   * seguinte reconsulta o mesmo intervalo, recebe os mesmos eventos, e
+   * reentrega os que JÁ tinham sido entregues. Medido no teste: um único
+   * bloqueio de transferência gerava cinco alertas - cinco ligações
+   * telefônicas pro dono pela mesma ocorrência.
+   *
+   * A marcação acontece DEPOIS da entrega bem-sucedida, nunca antes: marcar
+   * antes transformaria uma falha de entrega em evento silenciosamente
+   * descartado, que é o modo de falha oposto e pior.
+   *
+   * Set, não array, pela busca; e a ordem de inserção do Set é o que permite
+   * descartar a chave mais antiga quando passa do limite.
+   */
+  private readonly deliveredExtensionEvents = new Set<string>();
 
   constructor(
     /**
@@ -145,6 +198,16 @@ export class Monitor {
       lastCheckedBlock: this.lastCheckedBlock === null ? null : this.lastCheckedBlock.toString(),
       lastSuccessAt: this.lastSuccessAt === null ? null : this.lastSuccessAt.toISOString(),
     };
+  }
+
+  /** Anota uma chave como entregue, descartando as mais antigas acima do limite (ver MAX_REMEMBERED_DELIVERED_EVENTS). */
+  private rememberDelivered(key: string): void {
+    this.deliveredExtensionEvents.add(key);
+    while (this.deliveredExtensionEvents.size > MAX_REMEMBERED_DELIVERED_EVENTS) {
+      const oldest = this.deliveredExtensionEvents.values().next();
+      if (oldest.done) break;
+      this.deliveredExtensionEvents.delete(oldest.value);
+    }
   }
 
   private async resolveThresholds(): Promise<UserThresholds> {
@@ -226,7 +289,12 @@ export class Monitor {
         // deixar a extensão perguntar de novo à RPC (achado de performance
         // de 2026-10-03 - essa segunda chamada era pura duplicação).
         const extraEvents = await this.extension.checkExtra(fromBlock, confirmedBlock, thresholds);
-        for (const event of extraEvents) await this.dispatchAlert(event);
+        for (const event of extraEvents) {
+          const key = extensionEventKey(event);
+          if (key !== null && this.deliveredExtensionEvents.has(key)) continue;
+          await this.dispatchAlert(event);
+          if (key !== null) this.rememberDelivered(key);
+        }
         this.lastCheckedBlock = confirmedBlock;
       }
     }
