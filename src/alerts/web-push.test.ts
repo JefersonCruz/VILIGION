@@ -57,8 +57,27 @@ describe("buildPushPayload - política de conteúdo", () => {
   });
 
   it("respeita o locale configurado, igual voz e e-mail", () => {
-    expect(JSON.parse(buildPushPayload(criticalDrop, baseConfig, "en")).title).toBe("VILIGION critical alert");
-    expect(JSON.parse(buildPushPayload(criticalDrop, baseConfig, "pt")).title).toBe("Alerta crítico VILIGION");
+    expect(JSON.parse(buildPushPayload(criticalDrop, baseConfig, "en")).title).toBe("VILIGION · critical alert");
+    expect(JSON.parse(buildPushPayload(criticalDrop, baseConfig, "pt")).title).toBe("VILIGION · alerta crítico");
+    expect(JSON.parse(buildPushPayload(criticalDrop, baseConfig, "pt")).lang).toBe("pt-BR");
+  });
+
+  it("usa a forma CURTA no corpo - a marca ja esta no titulo, e Android trunca", () => {
+    const payload = JSON.parse(buildPushPayload(criticalDrop, baseConfig, "pt"));
+
+    // O prefixo "Alerta VILIGION:" e da forma longa (voz/e-mail). Repeti-lo
+    // aqui gastaria os poucos caracteres antes do truncamento do celular.
+    expect(payload.body).not.toContain("Alerta VILIGION");
+    expect(payload.body.length).toBeLessThan(90);
+    expect(payload.body).toContain("tesouraria");
+  });
+
+  it("carrega o horario do evento, pra notificacao que passou a noite na tela nao dizer 'agora'", () => {
+    const antes = Date.now();
+    const payload = JSON.parse(buildPushPayload(criticalDrop, baseConfig, "pt"));
+
+    expect(payload.at).toBeGreaterThanOrEqual(antes);
+    expect(payload.at).toBeLessThanOrEqual(Date.now());
   });
 });
 

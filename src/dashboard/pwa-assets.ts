@@ -46,10 +46,21 @@ self.addEventListener("push", function (event) {
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",
+      // Sem "icon" o Android mostra o icone generico do navegador - o alerta
+      // mais importante do produto chegava sem marca nenhuma. /icon.png e a
+      // marca "V" sozinha (128x128); o logo completo, de 360px, NAO serve
+      // aqui: a ~48px a palavra "VILIGION" vira borrao ilegivel.
+      icon: "/icon.png",
+      // "badge" fica de fora de proposito: ele e mascarado por ALPHA, e o
+      // PNG atual e RGB sem transparencia - viraria um quadrado solido na
+      // barra de status, pior que o padrao. Precisa de um asset monocromatico
+      // com fundo transparente.
       tag: "viligion-alert",
       renotify: true,
       requireInteraction: true,
       vibrate: [300, 120, 300, 120, 300],
+      timestamp: data.at || Date.now(),
+      lang: data.lang || "pt-BR",
       data: { url: url },
       actions: data.actionLabel ? [{ action: "open", title: data.actionLabel }] : []
     })

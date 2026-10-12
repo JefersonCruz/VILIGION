@@ -10,10 +10,10 @@
 
 Estes seis itens são erros factuais no material que um jurado lê. Não são opinião.
 
-### 0.1 — A contagem de testes está errada em todo o material: são **235 testes em 33 arquivos**
+### 0.1 — A contagem de testes está errada em todo o material: são **237 testes em 33 arquivos**
 
-`npm test` em 2026-10-11: `Test Files 33 passed (33) · Tests 235 passed (235)` — eram 202 em 30 arquivos antes do canal de push adicionado hoje (§4.7).
-`BUSINESS-PLAN.md` §0 e §3, e todo texto derivado, dizem "187 testes em 29 arquivos" — número correto em 08/10, desatualizado desde então. Corrigir para 235/33.
+`npm test` em 2026-10-11: `Test Files 33 passed (33) · Tests 237 passed (237)` — eram 202 em 30 arquivos antes do canal de push adicionado hoje (§4.7).
+`BUSINESS-PLAN.md` §0 e §3, e todo texto derivado, dizem "187 testes em 29 arquivos" — número correto em 08/10, desatualizado desde então. Corrigir para 237/33.
 
 ### 0.2 — A ligação **já disparou** em produção. O que falhou foi a entrega, e a causa é externa
 
@@ -71,7 +71,7 @@ Cada bloco trava o próximo. Não pule para gravação sem o Bloco A verde.
 
 ### Bloco B — correções de fato no material público (~45 min, em paralelo)
 
-4. README e landing: `235 testes` (§0.1) · `33% more recorded incidents` + `two methodologies` (§0.5).
+4. README e landing: `237 testes` (§0.1) · `33% more recorded incidents` + `two methodologies` (§0.5).
 5. `BUSINESS-PLAN.md` §1.2: reescrever o eixo de diferenciação (§0.4). Remover OpenZeppelin Defender (§0.6).
 6. 🔴 **Tirar as credenciais demo do README** (§5.4). Substituir por: *"Live demo at viligion.com. Judges and reviewers: credentials on request."* e colocar as credenciais no campo da submissão, que é privado aos jurados. Preserva 100% do benefício, elimina o risco.
 7. `BUSINESS-PLAN.md` §1.3: corrigir a contradição de cobrança (§2.1).
@@ -167,7 +167,7 @@ Base factual pública: Tempo processou 3,9M transações em **177.000 endereços
    → *Nada impede — integração de chain não é o moat e não vou alegar que é. O difícil de copiar é o threat model como restrição de produto: conteúdo sempre genérico (garantido por teste automatizado, não por revisão), prova EIP-191 de propriedade no cadastro, destinatário armazenado separado sob AES-256-GCM, e PIN que confirma sem nunca autorizar movimento de fundo. Um incumbente construído em torno de "me avise quando o saldo bater US$X" teria de quebrar o próprio produto. Moat fraco-a-médio, 12–18 meses.*
 4. **"Qual é o preço, e quem te disse esse número?"** → §2.3, com o rótulo de não-validado.
 5. **"Solo, pré-receita, pré-entidade, KMS é `LocalDevKeyProvider`, e perder o TOTP é lockout permanente. Por que isso é empresa e não projeto de fim de semana?"**
-   → *Hoje não é empresa — é um sistema funcionando com 235 testes, validado contra a testnet Moderato real, repo MIT público, e uma lista explícita do que falta (issue #9 KMS, recuperação de conta, cobrança) com cada item travado por gatilho, não por data. A alegação não é "estamos prontos", é "sabemos exatamente o que não está e em que ordem". O bus factor é real e não mitigado além de documentação.*
+   → *Hoje não é empresa — é um sistema funcionando com 237 testes, validado contra a testnet Moderato real, repo MIT público, e uma lista explícita do que falta (issue #9 KMS, recuperação de conta, cobrança) com cada item travado por gatilho, não por data. A alegação não é "estamos prontos", é "sabemos exatamente o que não está e em que ordem". O bus factor é real e não mitigado além de documentação.*
 
 *Menção honrosa, já auto-declarada no README:* "vocês recomendam número dedicado mas não provisionam — a história de wrench attack depende de algo que vocês não garantem."
 
@@ -323,11 +323,11 @@ Decisão do founder: seguir com o plano de privacidade que **não depende da Twi
 - **Capacidade ausente não finge existir.** Sem as chaves VAPID, as rotas respondem 404 e a tela não oferece a opção — mesmo padrão do `testAlert`.
 - **O alerta de teste agora aceita quem só tem push**, sem telefone cadastrado — era justamente o ponto.
 
-**Verificação:** 235 testes em 33 arquivos, 6 execuções consecutivas limpas. Além dos testes unitários (com sender fake), um **teste de integração real** com chaves VAPID geradas de verdade contra um push service local provou: JWT VAPID no header, `content-encoding: aes128gcm` (RFC 8291), urgency `high`, TTL 900s, topic em exatos 32 caracteres, e **corpo cifrado — nenhum texto claro no envio**.
+**Verificação:** 237 testes em 33 arquivos, 6 execuções consecutivas limpas. Além dos testes unitários (com sender fake), um **teste de integração real** com chaves VAPID geradas de verdade contra um push service local provou: JWT VAPID no header, `content-encoding: aes128gcm` (RFC 8291), urgency `high`, TTL 900s, topic em exatos 32 caracteres, e **corpo cifrado — nenhum texto claro no envio**.
 
 **Pendências honestas, já escritas no README e no `SECURITY.md`:**
 
-1. **Nunca exercitado em dispositivo real em produção.** A criptografia e a assinatura estão provadas; uma notificação entregue num aparelho, não.
+1. ~~Nunca exercitado em dispositivo real em produção.~~ **Fechado em 2026-10-12**: alerta de teste entregue num celular, notificação recebida. Limitação descoberta no processo: a Notification API **não permite som próprio** — o alerta crítico toca o som padrão do sistema e o modo Não Perturbe o silencia. A ligação pode furar o silêncio; a notificação não. Segundo argumento, independente do de coação, para o escalonamento (item 2 do §4.6).
 2. **Rodar a migration em produção é obrigatório** — a constraint antiga de `alert_recipients` só aceitava `'phone'` e `'email'`, e o `migrate.ts` reescreve `CREATE TABLE` para `IF NOT EXISTS`, então num banco existente a definição nova seria ignorada. O schema agora termina com `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`, idempotente. **Sem isso, registrar dispositivo falha em produção e passa em qualquer teste com banco novo.**
 3. **Ícone é 128x128.** Push funciona em Android/desktop sem instalar; o iOS exige adicionar à tela de início, e o prompt de instalação do Chrome quer 192px+. Gerar 192/512 é acompanhamento.
 4. **Não é imunidade a ordem judicial, e não alegamos isso.** O que diminui é o conjunto de dados que temos a produzir. A afirmação defensável é minimização de dados — que LGPD/GDPR premiam — não que um ofício falha.
@@ -364,7 +364,7 @@ Jurados leem esses campos como as palavras do time. Cada frase abaixo é checáv
 >
 > The privacy design is the product: alert content never contains balance or address — enforced by automated test, not review. Address ownership is proven by EIP-191 signature at signup. Alert recipients are registered separately, after login, under AES-256-GCM envelope encryption. No custody, and no transaction is ever executed from a voice reply.
 >
-> 235 automated tests, no external audit yet. MIT, public repo, live demo at viligion.com.
+> 237 automated tests, no external audit yet. MIT, public repo, live demo at viligion.com.
 
 **(d) Go-to-market (~150 palavras)**
 
@@ -392,7 +392,7 @@ Jurados leem esses campos como as palavras do time. Cada frase abaixo é checáv
 - **0:20–0:40** — Por que o conteúdo é genérico: uma frase sobre wrench attacks, uma sobre o canal de alerta virar superfície de ataque.
 - **0:40–1:20** — O que causou a ligação: `npx tsx scripts/verify-testnet.ts` na tela, `TransferBlocked` real decodificado da testnet Moderato, `blockedReason`/`kind`/`memo`.
 - **1:20–2:10** — Só agora o portal, rápido: `/accounts` (monitor sobe na hora), `/recipients` (destinatário criptografado), histórico mostrando **o alerta da abertura**. Fecha o ciclo.
-- **2:10–2:40** — `npx vitest run`: **235 testes verdes**. Repo público, MIT.
+- **2:10–2:40** — `npx vitest run`: **237 testes verdes**. Repo público, MIT.
 - **2:40–3:00** — Uma frase sobre o que falta e quando (KMS gerenciado antes de qualquer cliente real).
 
 **Vídeo 1:** inverter a abertura — começar com *"construí uma coisa que liga pro meu telefone, e o maior problema de engenharia foi garantir que a ligação não possa ser usada contra mim"*, e só então os números. Founder solo: primeira pessoa, sem desculpa.
@@ -426,7 +426,7 @@ Hoje o README publica usuário, senha **e o segredo TOTP em texto puro** de uma 
 
 ### 5.5 Outros riscos de comunicação
 
-- **"235 testes" pode ser lido como garantia de segurança.** Diga **"235 testes automatizados, nenhuma auditoria externa ainda"** — a segunda metade é o que faz a primeira ser acreditada. Teste de cliente ou binário verificado **não é** auditoria.
+- **"237 testes" pode ser lido como garantia de segurança.** Diga **"237 testes automatizados, nenhuma auditoria externa ainda"** — a segunda metade é o que faz a primeira ser acreditada. Teste de cliente ou binário verificado **não é** auditoria.
 - **`TERMS-OF-USE.md` tem `[placeholder]` em entidade legal, jurisdição e limitação de responsabilidade.** Termos no ar sem entidade, para um produto que promete alertar sobre perda de dinheiro, é exposição real. O aviso no topo mitiga para o jurado, **não mitiga juridicamente**. Caminho: Stablecorp (§2.8).
 - **"Potential Market Size" é critério de julgamento e você não tem o número.** **Diga o número que não tem** e que descobrir isso é o item 1 da Fase 1, com o método do §2.5. O plano já faz isso bem. Estimar aqui é o único jeito de perder o ponto.
 - **Risco operacional de hoje:** o `rpc.tempo.xyz` caiu às 15:38 UTC de 11/10 (Cloudflare 521) e o monitor registrou falha consecutiva. Voltou (HTTP 200, bloco `0x29a73b2`), mas **não há RPC de fallback configurado** — `resolveRpcUrl` cai no `defaultPublicRpcUrl`. Se cair durante a gravação, a demo morre na câmera. **Tenha um RPC alternativo à mão e grave o `verify-testnet.ts` o quanto antes.**
@@ -471,7 +471,7 @@ O `VALIDATION-PLAYBOOK` §5 já diz "se o resultado for fraco, diga". Basta este
 
 ## §7. Veredito de viabilidade
 
-**Viabilidade técnica: alta e comprovada.** 235 testes verdes, núcleo validado contra a rede real, bug de leitura de saldo encontrado e corrigido no processo, produção no ar, repo MIT limpo. Para um hackathon de 5 semanas com founder solo, a execução é o ponto mais forte do projeto — e os critérios de julgamento premiam Product+Execution.
+**Viabilidade técnica: alta e comprovada.** 237 testes verdes, núcleo validado contra a rede real, bug de leitura de saldo encontrado e corrigido no processo, produção no ar, repo MIT limpo. Para um hackathon de 5 semanas com founder solo, a execução é o ponto mais forte do projeto — e os critérios de julgamento premiam Product+Execution.
 
 **Viabilidade de negócio: não demonstrada, e isso é consertável hoje por honestidade, não por dado.** O SAM estimado (US$120k–2,4M ARR [EST]) é pequeno; o mercado pagante na Tempo hoje é ~zero; o segmento nomeado da chain é enterprise, não PME. Nada disso é fatal **se o pitch disser exatamente isso** e apresentar o método de medição em vez de uma estimativa confiante. O que seria fatal é afirmar um TAM que o jurado derruba em dois cliques.
 
@@ -485,7 +485,7 @@ O `VALIDATION-PLAYBOOK` §5 já diz "se o resultado for fraco, diga". Basta este
 
 | Verificação | Resultado |
 |---|---|
-| `npm test` | 33 arquivos, **235 testes**, todos passando (6 execuções consecutivas limpas) |
+| `npm test` | 33 arquivos, **237 testes**, todos passando (6 execuções consecutivas limpas) |
 | `git rev-list --count HEAD` | **61 commits**; primeiro em 2026-10-02; `git log --until=2026-09-14` **vazio** |
 | Árvore de trabalho | limpa, `master` sincronizado com `origin/master` |
 | Produção (Railway) | deploy `c22cd5ae` SUCCESS; commits posteriores alteram **só docs** |

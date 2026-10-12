@@ -24,6 +24,46 @@ export function buildAlertMessage(event: DetectionEvent, locale: AlertLocale = r
   return MESSAGES[locale][event.kind];
 }
 
+/**
+ * Forma CURTA, para notificação em celular.
+ *
+ * Por que não reusar buildAlertMessage: ali o texto começa com "Alerta
+ * VILIGION:" porque é falado numa ligação ou lido num e-mail, onde a marca
+ * precisa aparecer no próprio corpo. Na notificação o título já carrega a
+ * marca, então repetir o prefixo gasta os poucos caracteres que o Android
+ * mostra antes de truncar - e o que fica cortado é justamente a parte que diz
+ * o que aconteceu.
+ *
+ * Mora aqui, e não em web-push.ts, porque todo texto de alerta tem que passar
+ * pela mesma política e pelo mesmo teste de dado sensível. Copy de alerta
+ * espalhada por módulo de canal é como a regra se perde.
+ */
+const SHORT_TITLE: Record<AlertLocale, string> = {
+  en: "VILIGION · critical alert",
+  pt: "VILIGION · alerta crítico",
+};
+
+const SHORT_MESSAGES: Record<AlertLocale, Record<DetectionEvent["kind"], string>> = {
+  en: {
+    "balance-drop": "Unusual activity in your treasury. Tap to open the dashboard.",
+    "transfer-blocked": "A transfer was blocked by your receive policy. Tap to open the dashboard.",
+  },
+  pt: {
+    "balance-drop": "Atividade incomum na sua tesouraria. Toque para abrir o painel.",
+    "transfer-blocked": "Transferência bloqueada pela sua política de recebimento. Toque para abrir o painel.",
+  },
+};
+
+/** Título curto da notificação - leva a marca, pra o corpo não precisar repetir. */
+export function buildShortAlertTitle(locale: AlertLocale = resolveLocale()): string {
+  return SHORT_TITLE[locale];
+}
+
+/** Corpo curto da notificação - mesma garantia de conteúdo genérico da forma longa. */
+export function buildShortAlertMessage(event: DetectionEvent, locale: AlertLocale = resolveLocale()): string {
+  return SHORT_MESSAGES[locale][event.kind];
+}
+
 const FORBIDDEN_PATTERNS = [
   /\d{1,3}(,\d{3})*(\.\d+)?\s*(usdc|usdt|tip-?20|%|percent)/i,
   /0x[a-fA-F0-9]{6,}/, // endereço ou hash

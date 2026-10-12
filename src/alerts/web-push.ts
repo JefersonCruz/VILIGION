@@ -25,7 +25,7 @@
 
 import webpush from "web-push";
 import type { DetectionEvent } from "../engine/rules/detection-rules.js";
-import { assertNoSensitiveData, buildAlertMessage } from "./alert-content-policy.js";
+import { assertNoSensitiveData, buildShortAlertMessage, buildShortAlertTitle } from "./alert-content-policy.js";
 import { type AlertLocale, resolveLocale } from "./locale.js";
 
 /** Formato que o navegador entrega em PushManager.subscribe() - guardado criptografado, igual telefone/e-mail. */
@@ -52,11 +52,6 @@ export interface WebPushLikeSender {
   ): Promise<unknown>;
 }
 
-const TITLE: Record<AlertLocale, string> = {
-  en: "VILIGION critical alert",
-  pt: "Alerta crítico VILIGION",
-};
-
 const OPEN_DASHBOARD: Record<AlertLocale, string> = {
   en: "Open dashboard",
   pt: "Abrir painel",
@@ -79,8 +74,8 @@ export function buildPushPayload(
   config: Pick<WebPushConfig, "dashboardUrl">,
   locale: AlertLocale = resolveLocale(),
 ): string {
-  const title = TITLE[locale];
-  const body = buildAlertMessage(event, locale);
+  const title = buildShortAlertTitle(locale);
+  const body = buildShortAlertMessage(event, locale);
   assertNoSensitiveData(title);
   assertNoSensitiveData(body);
 
@@ -89,6 +84,10 @@ export function buildPushPayload(
     body,
     actionLabel: OPEN_DASHBOARD[locale],
     url: config.dashboardUrl,
+    lang: locale === "pt" ? "pt-BR" : "en-US",
+    // Horário do EVENTO, não da renderização: uma notificação que ficou na
+    // tela a noite toda deve dizer quando o alerta aconteceu, não "agora".
+    at: Date.now(),
   });
 }
 
