@@ -110,8 +110,8 @@ export function manifestJson(params: { iconPath: string }): string {
       start_url: "/dashboard",
       scope: "/",
       display: "standalone",
-      background_color: "#0A0E17",
-      theme_color: "#0A0E17",
+      background_color: "#131217",
+      theme_color: "#131217",
       icons: [
         { src: params.iconPath, sizes: "128x128", type: "image/png", purpose: "any" },
         { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

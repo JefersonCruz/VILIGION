@@ -435,6 +435,7 @@ function serveAppIcon(res: ServerResponse): void {
  * status. A luminância da arte original virou o alpha.
  */
 const STATIC_IMAGES: Record<string, string> = {
+  "/hero.jpg": "../../assets/hero.jpg",
   "/icon-192.png": "../../assets/icon-192.png",
   "/icon-512.png": "../../assets/icon-512.png",
   "/badge.png": "../../assets/badge-96.png",
@@ -454,7 +455,8 @@ function serveStaticImage(res: ServerResponse, route: string): void {
       return;
     }
   }
-  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": bytes.length, "Cache-Control": "public, max-age=86400" });
+  const mime = route.endsWith(".jpg") ? "image/jpeg" : "image/png";
+  res.writeHead(200, { "Content-Type": mime, "Content-Length": bytes.length, "Cache-Control": "public, max-age=86400" });
   res.end(bytes);
 }
 

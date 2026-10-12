@@ -177,24 +177,29 @@ const BASE_STYLE = `
   :root {
     color-scheme: dark;
 
-    /* Neutros frios — 90% da tela. Escala azulada pra casar com o ciano. */
-    --bg: #0A0E17;
-    --surface: #0E1521;
-    --surface-2: #141C2B;
-    --border: #1B2433;
-    --border-strong: #2A3449;
-    --text: #F1F5F9;
-    --text-muted: #8B95A7;
+    /* Paleta adotada de JefersonCruz/sora-manrope-vibe (2026-10-12), convertida
+       de oklch pra hex. Neutros quase-neutros com leve viés quente, acento
+       lavanda suave. Substituiu a escala fria + ciano: a arte do hero tem
+       brilho lavanda, e ciano contra ela brigava.
+       Os nove pares de contraste foram medidos e todos passam AA (4.5:1);
+       o mais apertado é apoio sobre superfície-2, em 6.33:1. */
+    --bg: #131217;
+    --surface: #1B1921;
+    --surface-2: #2C2833;
+    --border: #3A3740;
+    --border-strong: #4A4653;
+    --text: #F3F2F5;
+    --text-muted: #AEAAB7;
 
     /* Acentos — usar pouco. É o uso escasso que dá ar profissional. */
-    --accent: #22D3EE;
-    --accent-ink: #042F36;
-    --critical: #FCA5A5;
-    --critical-bg: rgba(252,165,165,0.10);
+    --accent: #D3B6FF;
+    --accent-ink: #1B1921;
+    --critical: #F78765;
+    --critical-bg: rgba(247,135,101,0.10);
     --warning: #FBBF24;
     --warning-bg: rgba(251,191,36,0.10);
-    --ok: #34D399;
-    --ok-bg: rgba(52,211,153,0.10);
+    --ok: #9BE6B4;
+    --ok-bg: rgba(155,230,180,0.10);
 
     /* Raio: três valores, cada um com significado. */
     --r-control: 6px;
@@ -205,8 +210,13 @@ const BASE_STYLE = `
     --e1: 0 1px 2px rgba(0,0,0,.35);
     --e2: 0 12px 32px -8px rgba(0,0,0,.55);
 
-    --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    /* Sora + Manrope, adotadas de JefersonCruz/sora-manrope-vibe (2026-10-12).
+       Sora tem formas geometricas com terminais retos - le bem em numero
+       grande, que e o caso do saldo. Manrope e humanista e aguenta texto
+       corrido denso, que e o caso de tabela e rotulo. O stack de sistema
+       continua como fallback: se a fonte nao carregar, nada quebra. */
+    --font-display: "Sora", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-text: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
@@ -259,11 +269,11 @@ const BASE_STYLE = `
     padding:10px 12px; border-radius:var(--r-control); font-size:14px; font-family:inherit;
     transition: border-color .12s ease, box-shadow .12s ease;
   }
-  input:hover, select:hover { border-color:#36425c; }
-  /* #7A87A0 e nao um cinza mais escuro: medido em 4.71:1 sobre --surface-2 e
+  input:hover, select:hover { border-color:#56525F; }
+  /* #9A96A6 e nao um cinza mais escuro: medido em 4.71:1 sobre --surface-2 e
      5.05:1 sobre --surface, passando AA. O valor anterior ficava em 3.03:1 -
      placeholder que o usuario precisa adivinhar nao e decisao de estilo. */
-  input::placeholder { color:#7A87A0; }
+  input::placeholder { color:#9A96A6; }
   select { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%); background-position:calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:34px; }
   form { margin-top:4px; }
 
@@ -271,7 +281,7 @@ const BASE_STYLE = `
   a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
     outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r-control);
   }
-  input:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(34,211,238,.16); }
+  input:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(211,182,255,.18); }
 
   /* --- Botões: fundo chapado, sem gradiente. Altura mínima de 40px pra toque. --- */
   button {
@@ -284,7 +294,7 @@ const BASE_STYLE = `
   button:active { transform:translateY(1px); }
   button:disabled { opacity:.5; cursor:not-allowed; filter:none; }
   button.secondary { background:var(--surface-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--border-strong); }
-  button.secondary:hover { background:#1A2335; filter:none; }
+  button.secondary:hover { background:#262230; filter:none; }
   button.danger { background:transparent; color:var(--critical); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--critical) 35%, transparent); }
   button.danger:hover { background:var(--critical-bg); filter:none; }
 
@@ -402,7 +412,7 @@ const BASE_STYLE = `
  */
 const DISPLAY_FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap">`;
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap">`;
 
 const NAV_LINKS: Array<[string, string]> = [
   ["/dashboard", "Painel"],
@@ -428,7 +438,7 @@ function layout(params: { title: string; body: string; authed?: boolean; active?
 <title>VILIGION — ${escapeHtml(params.title)}</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.png" type="image/png">
-<meta name="theme-color" content="#0A0E17">
+<meta name="theme-color" content="#131217">
 ${DISPLAY_FONT_LINK}
 ${params.head ?? ""}
 <style>${BASE_STYLE}</style>
@@ -461,7 +471,7 @@ function authLayout(params: { title: string; subtitle?: string; body: string; er
 <title>VILIGION — ${escapeHtml(params.title)}</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.png" type="image/png">
-<meta name="theme-color" content="#0A0E17">
+<meta name="theme-color" content="#131217">
 ${DISPLAY_FONT_LINK}
 <style>${BASE_STYLE}
   .auth-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
@@ -594,7 +604,7 @@ function shareMeta(baseUrl: string): string {
   const url = escapeHtml(baseUrl);
   const image = `${url}/og-image.png`;
   return `<meta name="description" content="${escapeHtml(SHARE_DESCRIPTION)}">
-<meta name="theme-color" content="#0a0e17">
+<meta name="theme-color" content="#131217">
 <link rel="icon" href="${FAVICON}">
 <!-- Sem este link o Chrome nao oferece "Instalar" nesta pagina. Faltava na
      landing E no login ate 2026-10-12, entao o PWA so era instalavel de
@@ -647,219 +657,191 @@ const ICON_CHECK = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" 
  * vira dark/cyan (identidade "security-grade"); o resto do produto continua
  * claro, sem risco de regressão visual a poucos dias da submissão.
  */
+/**
+ * Estilo da landing — porte do design JefersonCruz/sora-manrope-vibe
+ * (2026-10-12), que já era uma landing do VILIGION redesenhada.
+ *
+ * Mudanças de fundo em relação ao que havia antes, e o porquê de cada uma:
+ *
+ * - Seções separadas por BORDA, não por cartão. Quando tudo é cartão, nada
+ *   tem hierarquia e a página vira um tabuleiro de retângulos.
+ * - Passos com `border-top` em vez de caixa, numerados 01–04.
+ * - Comparativo com a ÚLTIMA coluna destacada — a nossa.
+ * - Tokens locais espelham os de BASE_STYLE: a mesma paleta nas duas
+ *   superfícies, pra não recriar o problema de "dois produtos visualmente".
+ */
 const LANDING_STYLE = `
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  :root {
+    --bg:#131217; --card:#1B1921; --secondary:#2C2833; --border:#3A3740;
+    --fg:#F3F2F5; --muted:#AEAAB7; --primary:#D3B6FF; --primary-ink:#1B1921;
+    --destructive:#F78765;
+    --hero-shade: linear-gradient(90deg, var(--bg) 0%, rgba(19,18,23,.95) 25%, rgba(19,18,23,.48) 51%, transparent 78%);
+    --surface-shade: linear-gradient(0deg, var(--bg), transparent 65%);
+  }
+  * { box-sizing:border-box; border-color:var(--border); }
+  html { scroll-behavior:smooth; scroll-padding-top:95px; }
   body {
-    margin:0; min-height:100vh; background:#0a0e17; color:#e5e7eb;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+    margin:0; background:var(--bg); color:var(--fg); font-size:14px;
+    font-family:'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
   }
-  ::selection { background: rgba(34,211,238,0.3); }
-  a { color:#67e8f9; text-decoration:none; }
-  a:hover { color:#22d3ee; }
-  a.link { color:#22d3ee; }
-  a.link:hover { text-decoration:underline; }
-  .muted { color:#8b95a7; font-size:0.9rem; line-height:1.55; }
-  .container { max-width:1120px; margin:0 auto; padding-left:28px; padding-right:28px; }
-  h1, h2 { font-family:'Space Grotesk', 'Inter', sans-serif; color:#f8fafc; }
+  h1,h2,h3 { font-family:'Sora', sans-serif; letter-spacing:0; font-weight:500; }
+  a { text-decoration:none; color:inherit; }
+  img { max-width:100%; }
+  .shell { width:min(1184px, calc(100% - 96px)); margin-inline:auto; }
 
-  /* reveal-on-scroll: JS adds .is-visible when the element enters the viewport */
-  .reveal { opacity:0; transform:translateY(18px); transition: opacity .6s ease-out, transform .6s ease-out; }
-  .reveal.is-visible { opacity:1; transform:translateY(0); }
-  @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity:1; transform:none; transition:none; }
+  .site-header { height:90px; display:flex; align-items:center; justify-content:space-between; gap:20px; border-bottom:1px solid var(--border); }
+  .wordmark { display:flex; align-items:center; gap:10px; font-family:'Sora',sans-serif; font-size:20px; font-weight:600; }
+  .wordmark img { width:26px; height:26px; border-radius:6px; display:block; }
+  .desktop-nav { display:flex; align-items:center; gap:32px; }
+  .nav-link { color:var(--muted); font-size:12px; transition:color .2s; }
+  .nav-link:hover { color:var(--primary); }
+  .header-actions { display:flex; align-items:center; gap:22px; }
+
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; border:none;
+    font-family:inherit; font-weight:600; border-radius:8px; transition:filter .15s ease, background .15s ease, box-shadow .15s ease; }
+  .btn-primary { background:var(--primary); color:var(--primary-ink); padding:12px 20px; font-size:13px; }
+  .btn-primary:hover { filter:brightness(1.07); }
+  .btn-outline { background:transparent; color:var(--fg); box-shadow:inset 0 0 0 1px var(--border); padding:12px 20px; font-size:13px; }
+  .btn-outline:hover { box-shadow:inset 0 0 0 1px var(--primary); color:var(--primary); }
+  .btn-sm { padding:9px 15px; font-size:12px; }
+  a:focus-visible, button:focus-visible, input:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+
+  .hero { position:relative; min-height:630px; isolation:isolate; display:flex; align-items:center; }
+  .hero-image { position:absolute; right:-48px; top:0; width:83%; height:100%; object-fit:cover; object-position:center; z-index:-3; }
+  .hero::before { content:""; position:absolute; inset:0 -48px; background:var(--hero-shade); z-index:-2; }
+  .hero::after { content:""; position:absolute; inset:0 -48px; background:var(--surface-shade); z-index:-1; }
+  .hero-copy { width:610px; max-width:100%; padding:60px 0 75px; }
+  .eyebrow { display:flex; align-items:center; gap:9px; color:var(--primary); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; }
+  .status-dot { width:6px; height:6px; border-radius:50%; background:var(--primary); box-shadow:0 0 0 4px rgba(211,182,255,.09); flex:none; }
+  .hero h1 { font-size:58px; line-height:1.14; margin:25px 0 24px; }
+  .hero-copy p { max-width:425px; font-size:14px; line-height:1.9; color:var(--muted); }
+  .hero-buttons { display:flex; gap:14px; margin:30px 0 24px; flex-wrap:wrap; }
+  .hero-note { display:flex; align-items:center; gap:8px; font-size:10px; color:var(--muted); }
+  .image-caption { position:absolute; right:0; bottom:44px; color:var(--muted); font-size:9px; display:flex; gap:10px; align-items:center; }
+
+  .trust-strip { border-block:1px solid var(--border); display:grid; grid-template-columns:repeat(4,1fr); padding:26px 0; gap:20px; }
+  .trust-item { display:flex; align-items:center; justify-content:center; gap:10px; color:var(--muted); font-size:11px; text-align:center; }
+
+  .section { padding-block:78px; border-bottom:1px solid var(--border); }
+  .section-label { font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--primary); font-weight:700; display:flex; align-items:center; gap:10px; }
+  .section-label span { color:var(--muted); font-size:9px; }
+  .section h2 { font-size:34px; line-height:1.3; margin:19px 0; }
+  .section-intro { display:flex; justify-content:space-between; align-items:end; gap:30px; margin-bottom:34px; flex-wrap:wrap; }
+  .section-intro p { color:var(--muted); line-height:1.8; font-size:12px; max-width:340px; }
+
+  .problem-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:95px; }
+  .problem-copy { color:var(--muted); line-height:1.9; font-size:13px; }
+  .problem-stat { border-left:1px solid var(--border); padding-left:45px; display:flex; flex-direction:column; justify-content:center; }
+  .problem-stat strong { font-family:'Sora',sans-serif; font-size:62px; font-weight:500; color:var(--primary); line-height:1.1; }
+  .problem-stat p { font-size:13px; line-height:1.8; max-width:320px; color:var(--muted); }
+  .problem-stat small { font-size:10px; color:var(--muted); }
+
+  .steps { display:grid; grid-template-columns:repeat(4,1fr); gap:30px; }
+  .step { border-top:1px solid var(--border); padding-top:24px; }
+  .step-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .step-top span { font-size:11px; color:var(--primary); font-family:'Sora',sans-serif; }
+  .step h3 { font-size:15px; margin:0 0 8px; }
+  .step p { color:var(--muted); font-size:12px; line-height:1.9; margin:0; }
+
+  .product-preview { border:1px solid var(--border); border-radius:8px; overflow:hidden; display:grid; grid-template-columns:195px 1fr; background:var(--card); }
+  .preview-sidebar { padding:26px 17px; border-right:1px solid var(--border); }
+  .preview-sidebar .wordmark { font-size:13px; margin:0 6px 30px; }
+  .preview-sidebar .wordmark img { width:18px; height:18px; }
+  .preview-nav { width:100%; display:flex; align-items:center; gap:9px; justify-content:flex-start; margin-bottom:5px; font-size:11px;
+    background:transparent; border:none; color:var(--muted); font-family:inherit; padding:9px 10px; border-radius:6px; cursor:pointer; text-align:left; }
+  .preview-nav:hover { color:var(--fg); }
+  .preview-nav[aria-selected="true"] { background:var(--secondary); color:var(--fg); }
+  .preview-content { padding:30px; min-height:290px; }
+  .preview-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; gap:14px; flex-wrap:wrap; }
+  .preview-heading h3 { margin:0; font-size:17px; }
+  .preview-badge { font-size:9px; color:var(--primary); display:flex; align-items:center; gap:7px; }
+  .preview-table { width:100%; border-collapse:collapse; font-size:11px; }
+  .preview-table th { text-align:left; color:var(--muted); font-weight:400; font-size:10px; padding:13px 10px; background:var(--secondary); }
+  .preview-table td { padding:20px 10px; border-bottom:1px solid var(--border); }
+  .preview-panel[hidden] { display:none; }
+  .state { color:var(--primary); font-size:10px; display:inline-flex; align-items:center; gap:5px; }
+  .state.critical { color:var(--destructive); }
+  .preview-footnote { font-size:10px; color:var(--muted); margin-top:22px; display:flex; gap:6px; align-items:center; }
+
+  .security-grid { display:grid; grid-template-columns:1fr 1fr; gap:85px; }
+  .security-grid p { color:var(--muted); font-size:13px; line-height:1.9; }
+  .security-feature { display:flex; gap:16px; border-bottom:1px solid var(--border); padding:23px 0; }
+  .security-feature:first-child { padding-top:0; }
+  .security-feature h3 { font-size:13px; margin:0 0 7px; }
+  .security-feature p { font-size:11px; margin:0; }
+
+  .comparison-wrap { overflow-x:auto; }
+  .comparison { width:100%; border-collapse:collapse; font-size:12px; min-width:600px; }
+  .comparison th { font-weight:500; text-align:left; padding:20px; color:var(--muted); font-size:11px; border-bottom:1px solid var(--border); }
+  .comparison th:last-child { color:var(--primary); font-family:'Sora',sans-serif; font-size:16px; }
+  .comparison td { padding:22px 20px; border-bottom:1px solid var(--border); line-height:1.7; color:var(--muted); }
+  .comparison td:first-child { color:var(--fg); width:25%; }
+  .comparison td:last-child, .comparison th:last-child { background:rgba(211,182,255,.05); width:38%; }
+  .comparison td:last-child { color:var(--fg); }
+
+  .install-grid { display:grid; grid-template-columns:1fr 1fr; gap:85px; }
+  .install-item { border-bottom:1px solid var(--border); padding:20px 0; font-size:12px; color:var(--muted); line-height:1.8; }
+  .install-item:first-child { padding-top:0; }
+  .install-item strong { color:var(--fg); font-weight:600; }
+
+  .waitlist { padding:75px 0; display:grid; grid-template-columns:1fr 420px; gap:60px; align-items:start; }
+  .waitlist h2 { max-width:620px; margin:18px 0; font-size:34px; line-height:1.3; }
+  .waitlist-copy p { font-size:12px; color:var(--muted); line-height:1.8; }
+  .wl-form { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:26px; }
+  .wl-form label { display:block; font-size:11px; color:var(--muted); margin:0 0 8px; }
+  .wl-form input[type=email], .wl-form input[type=text] {
+    width:100%; background:var(--bg); border:1px solid var(--border); color:var(--fg);
+    padding:11px 13px; border-radius:6px; font-size:13px; font-family:inherit; }
+  .wl-form input::placeholder { color:#7C7887; }
+  .wl-form input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(211,182,255,.16); }
+  .wl-profiles { display:flex; flex-direction:column; gap:7px; margin:18px 0; }
+  .wl-profiles input { position:absolute; opacity:0; pointer-events:none; }
+  .wl-profiles label { display:block; margin:0; padding:10px 12px; border:1px solid var(--border); border-radius:6px;
+    font-size:11.5px; color:var(--muted); cursor:pointer; transition:border-color .15s, color .15s, background .15s; }
+  .wl-profiles label:hover { border-color:var(--primary); }
+  .wl-profiles input:checked + label { border-color:var(--primary); color:var(--fg); background:rgba(211,182,255,.07); }
+  .wl-profiles input:focus-visible + label { outline:2px solid var(--primary); outline-offset:2px; }
+  .wl-form .btn { width:100%; margin-top:6px; }
+  .wl-note { display:block; margin-top:14px; color:var(--muted); font-size:9px; text-align:center; }
+  .wl-msg { padding:11px 14px; border-radius:6px; font-size:12px; margin-bottom:16px; line-height:1.5; }
+  .wl-msg.ok { background:rgba(155,230,180,.1); border:1px solid rgba(155,230,180,.3); color:#9BE6B4; }
+  .wl-msg.err { background:rgba(247,135,101,.1); border:1px solid rgba(247,135,101,.3); color:var(--destructive); }
+
+  footer { border-top:1px solid var(--border); padding:45px 0 24px; }
+  .footer-top { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:36px; }
+  .footer-top p { color:var(--muted); font-size:11px; line-height:1.8; max-width:245px; margin-top:16px; }
+  .footer-column h3 { font-size:10px; font-weight:500; margin:0 0 19px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+  .footer-column a { display:block; font-size:11px; color:var(--muted); margin-bottom:12px; }
+  .footer-column a:hover { color:var(--primary); }
+  .footer-bottom { border-top:1px solid var(--border); margin-top:35px; padding-top:21px; display:flex; justify-content:space-between; gap:20px; color:var(--muted); font-size:9px; line-height:1.7; flex-wrap:wrap; }
+  .contributors-row { display:flex; align-items:center; gap:8px; margin-top:16px; flex-wrap:wrap; }
+  .contributors-row img { width:24px; height:24px; border-radius:50%; border:1px solid var(--border); }
+
+  @media (max-width: 1000px) {
+    .shell { width:calc(100% - 40px); }
+    .problem-grid, .security-grid, .install-grid { grid-template-columns:1fr; gap:40px; }
+    .problem-stat { border-left:none; border-top:1px solid var(--border); padding:30px 0 0; }
+    .steps { grid-template-columns:repeat(2,1fr); }
+    .waitlist { grid-template-columns:1fr; gap:36px; }
+    .hero-image { width:100%; opacity:.28; right:0; }
+    .hero h1 { font-size:40px; }
+    .product-preview { grid-template-columns:1fr; }
+    .preview-sidebar { border-right:none; border-bottom:1px solid var(--border); display:flex; flex-wrap:wrap; gap:6px; padding:14px; }
+    .preview-sidebar .wordmark { display:none; }
+    .preview-nav { width:auto; margin:0; }
+    .trust-strip { grid-template-columns:repeat(2,1fr); gap:16px; }
+    .footer-top { grid-template-columns:1fr 1fr; }
+    .desktop-nav { display:none; }
   }
-
-  /* header */
-  .top-header { position:sticky; top:0; z-index:20; border-bottom:1px solid #1b2433; background:rgba(10,14,23,0.82); backdrop-filter:blur(10px); }
-  .top-header .container { display:flex; align-items:center; justify-content:space-between; height:72px; }
-  .top-header .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:1.05rem; color:#f8fafc; }
-  .top-nav { display:flex; align-items:center; gap:26px; }
-  .top-nav a.nav-link { color:#9aa4b2; font-size:0.88rem; transition: color .15s ease; }
-  .top-nav a.nav-link:hover { color:#e5e7eb; }
-  .top-nav a.btn-ghost { color:#cbd5e1; font-size:0.88rem; border:1px solid #2a3449; padding:8px 16px; border-radius:8px; transition: border-color .15s ease; }
-  .top-nav a.btn-ghost:hover { border-color:#3a4760; color:#f1f5f9; }
-  @media (max-width:860px) { .top-nav .nav-link { display:none; } }
-
-  /* buttons */
-  button, a.btn { font-family:inherit; cursor:pointer; border:none; display:inline-flex; align-items:center; justify-content:center;
-    padding:12px 22px; border-radius:9px; font-weight:600; font-size:0.95rem; text-decoration:none;
-    transition: transform .1s ease, box-shadow .18s ease, opacity .15s ease; }
-  button.cta, a.btn.cta {
-    background: linear-gradient(180deg, #fbbf24, #f59e0b); color:#231703;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 1px rgba(245,158,11,0.4) inset, 0 0 0 rgba(245,158,11,0.3);
+  @media (max-width: 560px) {
+    .steps, .trust-strip, .footer-top { grid-template-columns:1fr; }
+    .hero h1 { font-size:32px; }
+    .section h2, .waitlist h2 { font-size:26px; }
+    .section { padding-block:52px; }
+    .preview-content, .wl-form { padding:18px; }
   }
-  button.cta:hover, a.btn.cta:hover { box-shadow: 0 4px 22px rgba(245,158,11,0.35), 0 0 0 1px rgba(245,158,11,0.5) inset; transform: translateY(-1px); }
-  button.cta:active, a.btn.cta:active { transform: translateY(0); }
-  a.btn.secondary { background:transparent; border:1px solid #2a3449; color:#cbd5e1; }
-  a.btn.secondary:hover { border-color:#3a4760; color:#f1f5f9; }
-
-  /* form elements (waitlist card) */
-  label { display:block; margin-top:14px; margin-bottom:6px; font-size:0.82rem; color:#9aa4b2; font-weight:500; }
-  input, select { width:100%; background:#101726; border:1px solid #232d40; color:#e5e7eb;
-    padding:11px 13px; border-radius:8px; font-size:0.95rem; font-family:inherit;
-    transition: border-color .15s ease, box-shadow .15s ease; }
-  input:focus, select:focus { outline:none; border-color:#22d3ee; box-shadow: 0 0 0 3px rgba(34,211,238,0.15); }
-  input::placeholder { color:#4b5668; }
-  .error { background:#2a1212; border:1px solid #5c1f1f; color:#fca5a5; padding:11px 15px; border-radius:8px; margin-bottom:18px; font-size:0.88rem; }
-
-  /* hero */
-  .hero { position:relative; padding:76px 0 64px; overflow:hidden;
-    background: radial-gradient(ellipse 60% 55% at 12% -10%, rgba(34,211,238,0.14), transparent 60%), radial-gradient(ellipse 50% 45% at 100% 0%, rgba(245,158,11,0.07), transparent 55%);
-    border-bottom:1px solid #1b2433; }
-  .hero-grid { display:grid; grid-template-columns:1.15fr 0.85fr; gap:48px; align-items:start; }
-  @media (max-width:860px) { .hero-grid { grid-template-columns:1fr; } .hero-copy { text-align:center; } .hero-copy .mark, .trust-row { justify-content:center; } }
-  .hero-copy .mark { display:inline-block; margin-bottom:18px; }
-  .hero-copy .mark img { display:block; border-radius:18%; }
-  .hero-copy h1 { font-size: clamp(1.9rem, 3.6vw, 2.7rem); line-height:1.18; margin:0 0 16px; letter-spacing:-0.02em; font-weight:700; }
-  .hero-copy .lead { font-size:1.04rem; color:#aab4c4; margin:0 0 8px; line-height:1.58; }
-  .hero-copy .lead strong { color:#e5e7eb; }
-  .trust-row { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0 20px; }
-  .hero-copy .mark, .hero-copy h1, .hero-copy .lead, .hero-copy .trust-row, .hero-copy > p.muted, .hero-form {
-    animation: fade-up .6s ease-out both;
-  }
-  .hero-copy .mark { animation: fade-up .6s ease-out both, pulse-ring 2.6s cubic-bezier(.4,0,.6,1) .6s infinite; border-radius:18%; }
-  .hero-copy h1 { animation-delay: .08s; }
-  .hero-copy .lead:nth-of-type(1) { animation-delay: .14s; }
-  .hero-copy .lead:nth-of-type(2) { animation-delay: .2s; }
-  .hero-copy .trust-row { animation-delay: .26s; }
-  .hero-copy > p.muted { animation-delay: .32s; }
-  .hero-form { animation-delay: .38s; }
-  @keyframes fade-up { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform: translateY(0); } }
-  @keyframes pulse-ring {
-    0%   { box-shadow: 0 0 0 0 rgba(34,211,238,0.45), 0 0 26px rgba(34,211,238,0.3); }
-    70%  { box-shadow: 0 0 0 16px rgba(34,211,238,0), 0 0 26px rgba(34,211,238,0.3); }
-    100% { box-shadow: 0 0 0 0 rgba(34,211,238,0), 0 0 26px rgba(34,211,238,0.3); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .hero-copy .mark img, .hero-copy .mark, .hero-copy h1, .hero-copy .lead, .hero-copy .trust-row, .hero-copy > p.muted, .hero-form {
-      animation: none;
-    }
-  }
-  .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid #2a3449; color:#9aa4b2; font-size:0.78rem; font-weight:600; background:#0e1521; transition: border-color .15s ease, color .15s ease; }
-  a.badge:hover { border-color:#3a4760; color:#cbd5e1; }
-  .badge.accent { border-color:rgba(245,158,11,0.4); color:#fbbf24; }
-
-  /* hero waitlist card */
-  .hero-form { background:#0e1521; border:1px solid #1b2433; border-radius:14px; padding:24px; box-shadow:0 20px 50px rgba(0,0,0,0.35); }
-  .hero-form .form-title { margin:0 0 4px; font-weight:700; font-size:1.05rem; color:#f8fafc; }
-  .pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
-  .pills input { position:absolute; opacity:0; width:1px; height:1px; }
-  .pills label { cursor:pointer; padding:8px 14px; border-radius:999px; border:1px solid #232d40; background:#101726; color:#9aa4b2; font-size:0.82rem; font-weight:500; transition: all .15s ease; margin-top:0; }
-  .pills input:checked + label { border-color:#22d3ee; color:#e5e7eb; background:#0c2228; }
-  .pills input:focus-visible + label { outline:2px solid #22d3ee; outline-offset:2px; }
-  details.note-toggle { margin-top:16px; }
-  details.note-toggle summary { cursor:pointer; color:#8b95a7; font-size:0.82rem; list-style:none; }
-  details.note-toggle summary::-webkit-details-marker { display:none; }
-  details.note-toggle summary::before { content:"+ "; color:#22d3ee; font-weight:700; }
-  details.note-toggle[open] summary::before { content:"− "; }
-
-  /* sections, shared rhythm */
-  .section { padding:72px 0; }
-  .section.alt { background:#0b0f19; border-top:1px solid #1b2433; border-bottom:1px solid #1b2433; }
-  .eyebrow { color:#67e8f9; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 10px; }
-  .section h2 { font-size:1.6rem; font-weight:700; margin:0 0 30px; max-width:600px; }
-
-  /* trust bar */
-  .trust-bar { border-top:1px solid #1b2433; border-bottom:1px solid #1b2433; background:#0b0f19; }
-  .trust-bar .container { display:flex; flex-wrap:wrap; gap:26px; align-items:center; justify-content:space-between; padding:24px 28px; }
-  .trust-bar .item { display:flex; align-items:center; gap:8px; color:#8b95a7; font-size:0.84rem; }
-  .trust-bar svg { flex-shrink:0; }
-
-  /* problem / stat */
-  .stat-row { display:flex; gap:48px; align-items:center; flex-wrap:wrap; }
-  .stat-number { font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:4rem; color:#fbbf24; line-height:1; }
-  .stat-row .stat-copy { flex:1 1 420px; border-left:1px solid #1b2433; padding-left:36px; }
-
-  /* how it works: diagram */
-  .steps-row { display:grid; grid-template-columns:repeat(4,1fr); gap:0; align-items:stretch; }
-  @media (max-width:900px) { .steps-row { grid-template-columns:1fr; } .step-arrow { transform:rotate(90deg); margin:2px 0; } }
-  .step-card { background:#0e1521; border:1px solid #1b2433; border-radius:12px; padding:22px; transition: border-color .2s ease, transform .2s ease; }
-  .step-card:hover { border-color:#2a3449; transform:translateY(-3px); }
-  .step-card .step-icon { margin-bottom:14px; }
-  .step-card .step-title { margin:0 0 6px; color:#f1f5f9; font-weight:600; font-size:0.94rem; }
-  .step-card .step-desc { margin:0; color:#8b95a7; font-size:0.84rem; line-height:1.55; }
-  .step-arrow { display:flex; align-items:center; justify-content:center; color:#2a3449; animation: arrow-flow 1.8s ease-in-out infinite; }
-  @keyframes arrow-flow { 0%,100% { opacity:0.45; transform:translateX(0); } 50% { opacity:1; transform:translateX(3px); } }
-  @media (prefers-reduced-motion: reduce) { .step-arrow { animation:none; } }
-
-  /* product preview */
-  .product-frame { display:flex; background:#0b121d; border:1px solid #1b2433; border-radius:16px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,0.35); }
-  .product-frame .side { width:190px; flex-shrink:0; background:#0e1521; border-right:1px solid #1b2433; padding:20px 0; }
-  .product-frame .side .item { padding:10px 20px; color:#8b95a7; font-size:0.84rem; }
-  .product-frame .side .item.active { color:#e5e7eb; background:rgba(34,211,238,0.08); border-left:2px solid #22d3ee; }
-  .product-frame .main { flex:1; padding:26px 30px; min-width:0; }
-  .mini-table { width:100%; border-collapse:collapse; margin-bottom:22px; }
-  .mini-table th { text-align:left; color:#8b95a7; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; padding:8px 10px; border-bottom:1px solid #1b2433; }
-  .mini-table td { padding:10px; border-bottom:1px solid #1b2433; color:#cbd5e1; font-size:0.85rem; }
-  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.74rem; font-weight:600; letter-spacing:0.02em; }
-  .pill.critical { background:#2a1212; color:#fca5a5; }
-  .pill.normal { background:#0c2228; color:#67e8f9; }
-
-  /* security section */
-  .security-grid { display:flex; gap:44px; flex-wrap:wrap; align-items:flex-start; }
-  .security-icon { flex-shrink:0; width:68px; height:68px; border-radius:16px; background:rgba(34,211,238,0.08); display:flex; align-items:center; justify-content:center; }
-  .check-list { display:flex; flex-direction:column; gap:10px; margin-top:18px; }
-  .check-list .row { display:flex; align-items:center; gap:10px; color:#cbd5e1; font-size:0.9rem; }
-
-  /* comparison */
-  .table-wrap { overflow-x:auto; border-radius:12px; border:1px solid #1b2433; }
-  .compare-table { width:100%; border-collapse:collapse; min-width:620px; }
-  .compare-table th { text-align:left; padding:14px 18px; background:#0e1521; font-size:0.8rem; border-bottom:1px solid #1b2433; }
-  .compare-table th.them { color:#9aa4b2; font-weight:600; }
-  .compare-table th.us { color:#67e8f9; font-weight:700; }
-  .compare-table td { padding:14px 18px; font-size:0.86rem; border-bottom:1px solid #1b2433; }
-  .compare-table tr:last-child td { border-bottom:none; }
-  .compare-table td.row-label { color:#8b95a7; }
-  .compare-table td.them { color:#8b95a7; }
-  .compare-table td.us { color:#e5e7eb; }
-  .compare-table tr:hover td { background:rgba(34,211,238,0.04); }
-
-  /* status + contributors */
-  .status-panel {
-    background:#0b0f19; border:1px solid #1b2433; border-radius:10px; padding:14px 16px;
-    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size:0.82rem; position:relative; overflow:hidden;
-  }
-  .status-panel::before {
-    content:""; position:absolute; inset:0;
-    background-image: linear-gradient(rgba(34,211,238,0.04) 1px, transparent 1px);
-    background-size: 100% 20px; pointer-events:none;
-  }
-  .status-line { display:flex; align-items:center; gap:10px; padding:4px 0; position:relative; flex-wrap:wrap; }
-  .status-line .label { color:#67e8f9; min-width:110px; }
-  .status-line .value { color:#aab4c4; }
-  .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-  .dot.ok { background:#34d399; animation: dot-pulse-ok 2.2s ease-out infinite; }
-  .dot.active { background:#fbbf24; animation: dot-pulse-active 1.1s ease-out infinite; }
-  @keyframes dot-pulse-ok {
-    0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.5); } 70% { box-shadow: 0 0 0 6px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
-  }
-  @keyframes dot-pulse-active {
-    0% { box-shadow: 0 0 0 0 rgba(251,191,36,0.55); } 70% { box-shadow: 0 0 0 6px rgba(251,191,36,0); } 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
-  }
-  .loading-bar { position:relative; height:3px; border-radius:999px; background:#111827; overflow:hidden; margin-top:8px; }
-  .loading-bar span { position:absolute; top:0; left:-40%; height:100%; width:40%; border-radius:999px;
-    background: linear-gradient(90deg, transparent, #22d3ee, #fbbf24, transparent); animation: loading-sweep 1.6s ease-in-out infinite; }
-  @keyframes loading-sweep { 0% { left:-40%; } 100% { left:100%; } }
-  @media (prefers-reduced-motion: reduce) {
-    .dot.ok, .dot.active, .loading-bar span { animation: none; }
-  }
-  .contributors-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:14px; }
-  .contributors-row a { display:block; width:36px; height:36px; border-radius:999px; overflow:hidden; border:2px solid #1b2433; transition: border-color .15s ease, transform .15s ease; }
-  .contributors-row a:hover { border-color:#22d3ee; transform: translateY(-2px); }
-  .contributors-row img { display:block; width:100%; height:100%; }
-  .contributors-row .cta-join { font-size:0.84rem; }
-
-  /* final CTA + footer */
-  .final-cta { text-align:center; background:radial-gradient(ellipse 60% 70% at 50% 100%, rgba(34,211,238,0.1), transparent 60%); }
-  .final-cta .container { max-width:640px; }
-  .final-cta h2 { margin:0 0 14px; font-size:1.7rem; }
-  .footer-grid { display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:32px; }
-  @media (max-width:700px) { .footer-grid { grid-template-columns:1fr 1fr; } }
-  .footer-grid .col-title { color:#9aa4b2; font-size:0.76rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0 0 12px; }
-  .footer-grid a { color:#8b95a7; font-size:0.86rem; display:block; margin-bottom:8px; }
-  .footer-bottom { margin-top:28px; padding-top:20px; border-top:1px solid #151d2b; color:#4b5668; font-size:0.78rem; }
+  @media (prefers-reduced-motion: reduce) { * { transition-duration:.001ms !important; animation-duration:.001ms !important; } }
 `;
 
 /** Lista de avatares com link pro perfil - cresce sozinha conforme o GitHub reportar mais colaboradores (ver dashboard/contributors.ts). */
@@ -873,319 +855,290 @@ function contributorsRow(contributors: Contributor[]): string {
   return `<div class="contributors-row">${avatars}<a class="link cta-join" href="https://github.com/JefersonCruz/VILIGION/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">+ Quero contribuir</a></div>`;
 }
 
+/**
+ * Landing — porte da estrutura de JefersonCruz/sora-manrope-vibe.
+ *
+ * O que foi preservado do que já existia, e NÃO pode regredir:
+ * - o formulário real de lista de espera (POST /waitlist com email, profile,
+ *   note). A referência só tinha um link âncora; aqui o formulário é o
+ *   produto da página.
+ * - os estados de sucesso (`?ok=1`) e erro, que a referência não tinha.
+ * - shareMeta (OG, canonical, manifest), colaboradores do GitHub, e a seção
+ *   de instalação do PWA.
+ *
+ * Toda afirmação aqui é checável no repositório. Em especial, o passo de
+ * monitoramento NÃO diz "padrões de transferência" — detecção estatística é
+ * roadmap, não existe (ver SECURITY.md).
+ */
 export function landingPage(params: { joined?: boolean; error?: string; baseUrl: string; contributors: Contributor[] }): string {
-  const pills = Object.entries(WAITLIST_PROFILES)
+  const profiles = Object.entries(WAITLIST_PROFILES)
     .map(
-      ([key, label], i) =>
-        `<input type="radio" id="profile-${key}" name="profile" value="${escapeHtml(key)}" required${i === 0 ? " checked" : ""}>
-    <label for="profile-${key}">${escapeHtml(label)}</label>`,
+      ([key, label]) =>
+        `<input type="radio" id="wl-${key}" name="profile" value="${escapeHtml(key)}"${key === "treasury" ? " checked" : ""}>
+        <label for="wl-${key}">${escapeHtml(label)}</label>`,
     )
-    .join("\n    ");
+    .join("\n        ");
 
-  const form = params.joined
-    ? `<p style="margin:0;"><strong>Você está na lista.</strong> <span class="muted">Avisamos por e-mail quando abrirmos o acesso.</span></p>`
-    : `<form method="POST" action="/waitlist">
-    <label for="email">Seu e-mail</label>
-    <input type="email" id="email" name="email" required maxlength="200" placeholder="voce@empresa.com" autofocus>
+  const steps = ([
+    ["01", "Monitoramento contínuo", "RPC direto observa saldo e eventos de bloqueio por política de recebimento (TIP-403) em endereços TIP-20."],
+    ["02", "Privacidade por desenho", "Endereço e contato ficam separados. A camada de privacidade decide o que pode sair."],
+    ["03", "O alerta certo", "Evento crítico vira ligação com PIN e notificação no dispositivo, sem telefone. Evento normal, e-mail. Conteúdo sempre genérico."],
+    ["04", "Acesso autenticado", "Saldo real e histórico completo só depois do login. Nunca no canal de alerta."],
+  ] as Array<[string, string, string]>)
+    .map(
+      ([n, title, text]) =>
+        `<article class="step"><div class="step-top"><span>${n}</span></div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p></article>`,
+    )
+    .join("\n      ");
 
-    <label>Qual é o seu caso?</label>
-    <div class="pills">
-    ${pills}
-    </div>
+  const security = ([
+    ["Contatos criptografados", "AES-256-GCM. Separados do endereço monitorado, nunca em texto puro ao lado dele."],
+    ["Sua chave continua sua", "Sem custódia. Nunca guardamos sua chave privada e nunca executamos transação por voz ou SMS."],
+    ["Posse verificada, sem mover fundos", "Assinatura EIP-191 no cadastro para comprovar a posse da carteira."],
+  ] as Array<[string, string]>)
+    .map(([t, d]) => `<article class="security-feature">${ICON_CHECK}<div><h3>${escapeHtml(t)}</h3><p>${escapeHtml(d)}</p></div></article>`)
+    .join("\n        ");
 
-    <details class="note-toggle">
-      <summary>Adicionar um comentário (opcional)</summary>
-      <label for="note">O que mais te preocupa na segurança da sua tesouraria?</label>
-      <input type="text" id="note" name="note" maxlength="500">
-    </details>
+  const comparison = ([
+    ["Para quem", "Equipes de segurança institucional", "Empresas e equipes sem time de segurança"],
+    ["Canal de alerta", "Dashboard, Slack e webhooks", "Ligação, notificação sem telefone e e-mail, por severidade"],
+    ["Privacidade", "Não é o foco do produto", "Conteúdo genérico e contatos criptografados"],
+    ["Complexidade", "Integração dedicada", "Cadastro direto, sem equipe dedicada"],
+  ] as Array<[string, string, string]>)
+    .map(([l, them, us]) => `<tr><td>${escapeHtml(l)}</td><td>${escapeHtml(them)}</td><td>${ICON_CHECK}${escapeHtml(us)}</td></tr>`)
+    .join("\n          ");
 
-    <button type="submit" class="cta">Entrar na lista de espera</button>
-    <p class="muted" style="margin:12px 0 0;">Usamos o e-mail só para avisar do acesso e pedir feedback. Sem spam, sem repasse a terceiros.</p>
-  </form>`;
+  const tabs = ([
+    ["contas", "Contas monitoradas", `<tr><td>Tempo (Moderato)</td><td>0x4f3a…c921</td><td><span class="state">${ICON_CHECK}Normal</span></td></tr>
+            <tr><td>Tempo (Moderato)</td><td>0x91bd…77ea</td><td><span class="state critical">Crítico</span></td></tr>`, "Rede", "Endereço", "Status"],
+    ["limiares", "Limiares", `<tr><td>Queda abrupta de saldo</td><td><span class="state critical">Crítico</span></td><td>Ligação + PIN · dispositivo</td></tr>
+            <tr><td>Bloqueio por política de recebimento</td><td>Normal</td><td>E-mail</td></tr>`, "Evento monitorado", "Severidade", "Canal"],
+    ["destinatarios", "Destinatários", `<tr><td>Contato de confiança</td><td>••••••••</td><td><span class="state">${ICON_LOCK}Criptografado</span></td></tr>
+            <tr><td>Este dispositivo</td><td>sem número de telefone</td><td><span class="state">${ICON_LOCK}Endpoint opaco</span></td></tr>`, "Destinatário", "Dados de contato", "Proteção"],
+    ["alertas", "Alertas", `<tr><td>Queda abrupta de saldo</td><td>Ligação + dispositivo</td><td><span class="state">Confirmado</span></td></tr>
+            <tr><td>Transferência bloqueada pela policy</td><td>E-mail</td><td><span class="state">Enviado</span></td></tr>`, "Evento", "Canal", "Status"],
+  ] as Array<[string, string, string, string, string, string]>);
+
+  const tabButtons = tabs
+    .map(([id, name]) => `<button type="button" class="preview-nav" role="tab" aria-selected="${id === "contas"}" aria-controls="panel-${id}" data-tab="${id}">${escapeHtml(name)}</button>`)
+    .join("\n        ");
+
+  const tabPanels = tabs
+    .map(
+      ([id, name, rows, c1, c2, c3]) => `<div class="preview-panel" id="panel-${id}" role="tabpanel"${id === "contas" ? "" : " hidden"}>
+          <div class="preview-heading"><h3>${escapeHtml(name)}</h3><span class="preview-badge"><span class="status-dot"></span>Tempo · Testnet</span></div>
+          <table class="preview-table"><thead><tr><th>${escapeHtml(c1)}</th><th>${escapeHtml(c2)}</th><th>${escapeHtml(c3)}</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+        </div>`,
+    )
+    .join("\n        ");
+
+  const message = params.joined
+    ? `<div class="wl-msg ok">Inscrição registrada. Você recebe novidades no e-mail informado — sem spam, sem repasse a terceiros.</div>`
+    : params.error
+      ? `<div class="wl-msg err">${escapeHtml(params.error)}</div>`
+      : "";
+
+  const contributors = contributorsRow(params.contributors);
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VILIGION — Alerta de tesouraria feito para funcionar sob coação</title>
-${shareMeta(params.baseUrl)}
+<title>VILIGION — Segurança e alertas de tesouraria on-chain</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap">
+${shareMeta(params.baseUrl)}
 <style>${LANDING_STYLE}</style>
 </head>
 <body>
-<header class="top-header">
-  <div class="container">
-    <a class="brand" href="/">${logoMark(28)}VILIGION</a>
-    <div class="top-nav">
-      <a class="nav-link" href="#como-funciona">Como funciona</a>
-      <a class="nav-link" href="#seguranca">Segurança</a>
-      <a class="nav-link" href="#comparativo">Comparativo</a>
-      <a class="btn-ghost" href="/login">Entrar</a>
-      <a class="btn cta" href="#lista">Lista de espera</a>
-    </div>
+<div class="shell">
+
+<header class="site-header">
+  <a href="/" aria-label="VILIGION — início"><span class="wordmark">${logoMark(26)}VILIGION</span></a>
+  <nav class="desktop-nav" aria-label="Principal">
+    <a class="nav-link" href="#como-funciona">Como funciona</a>
+    <a class="nav-link" href="#seguranca">Segurança</a>
+    <a class="nav-link" href="#app">No celular</a>
+    <a class="nav-link" href="#comparativo">Comparativo</a>
+  </nav>
+  <div class="header-actions">
+    <a class="nav-link" href="/login">Entrar</a>
+    <a class="btn btn-primary btn-sm" href="#lista">Lista de espera</a>
   </div>
 </header>
 
 <section class="hero">
-  <div class="container hero-grid">
-    <div class="hero-copy">
-      <div class="mark"><img src="${LOGO_FULL_DATA_URI}" width="88" height="88" alt="VILIGION"></div>
-      <h1>Alerta de tesouraria feito para funcionar sob coação</h1>
-      <p class="lead">Monitoramento em tempo real da tesouraria de stablecoins na <strong>Tempo</strong>.</p>
-      <p class="lead">Quando algo foge do padrão, alguém de confiança recebe uma <strong>ligação</strong> — sem expor saldo, endereço ou telefone no alerta.</p>
-      <div class="trust-row">
-        <a class="badge accent" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">${GITHUB_ICON}Código aberto</a>
-        <span class="badge">Rodando na testnet Tempo</span>
-      </div>
-      <p class="muted"><a class="link" href="/login">Já tenho conta &rarr; Entrar</a></p>
+  <img class="hero-image" src="/hero.jpg" alt="" aria-hidden="true" width="1264" height="848" fetchpriority="high">
+  <div class="hero-copy">
+    <div class="eyebrow"><span class="status-dot"></span>Segurança de tesouraria on-chain</div>
+    <h1>VILIGION.<br>Sua tesouraria,<br>sob vigilância.</h1>
+    <p>Quando algo foge do padrão, alguém de confiança recebe uma ligação. Sua segurança não precisa expor o que você protege.</p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="#lista">Entrar na lista de espera</a>
+      <a class="btn btn-outline" href="#como-funciona">Como funciona</a>
     </div>
-    <div class="hero-form" id="lista">
-      <p class="form-title">Entre na lista de espera</p>
-      ${params.error ? `<div class="error">${escapeHtml(params.error)}</div>` : ""}
-      ${form}
+    <div class="hero-note">${ICON_LOCK}Sem custódia. Sem chaves privadas. Sem exposição.</div>
+  </div>
+  <div class="image-caption"><span class="status-dot"></span>Projetado para funcionar sob coação</div>
+</section>
+
+<div class="trust-strip">
+  <div class="trust-item">Construído na Tempo</div>
+  <a class="trust-item" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">Código aberto · MIT</a>
+  <div class="trust-item">Alertas via Twilio Voice</div>
+  <div class="trust-item">Colosseum · Crypto World's Fair</div>
+</div>
+
+<section class="section problem-grid">
+  <div>
+    <div class="section-label"><span>01 /</span>O problema</div>
+    <h2>O risco é real.<br>A proteção precisa ser também.</h2>
+    <p class="problem-copy">Quem cuida da tesouraria de uma empresa ou equipe não pode olhar o saldo o dia todo. E conectar um telefone a um saldo on-chain pode criar um novo risco.</p>
+    <p class="problem-copy">O VILIGION monitora o que importa e alerta quem você confia — sem revelar o que precisa continuar privado.</p>
+  </div>
+  <div class="problem-stat">
+    <strong>US$ 30M+</strong>
+    <p>em perdas ligadas a ataques físicos envolvendo cripto, só no primeiro semestre de 2026.</p>
+    <small>Segundo a Chainalysis · dado citado pelo VILIGION</small>
+  </div>
+</section>
+
+<section class="section" id="como-funciona">
+  <div class="section-intro">
+    <div><div class="section-label"><span>02 /</span>Como funciona</div><h2>Da blockchain à pessoa certa.</h2></div>
+    <p>Quatro camadas. Um objetivo: transformar um evento crítico em um alerta, sem transformar seus dados em um risco.</p>
+  </div>
+  <div class="steps">
+      ${steps}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-intro">
+    <div><div class="section-label"><span>03 /</span>O produto</div><h2>Visibilidade para você.<br>Discrição para todo o resto.</h2></div>
+    <p>Contas, limiares, destinatários e alertas em um só lugar. O que é sensível fica onde deve ficar.</p>
+  </div>
+  <div class="product-preview">
+    <aside class="preview-sidebar" role="tablist" aria-label="Telas do painel">
+      <span class="wordmark">${logoMark(18)}VILIGION</span>
+        ${tabButtons}
+    </aside>
+    <div class="preview-content">
+        ${tabPanels}
+      <div class="preview-footnote">${ICON_LOCK}Demonstração ilustrativa · Dados sensíveis disponíveis apenas após o login.</div>
     </div>
   </div>
 </section>
 
-<div class="trust-bar">
-  <div class="container">
-    <div class="item">${ICON_CLOCK}Blockchain Tempo</div>
-    <div class="item">${ICON_CODE}Código aberto · MIT</div>
-    <div class="item">${ICON_PHONE}Alertas via Twilio Voice</div>
-    <div class="item">${ICON_CALENDAR}Crypto World's Fair · Colosseum</div>
+<section class="section security-grid" id="seguranca">
+  <div>
+    <div class="section-label"><span>04 /</span>Segurança</div>
+    <h2>Mesmo sob pressão,<br>seus dados não falam.</h2>
+    <p>O conteúdo dos alertas não revela saldo, endereço ou telefone. Essa regra é verificada por teste automatizado, não apenas por revisão manual.</p>
+    <p>Recomendamos um número dedicado, separado do telefone pessoal. O VILIGION não provisiona esse número.</p>
+    <p style="margin-top:14px;"><a class="nav-link" style="color:var(--primary);" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">Confira o código. Não só a promessa. ↗</a></p>
   </div>
-</div>
-
-<div class="section">
-  <div class="container stat-row reveal">
-    <div>
-      <div class="stat-number"><span data-countup="33">+0</span>%</div>
-      <p class="muted" style="max-width:220px; margin-top:8px;">no crescimento de ataques físicos ligados a cripto em 2026 (CertiK) — mais de US$ 30M só no primeiro semestre (Chainalysis).</p>
-    </div>
-    <div class="stat-copy">
-      <p style="margin:0 0 6px; color:#f1f5f9; font-weight:600; font-size:1.02rem;">O problema</p>
-      <p class="muted" style="margin:0;">Quem guarda a tesouraria de uma equipe ou empresa raramente tem alguém olhando o saldo o dia todo. Ferramentas institucionais (Hexagate, Elliptic, TRM Labs, Blockaid) são feitas pra equipes de segurança — não pra quem não tem esse time. E ligar um telefone a um saldo on-chain cria, por si só, um risco físico documentado.</p>
-    </div>
+  <div class="security-list">
+        ${security}
   </div>
-</div>
+</section>
 
-<div class="section alt" id="como-funciona">
-  <div class="container">
-    <p class="eyebrow">Como funciona</p>
-    <h2>Do RPC até o telefone de alguém de confiança</h2>
-    <div class="steps-row reveal">
-      <div class="step-card">
-        <div class="step-icon">${ICON_RADAR}</div>
-        <p class="step-title">1. Monitoramento</p>
-        <p class="step-desc">RPC direto (Viem) observa o saldo e os eventos de bloqueio por política de recebimento (TIP-403) em endereços TIP-20.</p>
+<section class="section install-grid" id="app">
+  <div>
+    <div class="section-label"><span>05 /</span>No celular</div>
+    <h2>Sem app store.<br>E sem número de telefone.</h2>
+    <p style="color:var(--muted); font-size:13px; line-height:1.9;">O VILIGION instala direto do navegador. Instalado, o alerta crítico chega como notificação em tela cheia — e <strong style="color:var(--fg);">sem nenhum número envolvido</strong>. Não existe número para vincular à sua conta, nem registro de operadora: o destino é um endereço opaco que o seu navegador emite e você revoga quando quiser.</p>
+    <p style="color:var(--muted); font-size:11.5px; line-height:1.8;">Duas limitações que preferimos dizer antes: a notificação toca o som padrão do sistema — a API dos navegadores não permite som próprio — e o modo Não Perturbe silencia. Uma ligação pode ser configurada para furar o Não Perturbe. Por isso os dois canais convivem.</p>
+  </div>
+  <div class="install-list">
+    <div class="install-item"><strong>Android (Chrome)</strong><br>Menu ⋮ → "Instalar app". A notificação funciona mesmo sem instalar.</div>
+    <div class="install-item"><strong>iPhone (Safari)</strong><br>Compartilhar → "Adicionar à Tela de Início". Obrigatório: o iOS só aceita notificação depois disso.</div>
+    <div class="install-item"><strong>Computador</strong><br>Ícone de instalar na barra de endereço do Chrome ou Edge.</div>
+  </div>
+</section>
+
+<section class="section" id="comparativo">
+  <div class="section-intro">
+    <div><div class="section-label"><span>06 /</span>Comparativo</div><h2>Proteção sem uma equipe de segurança.</h2></div>
+    <p>Uma abordagem para quem cuida da tesouraria — não apenas para quem opera ferramentas institucionais.</p>
+  </div>
+  <div class="comparison-wrap">
+    <table class="comparison">
+      <thead><tr><th>O que importa</th><th>Ferramentas institucionais¹</th><th>VILIGION</th></tr></thead>
+      <tbody>
+          ${comparison}
+      </tbody>
+    </table>
+  </div>
+  <p class="preview-footnote">¹ Hexagate, Elliptic, TRM Labs e Blockaid — todas parceiras do ecossistema Tempo. O recorte do VILIGION é segmento e modelo de ameaça, não cobertura de rede. Comparativo apresentado pelo VILIGION.</p>
+</section>
+
+<section class="waitlist" id="lista">
+  <div class="waitlist-copy">
+    <div class="eyebrow"><span class="status-dot"></span>Em desenvolvimento · Testnet Moderato</div>
+    <h2>Esteja um passo à frente.<br>Não uma ligação atrasado.</h2>
+    <p>Entre na lista para testar primeiro.<br>Seu feedback define o que construímos a seguir.</p>
+  </div>
+  <div class="wl-form">
+    ${message}
+    <form method="POST" action="/waitlist">
+      <label for="wl-email">Seu e-mail</label>
+      <input type="email" id="wl-email" name="email" placeholder="voce@empresa.com" required>
+      <div class="wl-profiles" role="radiogroup" aria-label="Qual é o seu caso">
+        ${profiles}
       </div>
-      <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
-      <div class="step-card">
-        <div class="step-icon">${ICON_LOCK}</div>
-        <p class="step-title">2. Privacidade</p>
-        <p class="step-desc">Resolve endereço → contato e decide o que pode sair. Nenhum dado sensível cruza essa camada.</p>
-      </div>
-      <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
-      <div class="step-card">
-        <div class="step-icon">${ICON_PHONE_ACCENT}</div>
-        <p class="step-title">3. Alerta por severidade</p>
-        <p class="step-desc">Crítico vira ligação (Twilio Voice) + PIN e, se o dono registrou um dispositivo, notificação sem telefone nenhum. Normal vira e-mail. Conteúdo sempre genérico, em todos os canais.</p>
-      </div>
-      <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
-      <div class="step-card">
-        <div class="step-icon">${ICON_SHIELD_CHECK}</div>
-        <p class="step-title">4. Painel autenticado</p>
-        <p class="step-desc">Saldo real e histórico completo só aparecem depois do login — nunca pelo canal de alerta.</p>
-      </div>
-    </div>
+      <label for="wl-note">O que mais te preocupa na sua tesouraria? (opcional)</label>
+      <input type="text" id="wl-note" name="note" maxlength="500" placeholder="Em uma frase">
+      <button type="submit" class="btn btn-primary">Quero entrar na lista</button>
+      <small class="wl-note">Sem spam. Sem repasse a terceiros.</small>
+    </form>
   </div>
-</div>
+</section>
 
-<div class="section">
-  <div class="container">
-    <p class="eyebrow">O produto</p>
-    <h2>Não só a promessa — o painel de verdade</h2>
-    <div class="product-frame reveal">
-      <div class="side">
-        <div class="item active">Painel</div>
-        <div class="item">Contas monitoradas</div>
-        <div class="item">Limiares</div>
-        <div class="item">Destinatários</div>
-        <div class="item">Alertas</div>
-      </div>
-      <div class="main">
-        <p style="margin:0 0 14px; color:#f1f5f9; font-weight:600; font-size:0.92rem;">Contas monitoradas <span class="muted">(exemplo)</span></p>
-        <table class="mini-table">
-          <tr><th>Chain</th><th>Endereço</th><th>Status</th></tr>
-          <tr><td>Tempo (Moderato)</td><td>0x4f3a…c921</td><td><span class="pill normal">normal</span></td></tr>
-          <tr><td>Tempo (Moderato)</td><td>0x91bd…77ea</td><td><span class="pill critical">crítico</span></td></tr>
-        </table>
-        <p style="margin:0 0 14px; color:#f1f5f9; font-weight:600; font-size:0.92rem;">Histórico de alertas <span class="muted">(exemplo)</span></p>
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #1b2433;">
-          <span style="color:#cbd5e1; font-size:0.86rem;">Queda abrupta de saldo</span>
-          <span class="pill critical">ligação enviada</span>
-        </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0;">
-          <span style="color:#cbd5e1; font-size:0.86rem;">Transferência bloqueada pela policy</span>
-          <span class="pill normal">e-mail enviado</span>
-        </div>
-      </div>
+<footer>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <span class="wordmark">${logoMark(26)}VILIGION</span>
+      <p>Alerta de tesouraria on-chain.<br>Construído para continuar funcionando sob coação.</p>
+      ${contributors}
     </div>
-  </div>
-</div>
-
-<div class="section alt" id="seguranca">
-  <div class="container security-grid reveal">
-    <div class="security-icon">${ICON_LOCK_BIG}</div>
-    <div style="flex:1 1 420px;">
-      <h2 style="margin:0 0 14px;">Desenhado pra funcionar mesmo sob coação</h2>
-      <p class="muted" style="max-width:620px;">O conteúdo do alerta nunca revela saldo, endereço ou número de telefone — isso é garantido por teste automatizado, não por revisão manual. Os destinatários são cadastrados depois do login, separados do endereço monitorado, e ficam criptografados (AES-256-GCM) — nunca em texto puro ao lado dele. Recomendamos usar um número dedicado em vez do telefone pessoal do dono; o produto não provisiona esse número pra você.</p>
-      <div class="check-list">
-        <div class="row">${ICON_CHECK}Nunca executa transação a partir de resposta por voz ou SMS</div>
-        <div class="row">${ICON_CHECK}Não é produto de custódia — nunca guardamos sua chave privada</div>
-        <div class="row">${ICON_CHECK}Prova de posse por assinatura EIP-191 no cadastro, sem mover fundos</div>
-      </div>
+    <div class="footer-column"><h3>Produto</h3>
+      <a href="#como-funciona">Como funciona</a><a href="#seguranca">Segurança</a><a href="#app">No celular</a><a href="#comparativo">Comparativo</a>
     </div>
-  </div>
-</div>
-
-<!-- Instalacao no celular: estava so em /recipients, atras do login - inutil
-     pra quem chega no site e quer saber se existe app. As limitacoes sao
-     declaradas aqui de proposito: quem escolhe canal de alerta precisa saber
-     antes, nao depois de perder um alerta. -->
-<div class="section alt" id="app">
-  <div class="container reveal">
-    <h2 style="margin:0 0 14px;">No celular, sem app store</h2>
-    <p class="muted" style="max-width:660px; margin:0 0 20px;">O VILIGION instala direto do navegador. Instalado, o alerta crítico chega como notificação em tela cheia, com som e vibração — e <strong>sem nenhum número de telefone envolvido</strong>. Não existe número para vincular à sua conta, nem registro de operadora: o destino é um endereço opaco que o seu navegador emite e você revoga quando quiser.</p>
-    <div class="check-list" style="margin-bottom:18px;">
-      <div class="row">${ICON_CHECK}<strong>Android (Chrome):</strong>&nbsp;menu ⋮ → "Instalar app". A notificação funciona mesmo sem instalar.</div>
-      <div class="row">${ICON_CHECK}<strong>iPhone (Safari):</strong>&nbsp;compartilhar → "Adicionar à Tela de Início". Obrigatório — o iOS só aceita notificação depois disso.</div>
-      <div class="row">${ICON_CHECK}<strong>Computador:</strong>&nbsp;ícone de instalar na barra de endereço do Chrome ou Edge.</div>
-    </div>
-    <p class="muted" style="max-width:660px; margin:0; font-size:0.86rem;">Duas limitações que preferimos dizer antes: a notificação toca o <strong>som padrão do sistema</strong> — a API de notificação dos navegadores não permite som próprio — e o modo <strong>Não Perturbe silencia</strong>. Uma ligação telefônica pode ser configurada para furar o Não Perturbe. Por isso os dois canais convivem: o push é o mais privado, a ligação é a mais garantida.</p>
-  </div>
-</div>
-
-<div class="section" id="comparativo">
-  <div class="container">
-    <p class="eyebrow">Comparativo</p>
-    <h2>Por que não só uma ferramenta institucional</h2>
-    <div class="table-wrap reveal">
-      <table class="compare-table">
-        <tr><th></th><th class="them">Hexagate · Elliptic · TRM · Blockaid</th><th class="us">VILIGION</th></tr>
-        <tr><td class="row-label">Público-alvo</td><td class="them">Equipes de segurança institucional</td><td class="us">Dono de PME sem equipe de segurança</td></tr>
-        <tr><td class="row-label">Canal de alerta</td><td class="them">Dashboard, Slack, webhook</td><td class="us">Ligação + e-mail, por severidade</td></tr>
-        <tr><td class="row-label">Privacidade do destinatário</td><td class="them">Não é o foco do produto</td><td class="us">Conteúdo genérico por desenho + destinatário criptografado, separado do endereço</td></tr>
-        <tr><td class="row-label">Custo e complexidade</td><td class="them">Alto, requer integração dedicada</td><td class="us">Cadastro direto, sem time dedicado</td></tr>
-      </table>
-    </div>
-  </div>
-</div>
-
-<div class="section alt">
-  <div class="container reveal">
-    <p style="margin:0 0 18px; color:#f1f5f9; font-weight:600; font-size:1.02rem;">Em que estágio estamos</p>
-    <div class="status-panel" role="img" aria-label="Status: motor de detecção validado na testnet Moderato, código aberto no GitHub, submissão em andamento.">
-      <div class="status-line"><span class="dot ok" aria-hidden="true"></span><span class="label">core_engine</span><span class="value">validado · testnet Moderato</span></div>
-      <div class="status-line"><span class="dot ok" aria-hidden="true"></span><span class="label">código</span><span class="value">aberto no GitHub · MIT</span></div>
-      <div class="status-line"><span class="dot active" aria-hidden="true"></span><span class="label">submissão</span><span class="value">em andamento</span></div>
-      <div class="loading-bar" aria-hidden="true"><span></span></div>
-    </div>
-    <p class="muted" style="margin:16px 0 0;">Entre na lista para testar primeiro &mdash; o seu feedback define o que construímos a seguir.</p>
-    <p class="muted" style="margin:16px 0 0;"><strong style="color:#e5e7eb;">Quem constrói</strong> &mdash; direto do GitHub, atualiza sozinho conforme mais gente contribui:</p>
-    ${contributorsRow(params.contributors)}
-  </div>
-</div>
-
-<div class="section final-cta">
-  <div class="container">
-    <h2>Pronto pra saber antes de alguém precisar fazer essa ligação?</h2>
-    <p class="muted" style="margin:0 0 28px;">Entre na lista de espera — seu feedback define o que construímos a seguir. Sem spam, sem repasse a terceiros.</p>
-    <a class="btn cta" href="#lista">Entrar na lista de espera</a>
-  </div>
-</div>
-
-<footer style="padding:48px 0 0;">
-  <div class="container footer-grid">
-    <div>
-      <div style="display:flex; align-items:center; gap:9px; color:#f1f5f9; font-weight:700; margin-bottom:10px;">${logoMark(22)}VILIGION</div>
-      <p class="muted" style="max-width:240px;">Alerta de tesouraria on-chain que continua funcionando sob coação.</p>
-    </div>
-    <div>
-      <p class="col-title">Produto</p>
-      <a href="#como-funciona">Como funciona</a>
-      <a href="#seguranca">Segurança</a>
-      <a href="#app">No celular</a>
-      <a href="#comparativo">Comparativo</a>
-    </div>
-    <div>
-      <p class="col-title">Projeto</p>
-      <a href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">GitHub</a>
+    <div class="footer-column"><h3>Projeto</h3>
+      <a href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">GitHub ↗</a>
       <a href="https://github.com/JefersonCruz/VILIGION/blob/master/LICENSE" target="_blank" rel="noopener">Licença MIT</a>
       <a href="https://github.com/JefersonCruz/VILIGION/blob/master/TERMS-OF-USE.md" target="_blank" rel="noopener">Termos de uso</a>
     </div>
-    <div>
-      <p class="col-title">Canais oficiais</p>
-      <a href="https://x.com/viligion" target="_blank" rel="noopener">X · @viligion</a>
-      <a href="https://t.me/viligionOficial" target="_blank" rel="noopener">Telegram · @viligionOficial</a>
-      <!-- Sem e-mail pessoal aqui (removido em 2026-10-12). O dominio
-           viligion.com nao tem MX, entao um contato@viligion.com so
-           devolveria bounce - pior que nenhum endereco. Os canais abaixo
-           funcionam hoje. E a ofuscacao de e-mail do Cloudflare nao resolvia
-           nada: o XOR do data-cfemail e reversivel em segundos. -->
-      <a href="https://github.com/JefersonCruz/VILIGION/issues" target="_blank" rel="noopener">Suporte · GitHub Issues</a>
-      <a href="https://github.com/JefersonCruz/VILIGION/security/advisories/new" target="_blank" rel="noopener">Falha de segurança · relato privado</a>
-      <p class="muted" style="font-size:0.78rem; margin:10px 0 0; max-width:240px;">Estes são os únicos canais oficiais. Nunca pedimos endereço, saldo, seed ou código 2FA — por canal nenhum — e nunca iniciamos conversa por mensagem privada.</p>
+    <div class="footer-column"><h3>Canais oficiais</h3>
+      <a href="https://x.com/viligion" target="_blank" rel="noopener">X · @viligion ↗</a>
+      <a href="https://t.me/viligionOficial" target="_blank" rel="noopener">Telegram ↗</a>
+      <a href="https://github.com/JefersonCruz/VILIGION/issues" target="_blank" rel="noopener">Suporte ↗</a>
+      <a href="https://github.com/JefersonCruz/VILIGION/security/advisories/new" target="_blank" rel="noopener">Relatar vulnerabilidade ↗</a>
     </div>
   </div>
-  <div class="container footer-bottom">© 2026 VILIGION — Construído para o Crypto World's Fair (Colosseum), track Tempo.</div>
+  <div class="footer-bottom">
+    <span>© 2026 VILIGION · Crypto World's Fair / Colosseum</span>
+    <span>Nunca pedimos seed, saldo ou código 2FA. Nunca iniciamos conversa por mensagem privada.</span>
+  </div>
 </footer>
 
+</div>
 <script>
 (function () {
-  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  var revealEls = document.querySelectorAll(".reveal");
-  if (reduceMotion || !("IntersectionObserver" in window)) {
-    revealEls.forEach(function (el) { el.classList.add("is-visible"); });
-  } else {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("is-visible");
-          io.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
-    revealEls.forEach(function (el) { io.observe(el); });
+  var tabs = document.querySelectorAll(".preview-nav");
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener("click", function () {
+      var id = this.getAttribute("data-tab");
+      var all = document.querySelectorAll(".preview-nav");
+      for (var j = 0; j < all.length; j++) all[j].setAttribute("aria-selected", String(all[j] === this));
+      var panels = document.querySelectorAll(".preview-panel");
+      for (var k = 0; k < panels.length; k++) panels[k].hidden = panels[k].id !== "panel-" + id;
+    });
   }
-
-  var counters = document.querySelectorAll("[data-countup]");
-  counters.forEach(function (el) {
-    var target = parseInt(el.getAttribute("data-countup"), 10) || 0;
-    if (reduceMotion) { el.textContent = "+" + target; return; }
-    var start = null;
-    var duration = 900;
-    function step(ts) {
-      if (start === null) start = ts;
-      var progress = Math.min((ts - start) / duration, 1);
-      el.textContent = "+" + Math.round(progress * target);
-      if (progress < 1) requestAnimationFrame(step);
-    }
-    var started = false;
-    var countIo = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting && !started) {
-          started = true;
-          requestAnimationFrame(step);
-          countIo.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.6 });
-    countIo.observe(el);
-  });
 })();
 </script>
 </body>
