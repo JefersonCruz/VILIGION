@@ -682,7 +682,10 @@ async function mainWithDatabase(databaseUrl: string) {
       signup: signupService,
       recipients: recipientsRepo,
       monitorControl,
-      waitlist: new PostgresWaitlistRepository(pool),
+      // Pepper da deduplicacao: reusa o segredo de criptografia, que ja e
+      // obrigatorio em producao e vive FORA do banco. Sem ele, um vazamento
+      // do banco permitiria testar palpites de e-mail contra o hash.
+      waitlist: new PostgresWaitlistRepository(pool, encryption, requireEnv("ENCRYPTION_KEY_KMS_ARN")),
       testAlert: (userId) =>
         makeDispatcher(userId)({ kind: "balance-drop", userId, pctDropped: 50, windowMinutes: 10, severity: "critical" }),
       adminStatus,
