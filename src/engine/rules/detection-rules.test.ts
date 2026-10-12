@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   checkBalanceDrop,
-  checkBlockedTransfer,
+  checkRestrictedTransfer,
   type UserThresholds,
 } from "./detection-rules.js";
-import type { BalanceSnapshot } from "../chains/evm-adapter.js";
-import type { TransferBlockedEvent } from "../chains/tempo.adapter.js";
+import type { BalanceSnapshot } from "../chains/chain-adapter.js";
+import type { RestrictedTransferObservation } from "./normalized-events.js";
 
 const ADDR = "0x0000000000000000000000000000000000dEaD" as const;
 
@@ -20,6 +20,27 @@ const thresholds: UserThresholds = {
 
 function snapshot(raw: bigint, observedAt = new Date()): BalanceSnapshot {
   return { address: ADDR, raw, blockNumber: 1n, observedAt };
+}
+
+/**
+ * Observação normalizada, sem nenhum campo de rede específica.
+ *
+ * Este helper é a evidência do desacoplamento desta etapa: antes, testar a
+ * regra GENÉRICA de transferência restringida exigia montar um
+ * `TransferBlockedEvent` completo da Tempo - com witness ClaimReceiptV1,
+ * `receiptVersion`, `blockedReason` e endereço do Guard - uns 20 campos de
+ * uma rede só, pra exercitar uma função que só olha `amount`. A tradução do
+ * evento real da Tempo pra esta forma é testada onde ela mora, em
+ * chains/tempo-extension.test.ts.
+ */
+function restricted(amount: bigint): RestrictedTransferObservation {
+  return {
+    kind: "transfer-restricted",
+    chainKey: "rede-de-teste",
+    cursor: 1n,
+    sequence: 1n,
+    amount,
+  };
 }
 
 describe("severidade do alerta - decide o canal de entrega (ligação vs e-mail)", () => {
@@ -41,61 +62,39 @@ describe("severidade do alerta - decide o canal de entrega (ligação vs e-mail)
     expect(event?.severity).toBe("critical");
   });
 
-  it("transferência bloqueada abaixo do limiar crítico vira severidade normal", () => {
-    const blocked: TransferBlockedEvent = {
-      token: ADDR,
-      receiver: ADDR,
-      blockedNonce: 1n,
-      amount: 5_000_000n, // acima do piso (1_000_000), abaixo do crítico (10_000_000)
-      receiptVersion: 1,
-      receipt: "0x00",
-      receiptDecoded: {
-        version: 1,
-        token: ADDR,
-        recoveryAuthority: ADDR,
-        originator: ADDR,
-        recipient: ADDR,
-        blockedAt: 0n,
-        blockedNonce: 1n,
-        blockedReason: "receivePolicy",
-        kind: "transfer",
-        memo: "0x00",
-      },
-      blockNumber: 1n,
-      transactionHash: "0x00",
-    };
-
-    const event = checkBlockedTransfer(blocked, thresholds);
+  it("transferência restringida abaixo do limiar crítico vira severidade normal", () => {
+    // acima do piso (1_000_000), abaixo do crítico (10_000_000)
+    const event = checkRestrictedTransfer(restricted(5_000_000n), thresholds);
 
     expect(event?.severity).toBe("normal");
   });
 
-  it("transferência bloqueada acima do limiar crítico vira severidade critical", () => {
-    const blocked: TransferBlockedEvent = {
-      token: ADDR,
-      receiver: ADDR,
-      blockedNonce: 1n,
-      amount: 20_000_000n, // acima do crítico (10_000_000)
-      receiptVersion: 1,
-      receipt: "0x00",
-      receiptDecoded: {
-        version: 1,
-        token: ADDR,
-        recoveryAuthority: ADDR,
-        originator: ADDR,
-        recipient: ADDR,
-        blockedAt: 0n,
-        blockedNonce: 1n,
-        blockedReason: "receivePolicy",
-        kind: "transfer",
-        memo: "0x00",
-      },
-      blockNumber: 1n,
-      transactionHash: "0x00",
-    };
-
-    const event = checkBlockedTransfer(blocked, thresholds);
+  it("transferência restringida acima do limiar crítico vira severidade critical", () => {
+    const event = checkRestrictedTransfer(restricted(20_000_000n), thresholds);
 
     expect(event?.severity).toBe("critical");
+  });
+
+  it("transferência restringida abaixo do piso do usuário não gera alerta nenhum", () => {
+    expect(checkRestrictedTransfer(restricted(999_999n), thresholds)).toBeNull();
+  });
+
+  it("a regra genérica não precisa de nenhum campo de rede específica - só amount e sequence", () => {
+    // Guarda de regressão do desacoplamento: se alguém voltar a exigir um
+    // campo da Tempo (receipt, guard, token) em checkRestrictedTransfer, esta
+    // observação mínima deixa de compilar/passar e o acoplamento reaparece
+    // visível, em vez de voltar silenciosamente.
+    const event = checkRestrictedTransfer(
+      { kind: "transfer-restricted", chainKey: "x", cursor: 0n, sequence: 42n, amount: 2_000_000n },
+      thresholds,
+    );
+
+    expect(event).toEqual({
+      kind: "transfer-blocked",
+      userId: "u1",
+      amount: 2_000_000n,
+      blockedNonce: 42n,
+      severity: "normal",
+    });
   });
 });

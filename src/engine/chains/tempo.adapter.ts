@@ -46,6 +46,7 @@
 import { type Address, type Log, decodeEventLog, parseAbi } from "viem";
 import { ReceivePolicyReceipt } from "ox/tempo";
 import { EvmAdapter, type EvmAdapterConfig } from "./evm-adapter.js";
+import { UnsupportedCapabilityError, type ChainCapabilities } from "./chain-adapter.js";
 
 /**
  * Endereço oficial do ReceivePolicyGuard na Tempo (igual em mainnet e
@@ -94,11 +95,56 @@ export interface TempoAdapterConfig extends EvmAdapterConfig {
   receivePolicyGuardAddress: Address;
 }
 
+/**
+ * As duas particularidades descritas no cabeçalho deste arquivo, agora
+ * DECLARADAS em vez de só documentadas em prosa - o contrato comum
+ * (chain-adapter.ts) existe pra que um chamador possa consultar isso em
+ * runtime, e o processo de revisão de adaptador possa conferir em teste.
+ *
+ * - `nativeBalance: false` - a Tempo não tem gas token nativo. `eth_getBalance`
+ *   responde na rede real, mas o número não tem relação com o saldo TIP-20 da
+ *   tesouraria (confirmado contra a testnet Moderato, ver
+ *   scripts/verify-testnet.ts). Declarar a capacidade ausente é mais honesto
+ *   que devolver um valor que parece um saldo e não é.
+ * - `requiresTokenAddress: true` - consequência direta da linha acima: sem
+ *   endereço de token não existe leitura de saldo CORRETA nesta rede, então a
+ *   configuração sem ele é inválida, não "degradada".
+ * - `feePaidInMonitoredAsset: true` - a taxa sai do próprio TIP-20 monitorado,
+ *   por isso `getFeeAdjustment` aqui é implementação de verdade, não `0n`.
+ */
+export const TEMPO_CAPABILITIES: ChainCapabilities = {
+  tokenBalance: true,
+  nativeBalance: false,
+  historicalEvents: true,
+  feePaidInMonitoredAsset: true,
+  reorgPossible: true,
+  requiresTokenAddress: true,
+};
+
 export class TempoAdapter extends EvmAdapter {
   private readonly guardAddress: Address;
 
+  override readonly capabilities: ChainCapabilities = TEMPO_CAPABILITIES;
+
   constructor(config: TempoAdapterConfig) {
     super(config);
+    /**
+     * Falha no construtor, não na primeira leitura: sem `tokenAddress` a
+     * Tempo cairia no `eth_getBalance` do EvmAdapter e devolveria um número
+     * sem relação com o saldo da tesouraria - a conta pareceria monitorada e
+     * nenhum alerta de queda jamais sairia. Um monitor silenciosamente cego é
+     * o pior modo de falha possível num produto de vigilância, então a
+     * configuração inválida é rejeitada na hora de montar o adaptador, onde
+     * quem configurou ainda está olhando.
+     */
+    if (!config.tokenAddress) {
+      throw new UnsupportedCapabilityError(
+        "tempo",
+        "nativeBalance",
+        "a Tempo não tem gas token nativo, então `tokenAddress` (TIP-20) é obrigatório - " +
+          "sem ele a leitura de saldo não reflete a tesouraria",
+      );
+    }
     this.guardAddress = config.receivePolicyGuardAddress;
   }
 
