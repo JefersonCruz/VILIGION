@@ -459,6 +459,7 @@ function authLayout(params: { title: string; subtitle?: string; body: string; er
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VILIGION — ${escapeHtml(params.title)}</title>
+<link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.png" type="image/png">
 <meta name="theme-color" content="#0A0E17">
 ${DISPLAY_FONT_LINK}
@@ -595,6 +596,10 @@ function shareMeta(baseUrl: string): string {
   return `<meta name="description" content="${escapeHtml(SHARE_DESCRIPTION)}">
 <meta name="theme-color" content="#0a0e17">
 <link rel="icon" href="${FAVICON}">
+<!-- Sem este link o Chrome nao oferece "Instalar" nesta pagina. Faltava na
+     landing E no login ate 2026-10-12, entao o PWA so era instalavel de
+     dentro do painel - inutil pra quem acabou de chegar no site. -->
+<link rel="manifest" href="/manifest.json">
 <link rel="canonical" href="${url}/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="VILIGION">
@@ -1046,6 +1051,23 @@ ${shareMeta(params.baseUrl)}
   </div>
 </div>
 
+<!-- Instalacao no celular: estava so em /recipients, atras do login - inutil
+     pra quem chega no site e quer saber se existe app. As limitacoes sao
+     declaradas aqui de proposito: quem escolhe canal de alerta precisa saber
+     antes, nao depois de perder um alerta. -->
+<div class="section alt" id="app">
+  <div class="container reveal">
+    <h2 style="margin:0 0 14px;">No celular, sem app store</h2>
+    <p class="muted" style="max-width:660px; margin:0 0 20px;">O VILIGION instala direto do navegador. Instalado, o alerta crítico chega como notificação em tela cheia, com som e vibração — e <strong>sem nenhum número de telefone envolvido</strong>. Não existe número para vincular à sua conta, nem registro de operadora: o destino é um endereço opaco que o seu navegador emite e você revoga quando quiser.</p>
+    <div class="check-list" style="margin-bottom:18px;">
+      <div class="row">${ICON_CHECK}<strong>Android (Chrome):</strong>&nbsp;menu ⋮ → "Instalar app". A notificação funciona mesmo sem instalar.</div>
+      <div class="row">${ICON_CHECK}<strong>iPhone (Safari):</strong>&nbsp;compartilhar → "Adicionar à Tela de Início". Obrigatório — o iOS só aceita notificação depois disso.</div>
+      <div class="row">${ICON_CHECK}<strong>Computador:</strong>&nbsp;ícone de instalar na barra de endereço do Chrome ou Edge.</div>
+    </div>
+    <p class="muted" style="max-width:660px; margin:0; font-size:0.86rem;">Duas limitações que preferimos dizer antes: a notificação toca o <strong>som padrão do sistema</strong> — a API de notificação dos navegadores não permite som próprio — e o modo <strong>Não Perturbe silencia</strong>. Uma ligação telefônica pode ser configurada para furar o Não Perturbe. Por isso os dois canais convivem: o push é o mais privado, a ligação é a mais garantida.</p>
+  </div>
+</div>
+
 <div class="section" id="comparativo">
   <div class="container">
     <p class="eyebrow">Comparativo</p>
@@ -1095,6 +1117,7 @@ ${shareMeta(params.baseUrl)}
       <p class="col-title">Produto</p>
       <a href="#como-funciona">Como funciona</a>
       <a href="#seguranca">Segurança</a>
+      <a href="#app">No celular</a>
       <a href="#comparativo">Comparativo</a>
     </div>
     <div>
