@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "migrate": "tsx scripts/migrate.ts",
     "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "waitlist": "node scripts/waitlist.mjs"
@@ -28,8 +29,10 @@
     "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
     "@types/web-push": "^3.6.4",
+    "eslint": "^9.39.5",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"
   }
 }
