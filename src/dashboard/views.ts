@@ -11,6 +11,7 @@
 import { WAITLIST_PROFILES } from "./waitlist.js";
 import { THRESHOLD_PRESETS, WINDOW_CHOICES_MINUTES } from "../engine/rules/threshold-presets.js";
 import { formatUsdDisplay } from "../engine/rules/token-units.js";
+import { KNOWN_CHAINS } from "../engine/chains/known-chains.js";
 import { THRESHOLDS_HEAD, thresholdsScript } from "./thresholds-ui.js";
 import { pushEnrollScript } from "./pwa-assets.js";
 import { LOGO_FULL_DATA_URI, LOGO_ICON_DATA_URI } from "./logo-assets.js";
@@ -28,6 +29,101 @@ function safeBigInt(value: string): bigint | null {
 /** `0x4f3a…c921`. O endereço inteiro vai no `title`, que é onde quem precisa confere. */
 function shortenAddress(address: string): string {
   return address.length <= 14 ? address : `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+/**
+ * Rótulos legíveis para os valores que o motor grava no banco. O painel
+ * mostrava `balance-drop`, `voice` e `delivery-failed` crus na tela - saída de
+ * máquina vazando pra interface de um dono de PME, que não tem como saber o
+ * que significam. O valor cru continua no `title` pra quem precisa depurar.
+ */
+const ALERT_KIND_LABELS: Record<string, string> = {
+  "balance-drop": "Queda de saldo",
+  "transfer-blocked": "Transferência bloqueada",
+};
+
+const SEVERITY_LABELS: Record<string, string> = {
+  critical: "Crítico",
+  normal: "Normal",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  voice: "Ligação",
+  email: "E-mail",
+  push: "Dispositivo",
+  "push+voice": "Dispositivo + ligação",
+};
+
+/** `pinStatus` acumulou significados de entrega além da confirmação do PIN - ver index.ts. */
+const PIN_STATUS_LABELS: Record<string, { text: string; pill: string }> = {
+  valid: { text: "Confirmado", pill: "ok" },
+  invalid: { text: "Código errado", pill: "warn" },
+  expired: { text: "Expirou", pill: "warn" },
+  "already-consumed": { text: "Já usado", pill: "normal" },
+  locked: { text: "Bloqueado", pill: "warn" },
+  "delivery-failed": { text: "Falha na entrega", pill: "critical" },
+  "delivery-failed-no-recipient": { text: "Sem destinatário", pill: "critical" },
+};
+
+function labelFor(map: Record<string, string>, value: string): string {
+  return map[value] ?? value;
+}
+
+/**
+ * Endereço on-chain como o usuário realmente usa: truncado no meio, em mono
+ * tabular, com botão de copiar. O gesto real é conferir e copiar - antes era
+ * um `<code>` sem truncar nem copiar.
+ */
+function addressWithCopy(address: string): string {
+  return `<span class="row" style="gap:6px;">
+    <code class="mono" title="${escapeHtml(address)}">${escapeHtml(shortenAddress(address))}</code>
+    <button type="button" class="copy" data-copy="${escapeHtml(address)}" aria-label="Copiar endereço" title="Copiar endereço">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
+    </button>
+  </span>`;
+}
+
+/**
+ * Feedback de cópia sem dependência nenhuma. `navigator.clipboard` falha em
+ * contexto não seguro (http), então há fallback - e o botão confirma
+ * visualmente, porque cópia sem confirmação deixa o usuário na dúvida.
+ */
+function copyScript(): string {
+  return `<script>
+document.addEventListener("click", function (event) {
+  var btn = event.target.closest ? event.target.closest(".copy") : null;
+  if (!btn) return;
+  var value = btn.getAttribute("data-copy");
+  if (!value) return;
+
+  function done() {
+    btn.setAttribute("data-done", "1");
+    btn.setAttribute("title", "Copiado");
+    setTimeout(function () {
+      btn.removeAttribute("data-done");
+      btn.setAttribute("title", "Copiar endereço");
+    }, 1600);
+  }
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(value).then(done, fallback);
+  } else {
+    fallback();
+  }
+
+  function fallback() {
+    var area = document.createElement("textarea");
+    area.value = value;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand("copy"); done(); } catch (err) { btn.setAttribute("title", "Não foi possível copiar"); }
+    document.body.removeChild(area);
+  }
+});
+</script>`;
 }
 
 function escapeHtml(input: string): string {
@@ -48,68 +144,259 @@ function logoMark(size = 28): string {
   return `<img src="${LOGO_ICON_DATA_URI}" width="${size}" height="${size}" alt="VILIGION" style="display:block; border-radius:${Math.round(size * 0.18)}px;">`;
 }
 
+/**
+ * Design system do painel — implementa `docs/UI-DESIGN-STUDY.md`.
+ *
+ * Três decisões que explicam quase tudo aqui, porque são as que o estudo
+ * identificou como causa da aparência de "template gerado":
+ *
+ * 1. **Uma identidade só.** Antes eram dois produtos: a landing dark/ciano e o
+ *    painel lilás com botão roxo em gradiente — quem se cadastrava atravessava
+ *    uma troca de identidade no meio do fluxo. O painel agora usa a MESMA
+ *    paleta da landing (neutros frios azulados + acento ciano). Zero violeta,
+ *    zero gradiente em botão ou fundo.
+ * 2. **Sombra significa elevação real.** Quando todo cartão tem sombra, ela
+ *    deixa de significar e vira textura. São três níveis só (§5 do estudo):
+ *    nível 0 (o padrão) separa por borda de 1px, sem sombra nenhuma; nível 1 é
+ *    hover/ativo; nível 2 é reservado pro que de fato flutua.
+ * 3. **Escala, não tamanhos soltos.** Tipografia em escala truncada e
+ *    espaçamento em múltiplos de 4. O saldo é o dado mais importante do
+ *    produto e tem tamanho de saldo, não de parágrafo.
+ *
+ * `font-variant-numeric: tabular-nums` em número/data não é detalhe estético:
+ * sem isso os dígitos mudam de largura entre linhas da tabela e a coluna
+ * "dança" a cada atualização — é o que separa produto financeiro de protótipo.
+ */
 const BASE_STYLE = `
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: dark;
+
+    /* Neutros frios — 90% da tela. Escala azulada pra casar com o ciano. */
+    --bg: #0A0E17;
+    --surface: #0E1521;
+    --surface-2: #141C2B;
+    --border: #1B2433;
+    --border-strong: #2A3449;
+    --text: #F1F5F9;
+    --text-muted: #8B95A7;
+
+    /* Acentos — usar pouco. É o uso escasso que dá ar profissional. */
+    --accent: #22D3EE;
+    --accent-ink: #042F36;
+    --critical: #FCA5A5;
+    --critical-bg: rgba(252,165,165,0.10);
+    --warning: #FBBF24;
+    --warning-bg: rgba(251,191,36,0.10);
+    --ok: #34D399;
+    --ok-bg: rgba(52,211,153,0.10);
+
+    /* Raio: três valores, cada um com significado. */
+    --r-control: 6px;
+    --r-container: 10px;
+    --r-full: 999px;
+
+    /* Elevação: três níveis (ver nota 2 acima). */
+    --e1: 0 1px 2px rgba(0,0,0,.35);
+    --e2: 0 12px 32px -8px rgba(0,0,0,.55);
+
+    --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
   * { box-sizing: border-box; }
   body {
-    background: radial-gradient(ellipse 80% 60% at 50% -10%, #e9e1f2 0%, #ebe6ef 55%), #ebe6ef;
-    color:#1e1b29; margin:0; min-height:100vh;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); margin:0; min-height:100vh;
+    font-family: var(--font-text); font-size:15px; line-height:1.55;
     -webkit-font-smoothing: antialiased;
   }
-  header { padding: 18px 28px; border-bottom: 1px solid #ddd4e6; display:flex; align-items:center; justify-content:space-between; backdrop-filter: blur(6px); background:rgba(235,230,239,0.85); }
-  header .brand { display:flex; align-items:center; gap:9px; color:#1e1b29; font-weight:700; font-size:1.05rem; letter-spacing:0.02em; text-decoration:none; }
-  nav a { color:#6b6475; text-decoration:none; margin-left:20px; font-size:0.88rem; transition: color .15s ease; }
-  nav a:hover { color:#7c3aed; }
-  nav a.on { color:#1e1b29; font-weight:600; box-shadow: 0 2px 0 #7c3aed; padding-bottom:6px; }
-  main { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; }
-  h1 { font-size:1.5rem; margin:0 0 6px; letter-spacing:-0.01em; }
-  .muted { color:#6b6475; font-size:0.9rem; line-height:1.5; }
-  label { display:block; margin-top:16px; margin-bottom:6px; font-size:0.82rem; color:#4b4558; font-weight:500; }
+
+  /* --- Cabeçalho e navegação --- */
+  header {
+    padding: 14px 24px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px); position:sticky; top:0; z-index:10;
+  }
+  header .brand {
+    display:flex; align-items:center; gap:10px; color:var(--text);
+    font-family:var(--font-display); font-weight:700; font-size:1rem;
+    letter-spacing:0.04em; text-decoration:none; flex:0 0 auto;
+  }
+  /* A nav tem 6 itens: em tela estreita ela rola sozinha em vez de empurrar a
+     página e criar rolagem horizontal no documento inteiro. */
+  nav { display:flex; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
+  nav::-webkit-scrollbar { display:none; }
+  nav a {
+    color:var(--text-muted); text-decoration:none; font-size:13.5px; font-weight:500;
+    padding:7px 10px; border-radius:var(--r-control); white-space:nowrap;
+    transition: color .12s ease, background-color .12s ease;
+  }
+  nav a:hover { color:var(--text); background:var(--surface-2); }
+  nav a.on { color:var(--text); font-weight:600; background:var(--surface-2); box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+  /* Painel de monitoramento pede densidade e tabela larga, não coluna de blog. */
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  /* --- Escala tipográfica (máx. 4 tamanhos por tela) --- */
+  h1 { font-family:var(--font-display); font-size:24px; font-weight:700; letter-spacing:-0.015em; margin:0 0 4px; }
+  h2 { font-family:var(--font-display); font-size:18px; font-weight:600; letter-spacing:-0.01em; margin:0 0 8px; }
+  .muted { color:var(--text-muted); font-size:14px; line-height:1.55; }
+  .eyebrow {
+    font-size:12px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--text-muted); margin:0 0 8px;
+  }
+
+  /* --- Formulário --- */
+  label { display:block; margin-top:16px; margin-bottom:6px; font-size:13px; color:var(--text); font-weight:500; }
   input, select {
-    width:100%; background:#ffffff; border:1px solid #d7d0e3; color:#1e1b29;
-    padding:11px 13px; border-radius:8px; font-size:0.95rem; transition: border-color .15s ease, box-shadow .15s ease;
-    font-family: inherit;
+    width:100%; background:var(--surface-2); border:1px solid var(--border-strong); color:var(--text);
+    padding:10px 12px; border-radius:var(--r-control); font-size:14px; font-family:inherit;
+    transition: border-color .12s ease, box-shadow .12s ease;
   }
-  input:focus, select:focus {
-    outline:none; border-color:#7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+  input:hover, select:hover { border-color:#36425c; }
+  /* #7A87A0 e nao um cinza mais escuro: medido em 4.71:1 sobre --surface-2 e
+     5.05:1 sobre --surface, passando AA. O valor anterior ficava em 3.03:1 -
+     placeholder que o usuario precisa adivinhar nao e decisao de estilo. */
+  input::placeholder { color:#7A87A0; }
+  select { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%); background-position:calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:34px; }
+  form { margin-top:4px; }
+
+  /* Foco visível em TUDO que é interativo - 2px no acento, nunca outline:none sozinho. */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r-control);
   }
-  input::placeholder { color:#9b94a8; }
+  input:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(34,211,238,.16); }
+
+  /* --- Botões: fundo chapado, sem gradiente. Altura mínima de 40px pra toque. --- */
   button {
-    margin-top:22px; background: linear-gradient(180deg, #8b5cf6, #6d28d9); color:#ffffff; border:none;
-    padding:11px 20px; border-radius:8px; font-weight:600; font-size:0.95rem; cursor:pointer;
-    transition: transform .1s ease, box-shadow .15s ease, opacity .15s ease;
-    box-shadow: 0 1px 2px rgba(30,20,46,0.2), 0 0 0 1px rgba(109,40,217,0.3) inset;
+    margin-top:20px; background:var(--accent); color:var(--accent-ink); border:none;
+    padding:10px 18px; min-height:40px; border-radius:var(--r-control);
+    font-family:inherit; font-weight:600; font-size:14px; cursor:pointer;
+    transition: filter .12s ease, transform .08s ease;
   }
-  button:hover { box-shadow: 0 2px 10px rgba(109,40,217,0.3), 0 0 0 1px rgba(109,40,217,0.4) inset; }
-  button:active { transform: translateY(1px); }
-  button.secondary { background:transparent; border:1px solid #d7d0e3; color:#413c4d; box-shadow:none; }
-  button.secondary:hover { border-color:#a89bbd; box-shadow:none; }
-  button.danger { background: linear-gradient(180deg, #f87171, #dc2626); color:#fff6f6; box-shadow: 0 1px 2px rgba(30,20,46,0.2); }
-  table { width:100%; border-collapse: collapse; margin-top:12px; }
-  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #e3deec; font-size:0.88rem; }
-  th { color:#6b6475; font-weight:600; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; }
+  button:hover { filter:brightness(1.08); }
+  button:active { transform:translateY(1px); }
+  button:disabled { opacity:.5; cursor:not-allowed; filter:none; }
+  button.secondary { background:var(--surface-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--border-strong); }
+  button.secondary:hover { background:#1A2335; filter:none; }
+  button.danger { background:transparent; color:var(--critical); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--critical) 35%, transparent); }
+  button.danger:hover { background:var(--critical-bg); filter:none; }
+
+  /* --- Tabelas: densidade de log, cabeçalho em superfície secundária --- */
+  .table-wrap { overflow-x:auto; margin:12px -4px 0; padding:0 4px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:0 12px; height:44px; border-bottom:1px solid var(--border); font-size:14px; }
+  th {
+    color:var(--text-muted); font-weight:600; font-size:12px; text-transform:uppercase;
+    letter-spacing:0.05em; background:var(--surface-2); height:36px; white-space:nowrap;
+  }
+  th:first-child { border-top-left-radius:var(--r-control); }
+  th:last-child { border-top-right-radius:var(--r-control); }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr { transition: background-color .12s ease; }
+  tbody tr:hover { background:color-mix(in srgb, var(--surface-2) 60%, transparent); }
+  /* Número e data sempre tabulares - ver nota no topo. */
+  td.num, td.when, .tabular { font-variant-numeric: tabular-nums; }
+
+  /* --- Contêineres: nível 0 de elevação, separação por borda --- */
   .card {
-    background:#ffffff; border:1px solid #e3deec; border-radius:12px; padding:24px;
-    margin-top:18px; box-shadow: 0 4px 24px rgba(30,20,46,0.07);
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-container);
+    padding:20px; margin-top:16px;
   }
+  .card > :first-child { margin-top:0; }
+  .card.flush { padding:0; overflow:hidden; }
+  .card.flush .table-wrap { margin:0; padding:0; }
+  .card.flush th:first-child, .card.flush th:last-child { border-radius:0; }
+
+  /* --- Estado e severidade: cor SEMPRE acompanhada de forma/texto (daltonismo) --- */
+  .pill {
+    display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:var(--r-full);
+    font-size:12px; font-weight:600; letter-spacing:0.01em; white-space:nowrap;
+  }
+  .pill::before { content:""; width:6px; height:6px; border-radius:var(--r-full); background:currentColor; flex:0 0 auto; }
+  .pill.critical { background:var(--critical-bg); color:var(--critical); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--critical) 25%, transparent); }
+  .pill.normal { background:var(--surface-2); color:var(--text-muted); box-shadow:inset 0 0 0 1px var(--border-strong); }
+  .pill.ok { background:var(--ok-bg); color:var(--ok); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .pill.warn { background:var(--warning-bg); color:var(--warning); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--warning) 25%, transparent); }
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:var(--r-control); background:var(--surface-2);
+    color:var(--text-muted); font-size:12px; font-weight:600; box-shadow:inset 0 0 0 1px var(--border);
+  }
+
   .error {
-    background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:11px 15px;
-    border-radius:8px; margin-top:18px; font-size:0.88rem;
+    background:var(--critical-bg); border:1px solid color-mix(in srgb, var(--critical) 30%, transparent);
+    border-left:3px solid var(--critical); color:var(--critical);
+    padding:11px 14px; border-radius:var(--r-control); margin-top:16px; font-size:14px;
   }
-  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.74rem; font-weight:600; letter-spacing:0.02em; }
-  .pill.critical { background:#fef2f2; color:#b91c1c; }
-  .pill.normal { background:#f3effa; color:#6d28d9; }
-  code { background:#f3f1f6; padding:2px 7px; border-radius:5px; font-size:0.85rem; border:1px solid #e3deec; }
-  a.link { color:#7c3aed; text-decoration:none; }
-  a.link:hover { text-decoration:underline; }
+  .notice {
+    background:var(--ok-bg); border:1px solid color-mix(in srgb, var(--ok) 25%, transparent);
+    border-left:3px solid var(--ok); color:var(--ok);
+    padding:11px 14px; border-radius:var(--r-control); font-size:14px;
+  }
+
+  /* Estado vazio: nunca só "nada aqui" - diz o que vai acontecer e a próxima ação. */
+  .empty { color:var(--text-muted); font-size:14px; line-height:1.6; }
+
+  code, .mono {
+    font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums;
+  }
+  code {
+    background:var(--surface-2); padding:2px 7px; border-radius:var(--r-control);
+    border:1px solid var(--border); color:var(--text);
+  }
+  a.link { color:var(--accent); text-decoration:none; }
+  a.link:hover { text-decoration:underline; text-underline-offset:2px; }
+
   .balance {
-    font-size: 2.25rem; font-weight: 700; letter-spacing: -0.02em; color:#1e1b29;
-    margin: 0 0 2px;
-    /* dígitos de largura fixa: sem isto o número "dança" a cada atualização de saldo */
-    font-variant-numeric: tabular-nums;
+    font-family:var(--font-display); font-size:40px; font-weight:700; letter-spacing:-0.02em;
+    color:var(--text); margin:0 0 2px; font-variant-numeric: tabular-nums;
   }
-  form { margin-top: 4px; }`;
+
+  /* Faixa de monitoramento: o produto é vigilância, então a prova de que está
+     vigiando precisa ser a primeira coisa na tela. */
+  .watchbar {
+    display:flex; align-items:center; gap:10px; padding:10px 14px; margin-top:16px;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-container);
+    font-size:13.5px; color:var(--text-muted);
+  }
+  .watchbar .dot {
+    width:8px; height:8px; border-radius:var(--r-full); background:var(--ok); flex:0 0 auto;
+    box-shadow:0 0 0 3px var(--ok-bg); animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+
+  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .grid-2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; }
+
+  /* Botão de copiar: o gesto real do usuário com um endereço é conferir e copiar. */
+  .copy {
+    background:none; border:none; margin:0; padding:4px; min-height:0; color:var(--text-muted);
+    cursor:pointer; border-radius:var(--r-control); line-height:0; box-shadow:none;
+  }
+  .copy:hover { color:var(--accent); background:var(--surface-2); filter:none; }
+  .copy[data-done="1"] { color:var(--ok); }
+
+  @media (max-width: 700px) {
+    header { flex-direction:column; align-items:stretch; gap:10px; padding:12px 16px; }
+    nav { margin:0 -16px; padding:0 16px; }
+    main { padding:24px 16px 48px; }
+    .balance { font-size:32px; }
+    h1 { font-size:21px; }
+  }
+
+  /* Respeita quem pediu menos movimento no sistema. */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }`;
+
+/**
+ * Mesma fonte display da landing (ver LANDING_STYLE) - o painel usa a marca
+ * inteira, não uma versão empobrecida dela. `display=swap` pra não bloquear
+ * o render: se a fonte demorar, o texto aparece no stack de sistema primeiro.
+ */
+const DISPLAY_FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap">`;
 
 const NAV_LINKS: Array<[string, string]> = [
   ["/dashboard", "Painel"],
@@ -135,7 +422,8 @@ function layout(params: { title: string; body: string; authed?: boolean; active?
 <title>VILIGION — ${escapeHtml(params.title)}</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.png" type="image/png">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#0A0E17">
+${DISPLAY_FONT_LINK}
 ${params.head ?? ""}
 <style>${BASE_STYLE}</style>
 </head>
@@ -165,15 +453,23 @@ function authLayout(params: { title: string; subtitle?: string; body: string; er
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VILIGION — ${escapeHtml(params.title)}</title>
+<link rel="icon" href="/icon.png" type="image/png">
+<meta name="theme-color" content="#0A0E17">
+${DISPLAY_FONT_LINK}
 <style>${BASE_STYLE}
   .auth-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .auth-box { width:100%; max-width:420px; }
-  .auth-logo { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:28px; }
-  .auth-logo span { font-weight:800; font-size:1.3rem; letter-spacing:0.03em; color:#1e1b29; }
-  .auth-card { background:#ffffff; border:1px solid #e3deec; border-radius:14px; padding:32px 28px; box-shadow: 0 8px 40px rgba(30,20,46,0.1), 0 0 0 1px rgba(30,20,46,0.02); }
-  .auth-title { font-size:1.25rem; font-weight:700; margin:0 0 4px; text-align:center; }
-  .auth-subtitle { color:#6b6475; font-size:0.88rem; text-align:center; margin:0 0 24px; line-height:1.5; }
-  .auth-footer { text-align:center; margin-top:20px; font-size:0.86rem; color:#6b6475; }
+  .auth-box { width:100%; max-width:400px; }
+  .auth-logo { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:24px; }
+  .auth-logo span { font-family:var(--font-display); font-weight:700; font-size:1.15rem; letter-spacing:0.05em; color:var(--text); }
+  /* Nível 2 de elevação: o cartão de login é a única coisa na tela e de fato
+     flutua sobre o fundo - é o caso que justifica sombra (ver §5 do estudo). */
+  .auth-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-container);
+    padding:28px 24px; box-shadow: var(--e2);
+  }
+  .auth-title { font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 4px; }
+  .auth-subtitle { color:var(--text-muted); font-size:14px; margin:0 0 20px; line-height:1.55; }
+  .auth-footer { text-align:center; margin-top:18px; font-size:13.5px; color:var(--text-muted); }
   .auth-box button { width:100%; }
 </style>
 </head>
@@ -672,7 +968,7 @@ ${shareMeta(params.baseUrl)}
       <div class="step-card">
         <div class="step-icon">${ICON_RADAR}</div>
         <p class="step-title">1. Monitoramento</p>
-        <p class="step-desc">RPC direto (Viem) observa saldo, eventos de política de recebimento e padrões de transferência em endereços TIP-20.</p>
+        <p class="step-desc">RPC direto (Viem) observa o saldo e os eventos de bloqueio por política de recebimento (TIP-403) em endereços TIP-20.</p>
       </div>
       <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
       <div class="step-card">
@@ -684,7 +980,7 @@ ${shareMeta(params.baseUrl)}
       <div class="step-card">
         <div class="step-icon">${ICON_PHONE_ACCENT}</div>
         <p class="step-title">3. Alerta por severidade</p>
-        <p class="step-desc">Crítico vira ligação (Twilio Voice) + PIN. Normal vira e-mail. Conteúdo sempre genérico, nos dois canais.</p>
+        <p class="step-desc">Crítico vira ligação (Twilio Voice) + PIN e, se o dono registrou um dispositivo, notificação sem telefone nenhum. Normal vira e-mail. Conteúdo sempre genérico, em todos os canais.</p>
       </div>
       <div class="step-arrow" aria-hidden="true">${ICON_ARROW}</div>
       <div class="step-card">
@@ -887,9 +1183,14 @@ export function dashboardPage(params: {
 }): string {
   const alertsRows =
     params.recentAlerts.length === 0
-      ? `<tr><td colspan="2" class="muted">Nenhum alerta ainda.</td></tr>`
+      ? `<tr><td colspan="2" class="empty" style="padding:16px 12px; height:auto;">Nenhum alerta desde que o monitoramento começou. Ajuste em <a class="link" href="/thresholds">quando avisar</a> se quiser ser avisado mais cedo.</td></tr>`
       : params.recentAlerts
-          .map((a) => `<tr><td>${escapeHtml(a.kind)}</td><td>${escapeHtml(a.createdAt)}</td></tr>`)
+          .map(
+            (a) => `<tr>
+        <td><span title="${escapeHtml(a.kind)}">${escapeHtml(labelFor(ALERT_KIND_LABELS, a.kind))}</span></td>
+        <td class="when muted">${escapeHtml(a.createdAt)}</td>
+      </tr>`,
+          )
           .join("");
 
   // O saldo vinha pra tela como unidade bruta do token dentro de <code> - o
@@ -900,18 +1201,32 @@ export function dashboardPage(params: {
   const balanceLabel = balanceUnits === null ? "—" : `US$ ${formatUsdDisplay(balanceUnits)}`;
 
   const body = `
-<div class="card">
-  <p class="muted" style="margin:0 0 2px;">Saldo monitorado</p>
-  <p class="balance" title="${escapeHtml(params.balanceRaw)} (menor unidade do token)">${escapeHtml(balanceLabel)}</p>
-  <p class="muted" style="margin:0 0 18px;">PathUSD · Tempo</p>
-  <p class="muted" style="margin:0 0 2px;">Endereço principal</p>
-  <p style="margin:0 0 14px;"><code title="${escapeHtml(params.address)}">${escapeHtml(shortenAddress(params.address))}</code></p>
-  <p class="muted" style="margin:0;">${params.accountsCount} conta(s) monitorada(s) — <a class="link" href="/accounts">gerenciar</a></p>
+<div class="watchbar">
+  <span class="dot" aria-hidden="true"></span>
+  <!-- Sem nome de rede aqui de propósito: dashboardPage não recebe a chain nos
+       parâmetros, e afirmar "testnet" pra quem está em mainnet (ou o contrário)
+       seria informação errada na tela principal. A chain de cada conta aparece
+       como badge em /accounts, onde o dado realmente existe. -->
+  <span><strong style="color:var(--text); font-weight:600;">Monitorando</strong> ${params.accountsCount} conta(s) — <a class="link" href="/accounts">ver redes e endereços</a></span>
 </div>
-<div class="card">
-  <p class="muted">Últimos alertas</p>
-  <table><thead><tr><th>Tipo</th><th>Quando</th></tr></thead><tbody>${alertsRows}</tbody></table>
-</div>`;
+<div class="grid-2">
+  <div class="card">
+    <p class="eyebrow">Saldo monitorado</p>
+    <p class="balance" title="${escapeHtml(params.balanceRaw)} (menor unidade do token)">${escapeHtml(balanceLabel)}</p>
+    <p class="muted" style="margin:0;">PathUSD · Tempo</p>
+  </div>
+  <div class="card">
+    <p class="eyebrow">Endereço principal</p>
+    <p style="margin:0 0 14px;">${addressWithCopy(params.address)}</p>
+    <p class="muted" style="margin:0;">${params.accountsCount} conta(s) monitorada(s) — <a class="link" href="/accounts">gerenciar</a></p>
+  </div>
+</div>
+<div class="card flush">
+  <div style="padding:16px 20px 0;"><h2>Últimos alertas</h2></div>
+  <div class="table-wrap">
+    <table><thead><tr><th>Tipo</th><th>Quando</th></tr></thead><tbody>${alertsRows}</tbody></table>
+  </div>
+</div>${copyScript()}`;
   return layout({ title: "Painel", body, authed: true, active: "/dashboard" });
 }
 
@@ -922,46 +1237,55 @@ export function accountsPage(params: {
 }): string {
   const rows =
     params.accounts.length === 0
-      ? `<tr><td colspan="4" class="muted">Nenhuma conta monitorada ainda.</td></tr>`
+      ? `<tr><td colspan="4" class="empty" style="padding:16px 12px; height:auto;">Nenhuma conta monitorada ainda — <strong>nada está sendo vigiado</strong>. Adicione a primeira no formulário abaixo.</td></tr>`
       : params.accounts
-          .map(
-            (a) => `<tr>
-        <td>${escapeHtml(a.chainKey)}</td>
-        <td><code>${escapeHtml(a.tokenAddress)}</code></td>
-        <td><code>${escapeHtml(a.watchedAddress)}</code></td>
-        <td><form method="POST" action="/accounts/${escapeHtml(a.id)}/delete" style="margin:0">
-          <button type="submit" class="secondary danger" style="margin-top:0">Remover</button>
+          .map((a) => {
+            // Nome vem do registro real (known-chains.ts). NÃO há badge de
+            // "testnet" aqui de propósito: o registro só tem mainnets, e a rede
+            // efetiva depende de TEMPO_RPC_URL, que esta view não recebe -
+            // inventar o rótulo seria afirmar na tela algo que o código não sabe.
+            const chainName = KNOWN_CHAINS[a.chainKey]?.name;
+            const chainBadge = `<span class="badge" title="${escapeHtml(a.chainKey)}">${escapeHtml(chainName ?? a.chainKey)}</span>`;
+            return `<tr>
+        <td>${chainBadge}</td>
+        <td>${addressWithCopy(a.tokenAddress)}</td>
+        <td>${addressWithCopy(a.watchedAddress)}</td>
+        <td style="text-align:right;"><form method="POST" action="/accounts/${escapeHtml(a.id)}/delete" style="margin:0">
+          <button type="submit" class="danger" style="margin-top:0; min-height:32px; padding:4px 10px; font-size:13px;">Remover</button>
         </form></td>
-      </tr>`,
-          )
+      </tr>`;
+          })
           .join("");
 
-  const chainOptions = params.knownChainKeys.map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join("");
+  const chainOptions = params.knownChainKeys
+    .map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(KNOWN_CHAINS[k]?.name ?? k)}</option>`)
+    .join("");
 
   const body = `
-<div class="card">
-  <table><thead><tr><th>Chain</th><th>Token</th><th>Endereço monitorado</th><th></th></tr></thead>
-  <tbody>${rows}</tbody></table>
+<div class="card flush">
+  <div class="table-wrap">
+    <table><thead><tr><th>Rede</th><th>Token</th><th>Endereço monitorado</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
 </div>
 <div class="card">
-  <p class="muted" style="margin-bottom:10px;"><strong>Dois endereços diferentes, não confunda:</strong></p>
-  <ol class="muted" style="margin:0 0 14px; padding-left:20px; line-height:1.7;">
-    <li><strong>Endereço do token</strong>: o contrato da stablecoin que você guarda (ex: PathUSD na Tempo) — é o mesmo pra todo mundo que usa esse token, não é sua carteira.</li>
-    <li><strong>Endereço monitorado</strong>: a sua carteira/tesouraria — o endereço cujo saldo desse token vai ser vigiado. Normalmente é o endereço que você assinou no cadastro.</li>
-  </ol>
+  <h2>Adicionar conta</h2>
+  <p class="muted" style="margin:0 0 4px;">São dois endereços diferentes, e confundi-los é o erro mais comum aqui.</p>
   <form method="POST" action="/accounts">
-    <label for="chainKey">Chain</label>
+    <label for="chainKey">Rede</label>
     <select id="chainKey" name="chainKey">${chainOptions}</select>
 
     <label for="tokenAddress">Endereço do token (ERC-20/TIP-20)</label>
-    <input type="text" id="tokenAddress" name="tokenAddress" placeholder="0x..." required>
+    <input type="text" id="tokenAddress" name="tokenAddress" placeholder="0x..." required aria-describedby="tokenHelp">
+    <p class="muted" id="tokenHelp" style="margin:6px 0 0; font-size:13px;">O contrato da stablecoin que você guarda (ex: PathUSD na Tempo). É igual para todos que usam esse token — <strong>não é a sua carteira</strong>.</p>
 
     <label for="watchedAddress">Endereço/carteira a monitorar</label>
-    <input type="text" id="watchedAddress" name="watchedAddress" placeholder="0x..." required>
+    <input type="text" id="watchedAddress" name="watchedAddress" placeholder="0x..." required aria-describedby="watchedHelp">
+    <p class="muted" id="watchedHelp" style="margin:6px 0 0; font-size:13px;">A sua tesouraria — o endereço cujo saldo desse token será vigiado. Normalmente é o mesmo que você assinou no cadastro.</p>
 
     <button type="submit">Adicionar</button>
   </form>
-</div>`;
+</div>${copyScript()}`;
   return layout({ title: "Contas monitoradas", body, authed: true, active: "/accounts", error: params.error });
 }
 
@@ -1068,9 +1392,9 @@ export function thresholdsPage(params: {
 
           <div class="legend">
             <p class="cap" id="cap"></p>
-            <div class="lg" id="lg0" style="--hc:#bbf7d0;--hb:#f0fdf4"><span class="dot" style="background:var(--ok)"></span><b>Sem alerta</b><span class="amt" id="t0"></span></div>
-            <div class="lg" id="lg1" style="--hc:#fde68a;--hb:#fffbeb"><span class="dot" style="background:var(--warn)"></span><b>E-mail</b><span class="amt" id="t1"></span></div>
-            <div class="lg" id="lg2" style="--hc:#fecaca;--hb:#fef2f2"><span class="dot" style="background:var(--crit)"></span><b>Ligação + WhatsApp</b><span class="amt" id="t2"></span></div>
+            <div class="lg" id="lg0" style="--hc:color-mix(in srgb, var(--ok) 40%, transparent);--hb:var(--ok-bg)"><span class="dot" style="background:var(--ok)"></span><b>Sem alerta</b><span class="amt" id="t0"></span></div>
+            <div class="lg" id="lg1" style="--hc:color-mix(in srgb, var(--warning) 40%, transparent);--hb:var(--warning-bg)"><span class="dot" style="background:var(--warn)"></span><b>E-mail</b><span class="amt" id="t1"></span></div>
+            <div class="lg" id="lg2" style="--hc:color-mix(in srgb, var(--critical) 40%, transparent);--hb:var(--critical-bg)"><span class="dot" style="background:var(--crit)"></span><b>Canal crítico</b><span class="amt" id="t2"></span></div>
           </div>
 
           <div class="sim">
@@ -1080,7 +1404,7 @@ export function thresholdsPage(params: {
           </div>
 
           <div class="note">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" style="flex:none;margin-top:2px" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:2px;color:var(--accent)" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
             <span>Os alertas nunca trazem saldo ou endereço. Esta prévia só aparece aqui, dentro do painel autenticado.</span>
           </div>
         </div>
@@ -1098,10 +1422,17 @@ ${thresholdsScript(cfg)}`;
   return layout({ title: "Quando você quer ser avisado", body, authed: true, active: "/thresholds", error: params.error, head: THRESHOLDS_HEAD });
 }
 
-const RECIPIENT_LABELS: Record<string, { text: string; pill: string }> = {
-  phone: { text: "Telefone (ligação)", pill: "critical" },
-  push: { text: "Dispositivo (notificação)", pill: "critical" },
-  email: { text: "E-mail", pill: "normal" },
+/**
+ * Canal + a severidade que ele atende. Separados de propósito: o canal é um
+ * rótulo neutro (badge), e a severidade é a informação colorida. Antes
+ * telefone e dispositivo usavam a pill "critical" - vermelho de severidade
+ * aplicado ao nome de um canal, que confunde "canal de alerta crítico" com
+ * "algo está errado aqui".
+ */
+const RECIPIENT_LABELS: Record<string, { text: string; serves: string }> = {
+  phone: { text: "Telefone", serves: "Alerta crítico — ligação + WhatsApp" },
+  push: { text: "Dispositivo", serves: "Alerta crítico — notificação, sem telefone" },
+  email: { text: "E-mail", serves: "Alerta normal" },
 };
 
 export function recipientsPage(params: {
@@ -1116,12 +1447,15 @@ export function recipientsPage(params: {
       ? `<tr><td colspan="3" class="muted">Nenhum destinatário cadastrado — hoje nenhum alerta sairia. Cadastre abaixo um dispositivo (sem telefone), um número ou um e-mail.</td></tr>`
       : params.recipients
           .map((r) => {
-            const label = RECIPIENT_LABELS[r.kind] ?? { text: r.kind, pill: "normal" };
+            const label = RECIPIENT_LABELS[r.kind] ?? { text: r.kind, serves: "" };
             return `<tr>
-        <td><span class="pill ${label.pill}">${escapeHtml(label.text)}</span></td>
-        <td><code>${escapeHtml(r.value)}</code></td>
-        <td><form method="POST" action="/recipients/${escapeHtml(r.id)}/delete" style="margin:0">
-          <button type="submit" class="secondary danger" style="margin-top:0">Remover</button>
+        <td>
+          <span class="badge">${escapeHtml(label.text)}</span>
+          ${label.serves ? `<div class="muted" style="font-size:12.5px; margin-top:3px;">${escapeHtml(label.serves)}</div>` : ""}
+        </td>
+        <td><code class="mono">${escapeHtml(r.value)}</code></td>
+        <td style="text-align:right;"><form method="POST" action="/recipients/${escapeHtml(r.id)}/delete" style="margin:0">
+          <button type="submit" class="danger" style="margin-top:0; min-height:32px; padding:4px 10px; font-size:13px;">Remover</button>
         </form></td>
       </tr>`;
           })
@@ -1131,13 +1465,15 @@ export function recipientsPage(params: {
 <div class="card">
   <p class="muted" style="margin-bottom:10px;">Alertas críticos (ex: queda forte de saldo) ligam pros números cadastrados aqui <strong>e também mandam o código de confirmação por WhatsApp</strong> pro mesmo número; alertas normais vão por e-mail — ver <a class="link" href="/thresholds">limiares</a> pra ajustar o que conta como crítico.</p>
   <p class="muted" style="margin:0;">Pode cadastrar mais de um telefone e mais de um e-mail — todos recebem o alerta, não só o primeiro. Use um número com WhatsApp ativo, senão o código de confirmação não chega.</p>
-  <table><thead><tr><th>Canal</th><th>Destino</th><th></th></tr></thead>
-  <tbody>${rows}</tbody></table>
+  <div class="table-wrap">
+    <table><thead><tr><th>Canal</th><th>Destino</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
 </div>${
     params.canPush
       ? `
 <div class="card">
-  <p class="muted">Alerta crítico sem telefone <span class="pill critical">mais privado</span></p>
+  <h2>Alerta crítico sem telefone <span class="badge" style="color:var(--accent); vertical-align:middle;">mais privado</span></h2>
   <p class="muted" style="margin-bottom:10px;">Registra <strong>este dispositivo</strong> para receber o alerta crítico como notificação em tela cheia, com som e vibração — <strong>sem número de telefone envolvido</strong>. Não existe número para vincular à sua conta, nem registro de operadora: o destino é um endereço opaco que o seu navegador emite e que você pode revogar aqui a qualquer momento.</p>
   <p class="muted" style="margin-bottom:10px;">Em troca, depende do navegador aceitar notificação e não é tão garantido quanto uma ligação — por isso os dois canais convivem. Em iPhone, adicione o app à tela de início antes de ativar.</p>
   <button type="button" id="pushEnable">Registrar este dispositivo</button>
@@ -1146,7 +1482,7 @@ export function recipientsPage(params: {
       : ""
   }
 <div class="card">
-  <p class="muted">Adicionar destinatário</p>
+  <h2>Adicionar destinatário</h2>
   <form method="POST" action="/recipients">
     <label for="kind">Tipo</label>
     <select id="kind" name="kind">
@@ -1163,13 +1499,13 @@ export function recipientsPage(params: {
     params.canTest
       ? `
 <div class="card">
-  <p class="muted">Testar o canal crítico</p>
+  <h2>Testar o canal crítico</h2>
   <p class="muted" style="margin-bottom:10px;">Dispara agora um alerta crítico de teste: liga pros telefones cadastrados e manda o código de confirmação por WhatsApp. Confira em <a class="link" href="/alerts">histórico</a> se o código foi confirmado.</p>
   <form method="POST" action="/recipients/test"><button type="submit">Enviar alerta de teste</button></form>
 </div>`
       : ""
   }${params.canPush ? pushEnrollScript() : ""}`;
-  return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="card"><p>${escapeHtml(params.notice)}</p></div>${body}` : body, authed: true, active: "/recipients", error: params.error });
+  return layout({ title: "Destinatários de alerta", body: params.notice ? `<div class="notice" style="margin-top:16px;">${escapeHtml(params.notice)}</div>${body}` : body, authed: true, active: "/recipients", error: params.error });
 }
 
 export function alertsHistoryPage(params: {
@@ -1177,23 +1513,30 @@ export function alertsHistoryPage(params: {
 }): string {
   const rows =
     params.alerts.length === 0
-      ? `<tr><td colspan="5" class="muted">Nenhum alerta ainda.</td></tr>`
+      ? `<tr><td colspan="5" class="empty" style="padding:20px 12px; height:auto;">Nenhum alerta disparado ainda. Quando um limiar for atingido, o evento aparece aqui com o canal usado e se a confirmação chegou — defina os limiares em <a class="link" href="/thresholds">quando avisar</a>.</td></tr>`
       : params.alerts
-          .map(
-            (a) => `<tr>
-        <td>${escapeHtml(a.kind)}</td>
-        <td><span class="pill ${a.severity === "critical" ? "critical" : "normal"}">${escapeHtml(a.severity)}</span></td>
-        <td>${escapeHtml(a.deliveredVia)}</td>
-        <td>${escapeHtml(a.pinStatus ?? "—")}</td>
-        <td>${escapeHtml(a.createdAt)}</td>
-      </tr>`,
-          )
+          .map((a) => {
+            const pin = a.pinStatus ? PIN_STATUS_LABELS[a.pinStatus] : null;
+            const pinCell = a.pinStatus
+              ? `<span class="pill ${pin?.pill ?? "normal"}" title="${escapeHtml(a.pinStatus)}">${escapeHtml(pin?.text ?? a.pinStatus)}</span>`
+              : `<span class="muted">—</span>`;
+            return `<tr>
+        <td><span title="${escapeHtml(a.kind)}">${escapeHtml(labelFor(ALERT_KIND_LABELS, a.kind))}</span></td>
+        <td><span class="pill ${a.severity === "critical" ? "critical" : "normal"}" title="${escapeHtml(a.severity)}">${escapeHtml(labelFor(SEVERITY_LABELS, a.severity))}</span></td>
+        <td><span class="muted" title="${escapeHtml(a.deliveredVia)}">${escapeHtml(labelFor(CHANNEL_LABELS, a.deliveredVia))}</span></td>
+        <td>${pinCell}</td>
+        <td class="when muted">${escapeHtml(a.createdAt)}</td>
+      </tr>`;
+          })
           .join("");
 
   const body = `
-<div class="card">
-  <table><thead><tr><th>Tipo</th><th>Severidade</th><th>Canal</th><th>PIN</th><th>Quando</th></tr></thead>
-  <tbody>${rows}</tbody></table>
-</div>`;
+<div class="card flush">
+  <div class="table-wrap">
+    <table><thead><tr><th>Tipo</th><th>Severidade</th><th>Canal</th><th>Confirmação</th><th>Quando</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
+</div>
+<p class="muted" style="margin-top:12px;">A coluna <strong>Confirmação</strong> mostra se o alerta crítico chegou ao destinatário e se o código foi digitado. "Falha na entrega" significa que nenhum canal crítico conseguiu entregar.</p>`;
   return layout({ title: "Histórico de alertas", body, authed: true, active: "/alerts" });
 }
