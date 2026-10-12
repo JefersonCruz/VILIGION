@@ -1576,7 +1576,15 @@ export function recipientsPage(params: {
 <div class="card">
   <h2>Alerta crítico sem telefone <span class="badge" style="color:var(--accent); vertical-align:middle;">mais privado</span></h2>
   <p class="muted" style="margin-bottom:10px;">Registra <strong>este dispositivo</strong> para receber o alerta crítico como notificação em tela cheia, com som e vibração — <strong>sem número de telefone envolvido</strong>. Não existe número para vincular à sua conta, nem registro de operadora: o destino é um endereço opaco que o seu navegador emite e que você pode revogar aqui a qualquer momento.</p>
-  <p class="muted" style="margin-bottom:10px;">Em troca, depende do navegador aceitar notificação e não é tão garantido quanto uma ligação — por isso os dois canais convivem. Em iPhone, adicione o app à tela de início antes de ativar.</p>
+  <p class="muted" style="margin-bottom:10px;">Em troca, depende do navegador aceitar notificação e não é tão garantido quanto uma ligação — por isso os dois canais convivem. Dois pontos honestos: a notificação toca o <strong>som padrão do sistema</strong> (a API de notificação não permite som próprio), e o modo <strong>Não Perturbe silencia</strong>. Uma ligação pode ser configurada para furar o Não Perturbe.</p>
+  <details style="margin-bottom:12px;">
+    <summary class="muted" style="cursor:pointer; font-size:13.5px;">Como instalar o app no celular (opcional, melhora a entrega)</summary>
+    <ul class="muted" style="margin:10px 0 0; padding-left:20px; line-height:1.7; font-size:13.5px;">
+      <li><strong>Android (Chrome):</strong> menu ⋮ → "Instalar app" ou "Adicionar à tela inicial". Notificação funciona mesmo sem instalar.</li>
+      <li><strong>iPhone (Safari):</strong> botão de compartilhar → "Adicionar à Tela de Início". <strong>Obrigatório</strong> — o iOS só aceita notificação depois disso.</li>
+      <li><strong>Computador (Chrome/Edge):</strong> ícone de instalar na barra de endereço.</li>
+    </ul>
+  </details>
   <button type="button" id="pushEnable">Registrar este dispositivo</button>
   <p class="muted" id="pushMsg" style="margin:10px 0 0;"></p>
 </div>`

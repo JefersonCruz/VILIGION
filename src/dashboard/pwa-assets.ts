@@ -32,6 +32,19 @@ self.addEventListener("activate", function (event) {
   event.waitUntil(self.clients.claim());
 });
 
+// Handler de fetch deliberadamente VAZIO: nao chama respondWith, entao o
+// navegador trata cada requisicao normalmente, pela rede, sem cache nenhum.
+//
+// Ele existe por um motivo so: o Chrome so oferece "Instalar" a um site cujo
+// service worker registra um handler de fetch. Sem isto o manifest estava
+// completo (192, 512, start_url, display, HTTPS) e mesmo assim o PWA nao era
+// instalavel - verificado em 2026-10-12.
+//
+// Nao transformar isto num cache depois sem pensar: o conteudo que importa
+// aqui e saldo e historico de alerta, e servir versao velha disso e pior que
+// nao funcionar offline.
+self.addEventListener("fetch", function () {});
+
 self.addEventListener("push", function (event) {
   var data = {};
   try {
