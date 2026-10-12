@@ -4,6 +4,7 @@ import {
   buildChainIntegration,
   CHAIN_INTEGRATIONS,
   getChainIntegration,
+  INHERITED_MIN_CONFIRMATIONS,
 } from "./chain-registry.js";
 import { KNOWN_CHAINS } from "./known-chains.js";
 import { TempoAdapter } from "./tempo.adapter.js";
@@ -123,6 +124,54 @@ describe("registro de integrações de rede", () => {
         if (integration.supportStatus === "experimental") continue;
         expect(integration.maintainer).not.toBeNull();
       }
+    });
+  });
+
+  describe("profundidade de confirmação", () => {
+    it("a rede declara a profundidade - o chamador não precisa (e não deve) escolher", () => {
+      // Antes, `index.ts` escrevia `minConfirmations: 3` na mão em quatro
+      // pontos. Quantos blocos esperar antes de confiar é propriedade do
+      // modelo de finalidade da REDE, não decisão de quem monta o adaptador.
+      const { adapter } = buildChainIntegration({ chainKey: "base" });
+
+      expect(adapter).toBeDefined();
+      expect(getChainIntegration("base").defaultMinConfirmations).toBe(INHERITED_MIN_CONFIRMATIONS);
+    });
+
+    it("toda rede registrada declara uma profundidade positiva", () => {
+      for (const integration of Object.values(CHAIN_INTEGRATIONS)) {
+        expect(integration.defaultMinConfirmations).toBeGreaterThan(0);
+      }
+    });
+
+    it("toda rede explica por escrito de onde veio o número", () => {
+      // Numero de confirmacao sem justificativa e a constante que ninguem
+      // revisa e todo mundo copia.
+      for (const integration of Object.values(CHAIN_INTEGRATIONS)) {
+        expect(integration.confirmationRationale.length).toBeGreaterThan(60);
+      }
+    });
+
+    it("nenhuma rede declara a profundidade como justificada - essa análise não foi feita", () => {
+      // Guarda de honestidade, igual à de `supportStatus`. Se alguém marcar
+      // `confirmationJustified: true`, este teste falha e obriga a atualizar
+      // a matriz de compatibilidade junto - a alternativa é alguém marcar
+      // true de passagem e o projeto passar a afirmar uma análise que não
+      // existe.
+      const justificadas = Object.values(CHAIN_INTEGRATIONS)
+        .filter((i) => i.confirmationJustified)
+        .map((i) => i.chainKey);
+
+      expect(justificadas).toEqual([]);
+    });
+
+    it("override explícito do chamador ainda é respeitado - é exceção, não o caminho normal", () => {
+      const { adapter } = buildChainIntegration({ chainKey: "base", minConfirmations: 12 });
+
+      // O contrato público não expõe o rpcUrl nem o minConfirmations, então o
+      // que dá pra afirmar aqui é que a montagem com override funciona; o
+      // efeito do número em si é testado em evm-adapter.test.ts.
+      expect(adapter.metadata.chainKey).toBe("base");
     });
   });
 

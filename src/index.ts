@@ -342,7 +342,10 @@ async function mainDemo() {
   const tempoAdapter = new TempoAdapter({
     rpcUrl: requireEnv("TEMPO_RPC_URL"),
     chainId: Number(requireEnv("TEMPO_CHAIN_ID")),
-    minConfirmations: 3,
+    // Profundidade declarada pela rede, nao um 3 escrito aqui: o modo demo
+    // monta o adaptador na mao (por usar RPC/chainId de env), mas nao tem
+    // motivo pra divergir da profundidade que a Tempo declara.
+    minConfirmations: getChainIntegration("tempo").defaultMinConfirmations,
     receivePolicyGuardAddress:
       (process.env.TEMPO_RECEIVE_POLICY_GUARD_ADDRESS as Address | undefined) ?? RECEIVE_POLICY_GUARD_ADDRESS,
     tokenAddress: (process.env.TEMPO_WATCHED_TOKEN_ADDRESS as Address | undefined) ?? (Addresses.pathUsd as Address),
@@ -367,7 +370,7 @@ async function mainDemo() {
     // cópias do mesmo número divergem na primeira vez que uma delas muda.
     const { adapter: baseAdapter } = buildChainIntegration({
       chainKey: "base",
-      minConfirmations: 3,
+      // sem minConfirmations: quem declara a profundidade e a rede, no registro
       rpcUrlOverride: process.env.BASE_RPC_URL,
     });
     const baseMonitor = new Monitor(
@@ -605,7 +608,7 @@ async function mainWithDatabase(databaseUrl: string) {
       const adapter = new EvmAdapter({
         rpcUrl: resolveRpcUrl(primary.chainKey, undefined),
         chainId: chain.chainId,
-        minConfirmations: 3,
+        minConfirmations: getChainIntegration(primary.chainKey).defaultMinConfirmations,
         tokenAddress: primary.tokenAddress as Address,
       });
       const balance = await adapter.getBalance(primary.watchedAddress as Address);
@@ -745,7 +748,7 @@ async function startMonitorForAccount(
   const { adapter, extension } = buildChainIntegration({
     chainKey: account.chainKey,
     tokenAddress: account.tokenAddress as Address,
-    minConfirmations: 3,
+    // sem minConfirmations: quem declara a profundidade e a rede, no registro
   });
 
   const monitor = new Monitor(
@@ -767,6 +770,17 @@ async function startMonitorForAccount(
     console.warn(
       `[monitor] ATENÇÃO: a rede "${account.chainKey}" está marcada como experimental. ` +
         `${integration.validationEvidence}`,
+    );
+  }
+  if (!integration.confirmationJustified) {
+    // Separado do aviso acima de proposito: uma rede pode estar validada e
+    // ainda assim rodar com uma profundidade de confirmacao que ninguem
+    // analisou - e o inverso tambem. Sao duas lacunas diferentes, e juntar as
+    // duas num aviso so faria quem opera tratar as duas como a mesma coisa.
+    console.warn(
+      `[monitor] ATENÇÃO: a profundidade de confirmação de "${account.chainKey}" ` +
+        `(${integration.defaultMinConfirmations}) não foi justificada para esta rede. ` +
+        `${integration.confirmationRationale}`,
     );
   }
   return monitor;

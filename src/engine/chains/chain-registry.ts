@@ -58,7 +58,22 @@ export interface AdapterBuildContext {
    * `requiresTokenAddress` (a Tempo rejeita no construtor se faltar).
    */
   tokenAddress?: Address;
-  minConfirmations: number;
+  /**
+   * Profundidade de confirmação. OPCIONAL de propósito: quando ausente, vale
+   * a `defaultMinConfirmations` declarada pela própria rede.
+   *
+   * Antes era obrigatória, e `index.ts` escrevia `minConfirmations: 3` na mão
+   * em quatro pontos. Isso punha no CHAMADOR uma decisão que é propriedade da
+   * REDE - quantos blocos esperar antes de confiar depende do modelo de
+   * finalidade e do comportamento de reorg dela, não de quem está montando o
+   * adaptador. Quatro cópias do mesmo número também divergem na primeira vez
+   * que uma delas muda.
+   *
+   * Continua aceitando override porque um operador pode ter motivo
+   * (um provedor de RPC atrasado, um ambiente de teste) - mas agora é uma
+   * exceção explícita, não o caminho normal.
+   */
+  minConfirmations?: number;
 }
 
 /** Adaptador + extensão opcional, prontos pra entregar ao Monitor. */
@@ -73,6 +88,30 @@ export interface ChainIntegration {
   readonly displayName: string;
   readonly family: ChainFamily;
   readonly supportStatus: ChainSupportStatus;
+  /**
+   * Quantos blocos/slots esperar antes de tratar um evento como real nesta
+   * rede. Vive aqui, e não no chamador, porque é propriedade do modelo de
+   * finalidade da rede.
+   */
+  readonly defaultMinConfirmations: number;
+  /**
+   * Por que esse número, em uma linha.
+   *
+   * Campo obrigatório de propósito: um número de confirmação sem
+   * justificativa é exatamente o tipo de constante que ninguém revisa e
+   * todo mundo copia. Quando a justificativa for "herdado, não analisado
+   * para esta rede", isso tem que estar escrito - e `confirmationJustified`
+   * abaixo torna o estado verificável em teste, em vez de depender de
+   * alguém ler a prosa.
+   */
+  readonly confirmationRationale: string;
+  /**
+   * `false` quando a profundidade é um default herdado que ninguém analisou
+   * contra o comportamento real de reorg desta rede. É uma lacuna declarada,
+   * igual a `supportStatus: "experimental"` - e o boot avisa quando sobe um
+   * monitor nessa situação.
+   */
+  readonly confirmationJustified: boolean;
   /**
    * GitHub handle de quem se responsabiliza por esta integração, ou `null`
    * quando ninguém se declarou.
@@ -101,17 +140,37 @@ export interface ChainIntegration {
  */
 function buildGenericEvm(chainKey: string, context: AdapterBuildContext): BuiltChainIntegration {
   const chain = getKnownChain(chainKey);
+  const integration = CHAIN_INTEGRATIONS[chainKey];
   return {
     adapter: new EvmAdapter({
       rpcUrl: context.rpcUrl,
       chainId: chain.chainId,
-      minConfirmations: context.minConfirmations,
+      minConfirmations: context.minConfirmations ?? integration?.defaultMinConfirmations ?? INHERITED_MIN_CONFIRMATIONS,
       tokenAddress: context.tokenAddress,
       chainKey: chain.id,
       displayName: chain.name,
     }),
   };
 }
+
+/**
+ * Profundidade de confirmação que o projeto vinha usando pra TODA rede, antes
+ * de este campo existir: `index.ts` escrevia `3` na mão em quatro pontos.
+ *
+ * Preservada como está, de propósito, e NÃO "corrigida" pra um número maior.
+ * Escolher a profundidade de cada rede é decisão de produto antes de ser
+ * técnica: confirmação mais funda reduz alerta falso por reorg, mas ATRASA o
+ * aviso - e num produto cuja função é avisar o dono de que a tesouraria está
+ * sendo drenada, latência de alerta é um custo real, não um detalhe. Trocar
+ * `3` por um número que eu não consigo justificar com o comportamento medido
+ * de cada rede seria inventar precisão.
+ *
+ * O que esta mudança faz é parar de esconder a decisão: o número deixa de
+ * estar espalhado em quatro chamadas e passa a ser um valor declarado por
+ * rede, com justificativa escrita e um sinalizador dizendo se alguém de fato
+ * a analisou.
+ */
+export const INHERITED_MIN_CONFIRMATIONS = 3;
 
 function genericEvmIntegration(chainKey: string): ChainIntegration {
   const chain = getKnownChain(chainKey);
@@ -120,6 +179,14 @@ function genericEvmIntegration(chainKey: string): ChainIntegration {
     displayName: chain.name,
     family: "evm",
     supportStatus: "experimental",
+    defaultMinConfirmations: INHERITED_MIN_CONFIRMATIONS,
+    confirmationJustified: false,
+    confirmationRationale:
+      "Herdada do default do projeto, NÃO analisada para esta rede. Ninguém verificou o " +
+      "comportamento de reorg dela nem decidiu o custo aceitável de latência de alerta. " +
+      "Em L2 (Base, Arbitrum) o problema é maior do que parece: um bloco já 'confirmado' na " +
+      "L2 ainda pode ser revertido se o lote correspondente na L1 reorganizar, então contar " +
+      "blocos da L2 não mede o risco real. Ver docs/CHAIN-SUPPORT-MATRIX.md.",
     maintainer: null,
     validationEvidence:
       "Nenhuma verificação contra a rede real. O adaptador EVM genérico tem testes " +
@@ -142,6 +209,14 @@ export const CHAIN_INTEGRATIONS: Record<string, ChainIntegration> = {
      * operação com tesouraria real - e isso não se declara, se acumula.
      */
     supportStatus: "validating",
+    defaultMinConfirmations: INHERITED_MIN_CONFIRMATIONS,
+    confirmationJustified: false,
+    confirmationRationale:
+      "É a profundidade com que a Tempo foi de fato exercitada contra a testnet Moderato " +
+      "(scripts/verify-testnet.ts), então não é um número solto - mas também não é um número " +
+      "derivado do modelo de finalidade da rede, porque essa análise não foi feita. " +
+      "Declarada como não justificada por honestidade: funcionar na testnet não é o mesmo que " +
+      "ser a profundidade correta para uma tesouraria em mainnet.",
     maintainer: "@JefersonCruz",
     validationEvidence:
       "scripts/verify-testnet.ts roda contra a testnet Moderato real: confirma RPC e chain ID, " +
@@ -153,7 +228,8 @@ export const CHAIN_INTEGRATIONS: Record<string, ChainIntegration> = {
       const adapter = new TempoAdapter({
         rpcUrl: context.rpcUrl,
         chainId: chain.chainId,
-        minConfirmations: context.minConfirmations,
+        minConfirmations:
+          context.minConfirmations ?? CHAIN_INTEGRATIONS.tempo?.defaultMinConfirmations ?? INHERITED_MIN_CONFIRMATIONS,
         receivePolicyGuardAddress: RECEIVE_POLICY_GUARD_ADDRESS,
         tokenAddress: context.tokenAddress,
         chainKey: chain.id,
@@ -189,7 +265,8 @@ export function getChainIntegration(chainKey: string): ChainIntegration {
 export function buildChainIntegration(params: {
   chainKey: string;
   tokenAddress?: Address;
-  minConfirmations: number;
+  /** Ausente = usa a `defaultMinConfirmations` declarada pela rede. */
+  minConfirmations?: number;
   rpcUrlOverride?: string;
 }): BuiltChainIntegration {
   const integration = getChainIntegration(params.chainKey);
