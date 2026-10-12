@@ -64,6 +64,9 @@ describe("dashboard server - Web Push (canal crítico sem telefone)", () => {
         async detailedForUser() {
           return [];
         },
+        async acknowledge() {
+          return false;
+        },
       },
       signup: {
         async signup() {

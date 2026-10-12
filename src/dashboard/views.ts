@@ -62,6 +62,12 @@ const PIN_STATUS_LABELS: Record<string, { text: string; pill: string }> = {
   "already-consumed": { text: "Já usado", pill: "normal" },
   locked: { text: "Bloqueado", pill: "warn" },
   "delivery-failed": { text: "Falha na entrega", pill: "critical" },
+  // Desfechos informados pelo dono no painel (ver AlertHistoryPort#acknowledge).
+  // "Nao reconheco" e o sinal mais valioso que o produto coleta - por isso
+  // aparece em vermelho, igual severidade critica: nao e so um registro, e um
+  // pedido de atencao.
+  "acknowledged-expected": { text: "Era esperado", pill: "ok" },
+  "acknowledged-unauthorized": { text: "NÃO reconhecido", pill: "critical" },
   "delivery-failed-no-recipient": { text: "Sem destinatário", pill: "critical" },
 };
 
@@ -1708,7 +1714,7 @@ ${channel({
 }
 
 export function alertsHistoryPage(params: {
-  alerts: Array<{ kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: string }>;
+  alerts: Array<{ alertId: string; kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: string }>;
 }): string {
   const rows =
     params.alerts.length === 0
@@ -1716,9 +1722,17 @@ export function alertsHistoryPage(params: {
       : params.alerts
           .map((a) => {
             const pin = a.pinStatus ? PIN_STATUS_LABELS[a.pinStatus] : null;
+            // Sem desfecho registrado, o dono responde aqui. Isto existe porque
+            // ate 2026-10-12 a unica forma de confirmar era digitar o PIN na
+            // ligacao - quem usa so o canal de push nao tinha NENHUMA forma de
+            // confirmar, e o historico ficava "—" pra sempre.
+            const ackForm = `<form method="POST" action="/alerts/${encodeURIComponent(a.alertId)}/ack" style="margin:0; display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="submit" name="outcome" value="mine" class="secondary" style="margin-top:0; min-height:30px; padding:3px 10px; font-size:12.5px;">Fui eu</button>
+          <button type="submit" name="outcome" value="not-mine" class="danger" style="margin-top:0; min-height:30px; padding:3px 10px; font-size:12.5px;">Não reconheço</button>
+        </form>`;
             const pinCell = a.pinStatus
               ? `<span class="pill ${pin?.pill ?? "normal"}" title="${escapeHtml(a.pinStatus)}">${escapeHtml(pin?.text ?? a.pinStatus)}</span>`
-              : `<span class="muted">—</span>`;
+              : ackForm;
             return `<tr>
         <td><span title="${escapeHtml(a.kind)}">${escapeHtml(labelFor(ALERT_KIND_LABELS, a.kind))}</span></td>
         <td><span class="pill ${a.severity === "critical" ? "critical" : "normal"}" title="${escapeHtml(a.severity)}">${escapeHtml(labelFor(SEVERITY_LABELS, a.severity))}</span></td>
@@ -1736,6 +1750,6 @@ export function alertsHistoryPage(params: {
     <tbody>${rows}</tbody></table>
   </div>
 </div>
-<p class="muted" style="margin-top:12px;">A coluna <strong>Confirmação</strong> mostra se o alerta crítico chegou ao destinatário e se o código foi digitado. "Falha na entrega" significa que nenhum canal crítico conseguiu entregar. <a class="link" href="/alerts/preview">Veja o conteúdo de cada canal</a>.</p>`;
+<p class="muted" style="margin-top:12px;">A coluna <strong>Confirmação</strong> registra o desfecho de cada alerta. Digitar o código na ligação confirma que você <em>ouviu</em>; responder aqui registra o que você <em>concluiu</em> — e <strong>"Não reconheço"</strong> é o sinal mais importante que este produto coleta, porque é o que separa uma saída esperada de uma movimentação que você não autorizou. "Falha na entrega" significa que nenhum canal crítico conseguiu entregar. <a class="link" href="/alerts/preview">Veja o conteúdo de cada canal</a>.</p>`;
   return layout({ title: "Histórico de alertas", body, authed: true, active: "/alerts" });
 }

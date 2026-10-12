@@ -131,8 +131,29 @@ export interface AlertHistoryPort {
   detailedForUser(
     userId: string,
     limit?: number,
-  ): Promise<Array<{ kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: Date }>>;
+  ): Promise<Array<{ alertId: string; kind: string; severity: string; deliveredVia: string; pinStatus: string | null; createdAt: Date }>>;
+
+  /**
+   * Confirmacao do alerta PELO PAINEL, feita pelo dono logado.
+   *
+   * Existe porque ate 2026-10-12 a unica forma de confirmar um alerta era
+   * digitar o PIN na ligacao - o que deixava quem usa so o canal de push sem
+   * NENHUMA forma de confirmar: o alerta chegava, a pessoa tocava, o painel
+   * abria, e o historico ficava "—" pra sempre.
+   *
+   * E captura algo que o PIN nunca capturou. O PIN significa "ouvi o
+   * telefone"; isto distingue "fui eu" de "nao reconheco esta movimentacao" -
+   * que e o sinal mais valioso que o produto pode coletar, e a razao de ele
+   * existir.
+   *
+   * Devolve false quando nao havia o que confirmar (alerta de outro usuario,
+   * inexistente, ou que ja tem desfecho registrado).
+   */
+  acknowledge(alertId: string, userId: string, outcome: AlertAcknowledgement): Promise<boolean>;
 }
+
+/** Desfecho informado pelo dono. Gravado em alert_log.pin_status (TEXT, sem CHECK - sem migration). */
+export type AlertAcknowledgement = "acknowledged-expected" | "acknowledged-unauthorized";
 
 export interface SignupPort {
   signup(input: SignupInput): Promise<SignupResult>;
@@ -262,6 +283,10 @@ async function route(
   }
   if (req.method === "GET" && url === "/alerts/preview") return withSession(req, res, sessions, (userId) => renderAlertPreview(res, deps, userId));
   if (req.method === "GET" && url === "/alerts") return withSession(req, res, sessions, (userId) => renderAlerts(res, deps, userId));
+  if (req.method === "POST" && path?.startsWith("/alerts/") && path.endsWith("/ack")) {
+    const alertId = path.slice("/alerts/".length, -"/ack".length);
+    return withSession(req, res, sessions, (userId) => handleAcknowledgeAlert(req, res, deps, userId, alertId));
+  }
 
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("Não encontrado.");
@@ -901,6 +926,30 @@ async function renderAlertPreview(res: ServerResponse, deps: DashboardServerDeps
       canTest: Boolean(deps.testAlert),
     }),
   );
+}
+
+/**
+ * Confirmacao do alerta pelo dono, a partir do painel.
+ *
+ * A validacao de propriedade e de estado mora no WHERE do repositorio (ver
+ * PostgresAlertLog#acknowledge), nao aqui: o userId vem da sessao e e passado
+ * adiante, entao nao existe caminho em que um usuario confirme alerta de
+ * outro, mesmo que alguem monte o POST na mao.
+ */
+async function handleAcknowledgeAlert(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deps: DashboardServerDeps,
+  userId: string,
+  alertId: string,
+): Promise<void> {
+  const body = await readFormBody(req);
+  const outcome: AlertAcknowledgement | null =
+    body.outcome === "mine" ? "acknowledged-expected" : body.outcome === "not-mine" ? "acknowledged-unauthorized" : null;
+
+  if (!outcome || !alertId) return redirect(res, "/alerts");
+  await deps.alertHistory.acknowledge(decodeURIComponent(alertId), userId, outcome);
+  redirect(res, "/alerts");
 }
 
 // --- Histórico de alertas ---

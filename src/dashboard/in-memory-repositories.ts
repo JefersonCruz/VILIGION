@@ -112,6 +112,14 @@ export class InMemoryAlertLog implements AlertHistoryPort {
   async detailedForUser(userId: string, limit = 50): ReturnType<AlertHistoryPort["detailedForUser"]> {
     return this.recentForUser(userId, limit);
   }
+
+  /** Mesma semantica do Postgres: so o dono, e so se ainda nao houver desfecho. */
+  async acknowledge(alertId: string, userId: string, outcome: string): Promise<boolean> {
+    const entry = this.entries.find((e) => e.alertId === alertId && e.userId === userId && e.pinStatus === null);
+    if (!entry) return false;
+    entry.pinStatus = outcome;
+    return true;
+  }
 }
 
 export class InMemoryAccountDetailsRepository implements AccountDetailsRepository {

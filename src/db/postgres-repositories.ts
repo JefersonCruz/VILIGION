@@ -350,6 +350,23 @@ export class PostgresAlertLog {
     await this.db.query(`UPDATE alert_log SET pin_status = $2 WHERE alert_id = $1`, [alertId, pinStatus]);
   }
 
+  /**
+   * Confirmacao pelo painel. Duas protecoes no proprio WHERE, em vez de
+   * checagem no chamador:
+   *
+   * - `user_id = $2`: um usuario nunca confirma alerta de outro.
+   * - `pin_status IS NULL`: nao sobrescreve desfecho ja registrado - nem o PIN
+   *   digitado na ligacao, nem um 'delivery-failed'. Confirmar algo que
+   *   comprovadamente nao foi entregue seria registro falso.
+   */
+  async acknowledge(alertId: string, userId: string, outcome: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE alert_log SET pin_status = $3 WHERE alert_id = $1 AND user_id = $2 AND pin_status IS NULL`,
+      [alertId, userId, outcome],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async recentForUser(userId: string, limit = 10): Promise<Array<{ kind: string; createdAt: Date }>> {
     const result = await this.db.query<{ kind: string; created_at: Date }>(
       `SELECT kind, created_at FROM alert_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,

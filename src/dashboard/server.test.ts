@@ -78,6 +78,9 @@ describe("dashboard server - registro dinâmico de monitor", () => {
         async detailedForUser() {
           return [];
         },
+        async acknowledge() {
+          return false;
+        },
       },
       signup: {
         async signup() {
