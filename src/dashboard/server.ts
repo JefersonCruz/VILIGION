@@ -14,7 +14,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { Address } from "viem";
+import { isAddress, type Address } from "viem";
 import { verifyPassword } from "./password.js";
 import { verifyTotp } from "./totp.js";
 import { renderOtpQrSvg } from "./otp-qr.js";
@@ -657,6 +657,24 @@ async function handleAddAccount(req: IncomingMessage, res: ServerResponse, deps:
     getKnownChain(chainKey); // valida a chave ANTES de gravar - nunca aceita chain desconhecida
   } catch {
     return renderAccounts(res, deps, userId, `Chain desconhecida: "${chainKey}".`);
+  }
+
+  /**
+   * Validacao de formato dos dois enderecos, adicionada em 2026-10-12.
+   *
+   * Antes disto qualquer string era aceita e gravada. O efeito nao era um
+   * erro visivel na hora: o monitor subia, falhava em TODO ciclo ao chamar
+   * balanceOf com endereco invalido, e ficava reiniciando a cada 15s pra
+   * sempre. Com a faixa de monitoramento medindo estado real, um unico erro
+   * de digitacao passava a deixar o painel inteiro em "degradado", sem dizer
+   * por que - um typo derrubando a confianca na tela que existe justamente
+   * pra provar que a vigilancia esta viva.
+   */
+  if (!isAddress(tokenAddress)) {
+    return renderAccounts(res, deps, userId, "Endereço do token inválido - precisa ser um endereço 0x com 40 caracteres hexadecimais.");
+  }
+  if (!isAddress(watchedAddress)) {
+    return renderAccounts(res, deps, userId, "Endereço monitorado inválido - precisa ser um endereço 0x com 40 caracteres hexadecimais.");
   }
 
   const id = await deps.monitoredAccounts.add({ userId, chainKey, tokenAddress, watchedAddress });

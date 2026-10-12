@@ -19,6 +19,9 @@ describe("dashboard server - registro dinâmico de monitor", () => {
   const PASSWORD = "senha-forte-123";
   const USER_ID = "user-1";
   const totpSecret = generateBase32Secret();
+  /** Enderecos com formato VALIDO: /accounts passou a validar via viem#isAddress. */
+  const TOKEN_ADDRESS = "0x20c0000000000000000000000000000000000000";
+  const WATCHED_ADDRESS = "0x4f3a9c2b7e81d5460a1f8c3b2d9e7f6a0b1c2d34";
 
   let server: ReturnType<typeof createDashboardServer>;
   let baseUrl: string;
@@ -127,13 +130,13 @@ describe("dashboard server - registro dinâmico de monitor", () => {
     const res = await fetch(`${baseUrl}/accounts`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
-      body: new URLSearchParams({ chainKey: "tempo", tokenAddress: "0xTOKEN", watchedAddress: "0xWATCHED" }),
+      body: new URLSearchParams({ chainKey: "tempo", tokenAddress: TOKEN_ADDRESS, watchedAddress: WATCHED_ADDRESS }),
       redirect: "manual",
     });
 
     expect(res.status).toBe(302); // redireciona pra /accounts normalmente
     expect(monitorControl.started).toHaveLength(1);
-    expect(monitorControl.started[0]).toMatchObject({ chainKey: "tempo", tokenAddress: "0xTOKEN", watchedAddress: "0xWATCHED" });
+    expect(monitorControl.started[0]).toMatchObject({ chainKey: "tempo", tokenAddress: TOKEN_ADDRESS, watchedAddress: WATCHED_ADDRESS });
   });
 
   it("POST /accounts/:id/delete para o monitor na hora", async () => {
@@ -142,7 +145,7 @@ describe("dashboard server - registro dinâmico de monitor", () => {
     await fetch(`${baseUrl}/accounts`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
-      body: new URLSearchParams({ chainKey: "base", tokenAddress: "0xT2", watchedAddress: "0xW2" }),
+      body: new URLSearchParams({ chainKey: "base", tokenAddress: "0x8ba1f109551bd432803012645ac136ddd64dba72", watchedAddress: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984" }),
       redirect: "manual",
     });
     const accountId = (monitorControl.started[0] as { id: string }).id;
@@ -155,6 +158,38 @@ describe("dashboard server - registro dinâmico de monitor", () => {
 
     expect(res.status).toBe(302);
     expect(monitorControl.stopped).toEqual([accountId]);
+  });
+
+  it("rejeita endereço mal formatado e NÃO sobe monitor - um typo criava monitor que falhava pra sempre", async () => {
+    const cookie = await login();
+
+    // Antes da validação, qualquer string era gravada: o monitor subia,
+    // falhava em todo ciclo ao chamar balanceOf, e deixava a faixa de
+    // monitoramento do painel em "degradado" permanentemente, sem explicar.
+    const res = await fetch(`${baseUrl}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+      body: new URLSearchParams({ chainKey: "tempo", tokenAddress: TOKEN_ADDRESS, watchedAddress: "nao-e-endereco" }),
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(200); // volta pra tela com erro, não redireciona
+    expect(await res.text()).toContain("Endereço monitorado inválido");
+    expect(monitorControl.started).toHaveLength(0);
+  });
+
+  it("rejeita endereço de token mal formatado também", async () => {
+    const cookie = await login();
+
+    const res = await fetch(`${baseUrl}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+      body: new URLSearchParams({ chainKey: "tempo", tokenAddress: "0x123", watchedAddress: WATCHED_ADDRESS }),
+      redirect: "manual",
+    });
+
+    expect(await res.text()).toContain("Endereço do token inválido");
+    expect(monitorControl.started).toHaveLength(0);
   });
 
   it("não para monitor nenhum se a remoção falhar (conta de outro usuário, por exemplo)", async () => {
