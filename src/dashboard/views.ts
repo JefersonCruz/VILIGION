@@ -487,6 +487,11 @@ ${DISPLAY_FONT_LINK}
   .auth-title { font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 4px; }
   .auth-subtitle { color:var(--text-muted); font-size:14px; margin:0 0 20px; line-height:1.55; }
   .auth-footer { text-align:center; margin-top:18px; font-size:13.5px; color:var(--text-muted); }
+  .install-hint { margin-top:22px; padding:14px 16px; border:1px solid var(--border, rgba(255,255,255,.12)); border-radius:10px; font-size:13px; line-height:1.55; color:var(--text-muted); }
+  .install-hint strong { color:var(--text, #fff); font-weight:600; }
+  .install-hint p { margin:0 0 8px; }
+  .install-hint p:last-child { margin-bottom:0; }
+  .install-hint .os { display:block; margin-top:6px; }
   .auth-box button { width:100%; }
 </style>
 </head>
@@ -1145,6 +1150,32 @@ ${shareMeta(params.baseUrl)}
 </html>`;
 }
 
+/**
+ * Aviso de instalacao do PWA na tela de login.
+ *
+ * Fica aqui, e nao so na landing, por um motivo de produto: o canal critico
+ * sem telefone (Web Push) so funciona num aparelho onde o app foi instalado -
+ * e no iOS a instalacao e OBRIGATORIA pra notificacao funcionar (ver
+ * alerts/web-push.ts e SECURITY.md). Quem chega direto no /login, por link
+ * salvo ou por um alerta antigo, nunca passa pela landing e nao descobre isso.
+ *
+ * Os dois caminhos sao mostrados juntos, sem detectar o sistema por
+ * user-agent: a deteccao erra (iPad se anuncia como Mac ha anos), e errar aqui
+ * manda o usuario procurar um menu que nao existe no aparelho dele. Duas
+ * linhas de texto custam menos que isso.
+ *
+ * Sem script: o layout de autenticacao usa CSP com nonce, e um aviso
+ * estatico nao justifica abrir superficie de script numa tela de login.
+ */
+const INSTALL_HINT = `
+    <div class="install-hint">
+      <p><strong>Instale no celular</strong> para receber o alerta crítico como notificação — sem número de telefone envolvido.</p>
+      <p>
+        <span class="os"><strong>Android (Chrome):</strong> menu ⋮ → “Instalar app”.</span>
+        <span class="os"><strong>iPhone (Safari):</strong> Compartilhar → “Adicionar à Tela de Início”. Obrigatório: o iOS só aceita notificação depois disso.</span>
+      </p>
+    </div>`;
+
 export function loginPage(params: { error?: string }): string {
   const body = `
     <form method="POST" action="/session">
@@ -1159,7 +1190,8 @@ export function loginPage(params: { error?: string }): string {
 
       <button type="submit">Entrar</button>
     </form>
-    <p class="auth-footer">Ainda não tem conta? <a class="link" href="/signup">Cadastre-se</a></p>`;
+    <p class="auth-footer">Ainda não tem conta? <a class="link" href="/signup">Cadastre-se</a></p>
+    ${INSTALL_HINT}`;
   return authLayout({ title: "Entrar", subtitle: "Acesse o painel de monitoramento da sua tesouraria.", body, error: params.error });
 }
 
