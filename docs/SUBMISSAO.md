@@ -4,18 +4,23 @@
 > **Para quê:** colar nos campos do formulário. Os textos em inglês abaixo são **rascunho estrutural** — reescreva na sua voz antes de enviar. Jurado lê esses campos como as palavras do time, e um texto que soa gerado conta contra em "Founder Communication".
 > **Regra:** toda frase aqui é verificável no repositório ou no produto no ar. Se você mudar alguma, mantenha isso verdadeiro.
 
-## Estado verificado em 2026-10-12 04:30Z
+## Estado verificado em 2026-10-13 00:20Z
 
 | Item | Estado |
 |---|---|
-| Testes | **248 em 34 arquivos**, CI verde |
-| Produção | `viligion.com` no ar, deploy `3dc1ef90` SUCCESS |
+| Testes | **378 em 40 arquivos**, CI verde |
+| Lint | **0 erro**, 32 avisos (cada um justificado em `eslint.config.js`) |
+| Produção | `viligion.com` no ar, deploy `f17bd3f8` SUCCESS, rodando a `master` (`2fec128`) |
 | Canal crítico — ligação | Ativo (Twilio) |
 | Canal crítico — push, sem telefone | Ativo e **comprovado em dispositivo real** |
 | Canal normal — e-mail | **NÃO configurado** (SMTP ausente, só loga) |
 | PWA | Instalável (manifest 128/192/512, SW com handler de fetch) |
-| Monitor | 1 conta, chain Tempo, ciclos completando |
-| Commits | 67, primeiro em 2026-10-02, **nenhum antes de 14/09** |
+| Monitor | 1 conta, chain Tempo, boot sem erro de ciclo |
+| Commits | **81**, primeiro em 2026-10-02, **nenhum antes de 14/09** |
+
+> **Atenção, `www`:** `https://viligion.com` responde 200, mas **`www.viligion.com` responde 404** — o plano da Railway permite um domínio customizado por serviço, já ocupado pelo apex, então o `www` não tem destino. Use sempre a URL **sem `www`** no formulário e no vídeo. Correção (2 min, na Cloudflare, onde o DNS está): Redirect Rule de `www.viligion.com/*` para `https://viligion.com/$1`, 301.
+
+> **O que mudou desde a verificação anterior (12/10, 04:30Z):** a contagem de testes subiu de 248 para 378, e a produção passou a rodar a `master`. O deploy anterior (`a8230ac3`) não tinha duas correções que importam numa demo ao vivo: um caminho em que uma requisição HTTP malformada **encerrava o processo** — e com ele todos os monitores, sem alerta nenhum avisando — e um bug em que um único bloqueio de transferência gerava **cinco ligações** pelo mesmo evento. As duas estão no ar agora.
 
 ---
 
@@ -41,7 +46,7 @@ VILIGION
 >
 > Alert content never contains balance or address — enforced by automated test, not review. The owner then answers one question in the dashboard: **"was this you?"** That answer, not the PIN, is the signal the product exists to capture.
 >
-> 248 automated tests, no external audit yet. MIT, public repo.
+> 378 automated tests, no external audit yet. MIT, public repo.
 
 ## Campo: go-to-market (~160 palavras)
 
@@ -88,7 +93,7 @@ A abertura é o ativo. Não narre nada nos primeiros 20 segundos.
 | 0:35–1:00 | `/alerts/preview`: o conteúdo de cada canal, sem disparar nada. Mostre que **nenhuma mensagem tem saldo, valor ou endereço.** |
 | 1:00–1:40 | O que causou: `npx tsx scripts/verify-testnet.ts` — `TransferBlocked` real, decodificado da testnet Moderato. |
 | 1:40–2:20 | Painel: faixa "Monitorando · último ciclo há Xs" com o contador subindo. Histórico → **"Não reconheço"**. *"Essa resposta é o sinal que o produto existe para capturar."* |
-| 2:20–2:45 | `npx vitest run`: **248 testes**. Repo MIT público. |
+| 2:20–2:45 | `npx vitest run`: **378 testes**. Repo MIT público. |
 | 2:45–3:00 | O que falta e quando: KMS gerenciado antes de qualquer cliente real. |
 
 ### Vídeo de apresentação (2–3 min)
@@ -117,7 +122,7 @@ Só então os números de wrench attack. Founder solo: primeira pessoa, sem desc
 
 **"O que impede a Cryptocurrency Alerting de adicionar Tempo?"** — Nada, e não vou alegar que integração de chain é moat. O difícil de copiar é o threat model como restrição de produto: conteúdo sempre genérico garantido por teste, prova EIP-191 no cadastro, destinatário sob AES-256-GCM separado do endereço, e um canal crítico que não usa número nenhum.
 
-**"Por que isso é empresa e não projeto de fim de semana?"** — Hoje não é empresa. É um sistema funcionando com 248 testes, validado contra a rede real, com uma lista explícita do que falta — KMS gerenciado, recuperação de conta, cobrança — cada item travado por gatilho, não por data.
+**"Por que isso é empresa e não projeto de fim de semana?"** — Hoje não é empresa. É um sistema funcionando com 378 testes, validado contra a rede real, com uma lista explícita do que falta — KMS gerenciado, recuperação de conta, cobrança — cada item travado por gatilho, não por data.
 
 **"Vocês não cobrem o que a Chainalysis cobre na Tempo?"** — Correto, e eles **são** parceiros oficiais do ecossistema Tempo. Nosso recorte não é cobertura de chain, é segmento e modelo de ameaça: dono sem time de segurança.
 
