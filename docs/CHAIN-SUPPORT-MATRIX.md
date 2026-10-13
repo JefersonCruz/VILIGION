@@ -31,6 +31,20 @@ That gap is small for an EVM chain and genuinely easy to close — which is part
 
 ---
 
+## Confirmation depth
+
+Every network currently runs at **3 confirmations**, and **none of those values has been justified for the network it applies to.** That gap is now declared in code (`confirmationJustified: false` in `chain-registry.ts`) and warned about at boot, rather than sitting invisible in four hardcoded call sites as it did before.
+
+| Network | Depth | Justified? | Why that value |
+|---|---|---|---|
+| **Tempo** | 3 | **No** | It is the depth Tempo was actually exercised with against the Moderato testnet, so it is not an arbitrary number — but it is not derived from the network's finality model either, because that analysis has not been done. Working on a testnet is not the same as being the right depth for a mainnet treasury. |
+| Base, Arbitrum One | 3 | **No** | Inherited default, never analysed. Worse than it looks for an L2: a block already "confirmed" on the L2 can still be reverted if the corresponding L1 batch reorganises, so counting L2 blocks does not measure the actual risk. |
+| Ethereum L1 | 3 | **No** | Inherited default, never analysed. Likely too shallow for treasury-grade monitoring. |
+
+**Why the numbers were not simply raised:** choosing a depth is a product decision before it is a technical one. Deeper confirmation reduces false alerts from reorgs but *delays the warning* — and in a product whose job is to tell an owner their treasury is being drained, alert latency is a real cost, not a detail. Replacing 3 with a number nobody can justify against each network's measured behaviour would be inventing precision.
+
+Closing this gap per network means: measuring that network's reorg depth distribution, deciding the acceptable alert-latency cost, writing the rationale, and flipping `confirmationJustified` to `true` — which a test enforces must happen together with updating this table.
+
 ## Not supported, and what each would need
 
 Listed because they come up, not because work is underway.
