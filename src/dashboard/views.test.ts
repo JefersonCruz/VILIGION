@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dashboardPage } from "./views.js";
+import { dashboardPage, loginPage } from "./views.js";
 
 /**
  * `dashboardPage` é função pura (ver cabeçalho de views.ts), então dá pra
@@ -49,5 +49,30 @@ describe("dashboardPage", () => {
 
     expect(html).toContain("balance-drop");
     expect(html).not.toContain("Nenhum alerta ainda");
+  });
+});
+
+describe("aviso de instalação do PWA no login", () => {
+  it("a tela de login ensina a instalar nos dois sistemas", () => {
+    // Quem chega direto no /login (link salvo, alerta antigo) nunca passa pela
+    // landing - e no iOS a instalação é obrigatória pro push funcionar.
+    const html = loginPage({});
+
+    expect(html).toContain("Instale no celular");
+    expect(html).toContain("Android");
+    expect(html).toContain("iPhone");
+  });
+
+  it("não depende de script - a tela de autenticação usa CSP com nonce", () => {
+    expect(loginPage({})).not.toContain("<script");
+  });
+
+  it("o aviso não aparece no lugar da mensagem de erro", () => {
+    // Guarda contra o aviso empurrar o erro de credencial pra fora da vista:
+    // numa tela de login, o erro é a informação mais urgente.
+    const html = loginPage({ error: "Credenciais inválidas." });
+
+    expect(html).toContain("Credenciais inválidas.");
+    expect(html.indexOf("Credenciais inválidas.")).toBeLessThan(html.indexOf("Instale no celular"));
   });
 });
