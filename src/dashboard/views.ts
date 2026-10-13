@@ -429,6 +429,32 @@ function nav(active?: string): string {
 }
 
 /** Layout interno (painel autenticado) - header com nav, conteúdo em coluna única. */
+/**
+ * Registro do service worker, em TODA pagina.
+ *
+ * Sem isto, o Chrome no Android nao oferece instalar o app - e esse era o
+ * sintoma: manifest linkado, icones certos, HTTPS, e nenhum convite de
+ * instalacao aparecendo. A regra do Chrome exige manifest valido E service
+ * worker REGISTRADO; ter o arquivo /sw.js servido nao basta.
+ *
+ * Ate aqui o registro acontecia so dentro do fluxo de ativar push
+ * (pwa-assets.ts#pushEnrollScript), que roda quando o usuario clica no botao
+ * em /recipients - ou seja, depois de logado e dentro de um fluxo que a maior
+ * parte das visitas nunca alcanca. Quem chegava na landing ou no login nunca
+ * registrava nada, e pra essa pessoa o app simplesmente nao era instalavel.
+ *
+ * Registrar aqui e seguro porque o handler de `fetch` do proprio worker e
+ * deliberadamente VAZIO (ver pwa-assets.ts#serviceWorkerSource): ele nunca
+ * chama respondWith, entao nao intercepta nem cacheia navegacao nenhuma.
+ * Nao ha risco de servir uma tela de login velha.
+ *
+ * `.catch` silencioso de proposito: navegador sem suporte, aba anonima ou
+ * site aberto por file:// fazem o registro falhar, e nenhum desses casos e
+ * problema do usuario - deixar o erro subir sujaria o console sem ninguem
+ * poder agir sobre ele.
+ */
+const SW_REGISTER = `<script>if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/sw.js",{scope:"/"}).catch(function(){})})}</script>`;
+
 function layout(params: { title: string; body: string; authed?: boolean; active?: string; error?: string; head?: string }): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -442,6 +468,7 @@ function layout(params: { title: string; body: string; authed?: boolean; active?
 ${DISPLAY_FONT_LINK}
 ${params.head ?? ""}
 <style>${BASE_STYLE}</style>
+${SW_REGISTER}
 </head>
 <body>
 <header>
@@ -494,6 +521,7 @@ ${DISPLAY_FONT_LINK}
   .install-hint .os { display:block; margin-top:6px; }
   .auth-box button { width:100%; }
 </style>
+${SW_REGISTER}
 </head>
 <body>
 <div class="auth-wrap">
@@ -957,6 +985,7 @@ export function landingPage(params: { joined?: boolean; error?: string; baseUrl:
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap">
 ${shareMeta(params.baseUrl)}
 <style>${LANDING_STYLE}</style>
+${SW_REGISTER}
 </head>
 <body>
 <div class="shell">
