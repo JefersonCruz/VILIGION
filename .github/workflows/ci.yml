@@ -31,3 +31,79 @@ jobs:
 
       - run: npm run build
       - run: npx vitest run
+
+  # Varredura de segredos. Job separado de propósito: roda em paralelo, e uma
+  # falha aqui fica distinguível de uma falha de teste na lista de checks.
+  #
+  # Existe por um incidente real: em 12/10/2026 credenciais de demonstração
+  # (senha e segredo TOTP de uma conta compartilhada) e o e-mail pessoal do
+  # fundador foram removidos do README por revisão humana — depois de já
+  # estarem publicados. Este job existe pra que a próxima vez seja barrada
+  # antes do merge, em vez de descoberta depois da publicação.
+  #
+  # O que ele NÃO faz: não limpa o histórico. Segredo já publicado continua
+  # exposto nos commits antigos e precisa ser ROTACIONADO — remover o texto
+  # não invalida credencial vazada. Ver SECURITY.md.
+  secret-scan:
+    name: Varredura de segredos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Histórico completo: necessário pra varrer o intervalo de commits
+          # do PR no passo abaixo.
+          fetch-depth: 0
+
+      # Binário baixado e verificado por checksum, em vez de uma action de
+      # terceiro. Numa action, código de fora roda com o token do repositório;
+      # aqui roda um binário de versão fixa cujo hash é conferido antes de
+      # executar. Pra um repositório de produto de segurança, a diferença de
+      # postura de cadeia de suprimentos vale as cinco linhas extras.
+      #
+      # Pra atualizar a versão: pegue o hash em
+      # https://github.com/gitleaks/gitleaks/releases (arquivo
+      # gitleaks_<versão>_checksums.txt) e troque os dois valores juntos.
+      - name: Instalar gitleaks (versão fixa, checksum verificado)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      # `--redact` não é opcional: o log de CI de um repositório público é
+      # público. Sem isso, um segredo detectado seria reimpresso em texto
+      # claro num log indexável — a varredura vazaria o que foi criada pra
+      # impedir. A regra e o arquivo aparecem; o valor, nunca.
+      #
+      # Allowlist e exclusões ficam em .gitleaks.toml, na raiz (lido
+      # automaticamente), com a justificativa de cada entrada.
+      - name: Varrer os arquivos versionados
+        run: ./gitleaks dir . --redact --no-banner --exit-code 1
+
+      # Os arquivos atuais podem estar limpos e o PR ainda assim ter
+      # introduzido um segredo num commit intermediário — que fica no
+      # histórico mesmo depois de um commit posterior removê-lo. Este passo
+      # varre o intervalo de commits do PR.
+      #
+      # Só em pull_request porque só ali o intervalo é bem definido. O
+      # histórico ANTERIOR a este job não é varrido de propósito: ele contém
+      # as credenciais do incidente acima, então varrê-lo deixaria o CI
+      # vermelho de forma permanente por um problema que já é conhecido e
+      # cuja correção é rotação, não CI.
+      - name: Varrer os commits novos deste PR
+        if: github.event_name == 'pull_request'
+        env:
+          # Via env, não interpolado direto no script: interpolação de `${{ }}`
+          # dentro de `run` é vetor de injeção quando o valor é controlável.
+          # Estes dois são SHAs, mas o hábito vale pelo próximo que não for.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ./gitleaks git . --redact --no-banner --exit-code 1 \
+            --log-opts="${BASE_SHA}..${HEAD_SHA}"
