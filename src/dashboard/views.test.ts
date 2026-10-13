@@ -63,8 +63,28 @@ describe("aviso de instalação do PWA no login", () => {
     expect(html).toContain("iPhone");
   });
 
-  it("não depende de script - a tela de autenticação usa CSP com nonce", () => {
-    expect(loginPage({})).not.toContain("<script");
+  it("o aviso em si é estático - nenhum texto dele depende de script", () => {
+    /**
+     * Corrige uma afirmação errada minha: a versão anterior deste teste dizia
+     * que a tela de login não tem script nenhum, "porque usa CSP com nonce".
+     * Conferindo a resposta real do servidor, NÃO existe cabeçalho CSP - e a
+     * página passou a ter um script, o registro do service worker, sem o qual
+     * o Chrome no Android não oferece instalar o app.
+     *
+     * O que importa de verdade é o que este teste afirma agora: as instruções
+     * de instalação chegam como HTML, então aparecem mesmo com script
+     * bloqueado ou falhando.
+     */
+    const semScripts = loginPage({}).replace(/<script[\s\S]*?<\/script>/g, "");
+
+    expect(semScripts).toContain("Instale no celular");
+    expect(semScripts).toContain("Adicionar à Tela de Início");
+  });
+
+  it("registra o service worker - sem isso o Chrome no Android não oferece instalação", () => {
+    // Era a causa raiz: manifest e ícones corretos, mas o SW só era
+    // registrado no fluxo de ativar push, depois do login.
+    expect(loginPage({})).toContain('navigator.serviceWorker.register("/sw.js"');
   });
 
   it("o aviso não aparece no lugar da mensagem de erro", () => {
