@@ -55,20 +55,27 @@ The boundary, and how each half is enforced:
 
 ## Evaluation access for judges (added 2026-10-15, expires 2026-11-14)
 
-A hackathon reviewer cannot reasonably be asked to set up an authenticator app before seeing anything, and an automated agent evaluating the product has the same problem. So there is a **single-factor, read-only** way in — and the trade is scope, not strength.
+**This exists so hackathon judges — and the automated agents acting for them — can evaluate the product without spending their time on authenticator setup.** It is not a product feature and not how a customer account works. Full detail, including the exact allow-list for agents: [`docs/JUDGE-ACCESS.md`](./docs/JUDGE-ACCESS.md).
 
-What the judge session **cannot** do: anything that changes state. The check is one decision point on the HTTP **method** — only `GET` passes — rather than a list of protected routes, because a list protects what was in it the day it was written, while "GET only" also protects routes nobody has written yet. Registering an account, editing thresholds, **changing an alert recipient** and firing a test alert all remain `POST`, and all still require the full login with password **and** TOTP.
+A single-factor login grants a session that can browse everything *and* configure the product (register a monitored account, edit thresholds) — but **cannot** change where alerts are sent, **cannot** fire a test alert, and **cannot** open `/recipients`.
 
-That last point is the reason the design is shaped this way. This document and the project's submission both state that changing where an alert goes requires two factors. A single-factor shortcut that could *write* would have made that statement false. A read-only one does not.
+Those three exclusions each have a reason:
 
-Four limits, because "temporary" without a mechanism is permanent:
+- **Changing an alert destination** is the action this document and the submission both state requires two factors. A single-factor path that could do it would make that statement false.
+- **Firing a test alert** places a real phone call to the owner's real number and spends their Twilio credit, once per judge who clicks. `/alerts/preview` shows the same content without sending.
+- **`/recipients`** lists destinations in full, including a real phone number — the exact data this product exists to protect. It is refused for reading, not merely for writing.
 
-- **Off by default.** Without `JUDGE_ACCESS_PASSWORD` and `JUDGE_ACCESS_USERNAME` in the environment, the code path does not exist — including in any clone someone runs.
-- **Dies on its own** at `JUDGE_ACCESS_EXPIRES_AT`, a fixed date in the source rather than an environment variable, so the deadline is auditable by anyone reading the repository. Reopening it requires a commit.
-- **Rate limited.** The login limiter (5 attempts / 15 min) still applies, and it is the only barrier on a path with no second factor — which is also why a password under 12 characters is refused outright.
-- **Logged.** Every judge login and every refused write is recorded.
+Enforcement is an **allow-list on writes**, evaluated at one point before routing (`judgeMayAccess` in `src/dashboard/judge-access.ts`). Default is deny: a write route added later is refused until someone deliberately adds it. Refusals return an HTML page naming the rule, so an evaluator is never left guessing whether the product is broken.
 
-**Honest limit:** this is still a password that grants read access to a dashboard showing a real monitored address and real alert history. It is not a safe pattern for a production account holding customer data, and it is not presented as one. It exists for a demonstration account on a testnet, with an expiry date attached.
+Five limits, because "temporary" without a mechanism is permanent:
+
+- **Off by default.** Without `JUDGE_ACCESS_PASSWORD` and `JUDGE_ACCESS_USERNAME`, the path does not exist — including in any clone.
+- **Dies on its own** at `JUDGE_ACCESS_EXPIRES_AT`, a constant in the source rather than a hosting setting, so the deadline is auditable by anyone reading the repository. Reopening requires a commit.
+- **Rate limited** by the existing login limiter (5 attempts / 15 min) — the only barrier on a path with no second factor, which is also why a password under 12 characters is refused at configuration time.
+- **Fully logged.** Every request from an evaluation session is recorded, allowed or refused, under a `[jurado]` prefix. An access path without an audit trail is one nobody can review afterwards.
+- **Never reaches admin surfaces.** `/admin/*` requires a bearer token that is not shared with judges; a session of any kind does not grant it.
+
+**Honest limits.** This is still a password granting read access to a dashboard showing a real monitored address and real alert history — not a pattern to copy for a production account with customer data, and not presented as one. It exists for a demonstration account on a testnet, with an expiry date attached. And because the session may edit thresholds and accounts, one judge can change what a later judge sees; on a demo account that is an acceptable trade for being able to evaluate the product at all.
 
 ## Known limitations
 

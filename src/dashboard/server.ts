@@ -23,7 +23,7 @@ import {
   JudgeSessions,
   readJudgeAccessConfig,
   readOnlyNoticeHtml,
-  rejectsWrite,
+  judgeMayAccess,
 } from "./judge-access.js";
 import { asRequestListener } from "../async-request-handler.js";
 import { verifyTotp } from "./totp.js";
@@ -221,17 +221,24 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
       /**
-       * Ponto UNICO do escopo somente-leitura. Antes de qualquer rota: se a
-       * sessao e de jurado e a requisicao altera estado, recusa com uma
-       * pagina que EXPLICA. Baseado no metodo, nao numa lista de rotas - ver
-       * judge-access.ts#rejectsWrite.
+       * Ponto UNICO da politica de jurado, antes de qualquer rota - nao ha
+       * caminho que escape por esquecimento num handler. Ver judge-access.ts.
+       *
+       * Loga TODA requisicao da sessao de jurado, permitida ou negada: o dono
+       * precisa poder auditar depois o que foi acessado. Prefixo "[jurado]"
+       * pra filtrar (`railway logs | grep "\[jurado\]"`).
        */
       const sessionToken = parseCookies(req.headers.cookie)["viligion_session"];
-      if (judgeSessions.isReadOnly(sessionToken) && rejectsWrite(req.method)) {
-        console.log(`[jurado] escrita recusada: ${req.method ?? "?"} ${req.url ?? "?"}`);
-        res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(readOnlyNoticeHtml());
-        return;
+      if (judgeSessions.isReadOnly(sessionToken)) {
+        const decisao = judgeMayAccess(req.method, req.url);
+        console.log(
+          `[jurado] ${decisao.allowed ? "ok     " : "NEGADO "} ${req.method ?? "?"} ${(req.url ?? "?").split("?")[0]}`,
+        );
+        if (!decisao.allowed) {
+          res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(readOnlyNoticeHtml(decisao.reason ?? "Ação não permitida nesta sessão de avaliação."));
+          return;
+        }
       }
       await route(req, res, deps, loginLimiter, waitlistLimiter, sessions, judgeAccess, judgeSessions);
     } catch (err) {

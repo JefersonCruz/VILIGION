@@ -1,32 +1,42 @@
 /**
- * Acesso de jurado: sessão de UM fator, SOMENTE LEITURA, com prazo de morte.
+ * Acesso de jurado: sessão de UM fator, com escrita limitada e prazo de morte.
  *
  * Por que existe: a ferramenta de análise da submissão recomendou reduzir o
  * atrito de avaliação. Exigir que um jurado - ou o agente dele - configure um
  * app autenticador antes de ver qualquer coisa custa minutos de uma avaliação
- * que dura minutos.
+ * que dura minutos. E sem login não se vê nada: painel, alertas, preview de
+ * conteúdo e limiares são todos autenticados.
  *
  * O que NÃO se pode perder ao atender isso: a submissão afirma, por escrito,
- * que trocar o destinatário de um alerta exige senha E TOTP. Um atalho que
- * pulasse o segundo fator num acesso capaz de ESCREVER tornaria essa frase
- * falsa - e num produto cuja tese é modelo de ameaça, um jurado que abre o
- * código e encontra a contradição perde a confiança no resto.
+ * que trocar o destinatário de um alerta exige senha E TOTP. Um atalho de um
+ * fator capaz de trocar destinatário tornaria essa frase falsa - e num produto
+ * cuja tese é modelo de ameaça, o jurado que abre o código e encontra a
+ * contradição perde a confiança no resto.
  *
- * A saída é escopo, não fator. Esta sessão não consegue escrever nada:
+ * A saída foi escopo, não fator. O jurado CONFIGURA o produto (cadastra conta
+ * monitorada, edita limiares) e vê tudo - menos duas coisas:
  *
- * - somente GET. Qualquer método que altere estado é recusado num ponto
- *   único de decisão (ver `rejectsWrite`), não rota a rota. Lista de rotas se
- *   desatualiza quando alguém adiciona uma; "só GET" não.
- * - a afirmação da submissão continua verdadeira, porque trocar destinatário
- *   é POST, e POST não passa.
+ * - trocar destinatário de alerta, que é a ação que a submissão diz exigir
+ *   dois fatores;
+ * - disparar alerta de teste, que tocaria uma ligação REAL no telefone do
+ *   dono e gastaria crédito Twilio a cada jurado que clicasse.
  *
- * Mais três limites, porque "temporário" sem mecanismo é permanente:
+ * E uma leitura negada: `/recipients`, que mostra o telefone real do dono por
+ * extenso. Ver LEITURAS_NEGADAS.
  *
- * - DESLIGADO por padrão. Sem `JUDGE_ACCESS_PASSWORD` no ambiente, este
- *   caminho não existe - inclusive em qualquer clone que alguém rode.
- * - MORRE sozinho em `JUDGE_ACCESS_EXPIRES_AT`, sem ninguém precisar lembrar
- *   de remover nada.
- * - LOGA todo uso, pra que o acesso seja auditável depois.
+ * Toda decisão passa por `judgeMayAccess`, um ponto único. Escrita é
+ * permitida por LISTA EXPLÍCITA: numa política de acesso o default tem que ser
+ * negar, pra que uma rota nova nasça bloqueada em vez de aberta.
+ *
+ * Mais quatro limites, porque "temporário" sem mecanismo é permanente:
+ *
+ * - DESLIGADO por padrão. Sem `JUDGE_ACCESS_PASSWORD` e `JUDGE_ACCESS_USERNAME`
+ *   no ambiente, este caminho não existe - inclusive em qualquer clone.
+ * - MORRE sozinho em `JUDGE_ACCESS_EXPIRES_AT`, sem ninguém lembrar de nada.
+ * - RATE LIMITED pelo limitador de login que já existia - única barreira num
+ *   caminho sem segundo fator.
+ * - LOGA toda requisição, permitida ou negada, pra que o acesso seja
+ *   auditável depois (ver docs/JUDGE-ACCESS.md).
  */
 
 import { timingSafeEqual } from "node:crypto";
@@ -149,21 +159,76 @@ export class JudgeSessions {
 }
 
 /**
- * Uma sessão de jurado pode executar esta requisição?
+ * Rotas de ESCRITA que uma sessão de jurado pode executar.
  *
- * O ponto único de decisão do escopo somente-leitura. Deliberadamente baseado
- * no MÉTODO, e não numa lista de rotas: toda rota que altera estado neste
- * painel é POST (contas, limiares, destinatários, alerta de teste, exclusões),
- * e uma rota nova que alguém adicione amanhã também será. Uma lista de rotas
- * protege o que estava nela no dia em que foi escrita; "só GET" protege o que
- * ainda nem existe.
+ * Lista curta e explícita, em vez de "tudo que não for proibido": numa
+ * política de acesso, o default tem que ser negar. Uma rota de escrita que
+ * alguém adicionar amanhã nasce bloqueada para o jurado até que alguém
+ * decida, conscientemente, colocá-la aqui.
+ *
+ * Por que estas duas entram: cadastrar conta monitorada e editar limiares são
+ * o produto sendo CONFIGURADO. É o que um avaliador precisa fazer pra julgar
+ * se a coisa funciona, e o estrago possível é dado de demonstração numa
+ * testnet.
  */
-export function rejectsWrite(method: string | undefined): boolean {
-  return (method ?? "GET").toUpperCase() !== "GET";
+const ESCRITAS_PERMITIDAS: ReadonlySet<string> = new Set(["POST /accounts", "POST /thresholds"]);
+
+/**
+ * Leituras NEGADAS, mesmo sendo GET.
+ *
+ * `/recipients` lista para onde o alerta vai — hoje, o número de telefone
+ * real do dono, por extenso. Num produto cuja tese inteira é não ligar um
+ * número a uma tesouraria, essa é a última página que deveria abrir para um
+ * terceiro. O endpoint de push já aparece só pelo host (ver
+ * push-subscription.ts), mas telefone e e-mail não.
+ *
+ * O jurado não perde nada relevante: `/alerts/preview` mostra o conteúdo
+ * exato de cada canal sem enviar nada, e o histórico em `/alerts` prova quais
+ * canais entregaram de verdade.
+ */
+const LEITURAS_NEGADAS: ReadonlyMap<string, string> = new Map([
+  [
+    "/recipients",
+    "Esta página lista para onde os alertas são enviados — incluindo um número de telefone real. " +
+      "Não expomos isso a uma sessão de avaliação: é exatamente o dado que este produto existe para proteger.",
+  ],
+]);
+
+export interface JudgeDecision {
+  readonly allowed: boolean;
+  /** Por que foi negado, em linguagem para quem leu a recusa na tela. */
+  readonly reason?: string;
+}
+
+/**
+ * O que uma sessão de jurado pode fazer. PONTO ÚNICO de decisão.
+ *
+ * Tudo passa por aqui antes de qualquer rota, então não há caminho que escape
+ * por esquecimento em um handler.
+ */
+export function judgeMayAccess(method: string | undefined, rawUrl: string | undefined): JudgeDecision {
+  const verbo = (method ?? "GET").toUpperCase();
+  // Tira query string e barra final: `/thresholds?salvo=1` é a mesma rota.
+  const caminho = (rawUrl ?? "/").split("?")[0]?.replace(/\/+$/, "") || "/";
+
+  if (verbo === "GET") {
+    const negada = LEITURAS_NEGADAS.get(caminho);
+    if (negada) return { allowed: false, reason: negada };
+    return { allowed: true };
+  }
+
+  if (ESCRITAS_PERMITIDAS.has(`${verbo} ${caminho}`)) return { allowed: true };
+
+  return {
+    allowed: false,
+    reason:
+      "Esta sessão de avaliação não altera destinos de alerta nem dispara alertas. " +
+      "Cadastrar conta monitorada e editar limiares funcionam normalmente.",
+  };
 }
 
 /** Página de recusa que EXPLICA, em vez de só devolver 403 e parecer quebrado. */
-export function readOnlyNoticeHtml(): string {
+export function readOnlyNoticeHtml(reason: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -182,12 +247,22 @@ export function readOnlyNoticeHtml(): string {
 <body>
   <div class="card">
     <h1>Esta é uma sessão de avaliação, somente leitura</h1>
-    <p>Você entrou com a senha de avaliação, que usa um fator só para não tomar seu tempo com a configuração de um autenticador.</p>
-    <p>Em troca, ela não altera nada: cadastrar conta, editar limiares, trocar destinatário de alerta ou disparar um alerta de teste exigem o login completo, com senha e código TOTP. É a mesma regra que a submissão descreve, e ela continua valendo aqui.</p>
+    <p>Você entrou com a senha de avaliação, que usa um fator só para não tomar seu tempo com a configuração de um autenticador. <strong>Cadastrar conta monitorada e editar limiares funcionam normalmente.</strong></p>
+    <p>${escapeForNotice(reason)}</p>
+    <p>Trocar destinatário de alerta e disparar alerta de teste exigem o login completo, com senha e código TOTP — a mesma regra que a submissão descreve.</p>
     <p>Disparar um alerta de teste também tocaria uma ligação real no telefone do dono e consumiria crédito da conta Twilio dele — por isso fica de fora.</p>
     <p>Para ver o conteúdo exato de cada canal de alerta sem enviar nada, abra <a href="/alerts/preview">/alerts/preview</a>.</p>
     <p><a href="/dashboard">Voltar ao painel</a></p>
   </div>
 </body>
 </html>`;
+}
+
+/** Escapa o motivo antes de interpolar - ele é texto nosso, mas a regra do projeto é escapar sempre. */
+function escapeForNotice(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

@@ -6,7 +6,7 @@ import {
   JudgeSessions,
   readJudgeAccessConfig,
   readOnlyNoticeHtml,
-  rejectsWrite,
+  judgeMayAccess,
 } from "./judge-access.js";
 
 const SENHA = "senha-de-avaliacao-longa";
@@ -71,26 +71,58 @@ describe("acesso de jurado: reconhecimento da tentativa", () => {
   });
 });
 
-describe("escopo somente leitura", () => {
-  it("GET passa", () => {
-    expect(rejectsWrite("GET")).toBe(false);
-    expect(rejectsWrite("get")).toBe(false);
-    expect(rejectsWrite(undefined)).toBe(false);
+describe("política de acesso: o que o jurado pode fazer", () => {
+  const permitido = (m: string, u: string) => judgeMayAccess(m, u).allowed;
+
+  it("pode CONFIGURAR o produto: cadastrar conta e editar limiares", () => {
+    // É o que um avaliador precisa fazer pra julgar se a coisa funciona, e o
+    // estrago possível é dado de demonstração numa testnet.
+    expect(permitido("POST", "/accounts")).toBe(true);
+    expect(permitido("POST", "/thresholds")).toBe(true);
   });
 
-  it("todo método que altera estado é recusado", () => {
-    for (const metodo of ["POST", "PUT", "PATCH", "DELETE", "post"]) {
-      expect(rejectsWrite(metodo)).toBe(true);
+  it("NÃO troca destinatário de alerta - é a ação que a submissão diz exigir dois fatores", () => {
+    expect(permitido("POST", "/recipients")).toBe(false);
+    expect(permitido("POST", "/recipients/abc/delete")).toBe(false);
+    expect(permitido("POST", "/push/subscribe")).toBe(false);
+  });
+
+  it("NÃO dispara alerta de teste - tocaria uma ligação real e gastaria crédito Twilio", () => {
+    expect(permitido("POST", "/recipients/test")).toBe(false);
+  });
+
+  it("NÃO abre /recipients nem para leitura - mostra o telefone real do dono", () => {
+    const decisao = judgeMayAccess("GET", "/recipients");
+
+    expect(decisao.allowed).toBe(false);
+    expect(decisao.reason).toContain("telefone");
+  });
+
+  it("lê tudo o que importa para avaliar", () => {
+    for (const rota of ["/dashboard", "/alerts", "/alerts/preview", "/thresholds", "/accounts"]) {
+      expect(permitido("GET", rota)).toBe(true);
     }
   });
 
-  it("a regra é por MÉTODO, não por lista de rotas", () => {
+  it("escrita é por lista explícita - uma rota nova nasce BLOQUEADA", () => {
     /**
-     * O ponto do desenho: uma rota de escrita que alguém adicionar amanhã já
-     * nasce bloqueada para o jurado. Uma lista de rotas protegeria só o que
-     * estava nela no dia em que foi escrita.
+     * O ponto do desenho. Se alguém adicionar amanhã uma rota de escrita e
+     * esquecer desta política, o jurado não a alcança - em vez de alcançar
+     * por omissão, que é como política de acesso costuma falhar.
      */
-    expect(rejectsWrite("POST")).toBe(true);
+    expect(permitido("POST", "/rota-que-alguem-adicionar-amanha")).toBe(false);
+    expect(permitido("DELETE", "/accounts")).toBe(false);
+    expect(permitido("PUT", "/thresholds")).toBe(false);
+  });
+
+  it("query string e barra final não contornam a política", () => {
+    // `/recipients?x=1` e `/recipients/` são a mesma rota negada.
+    expect(permitido("GET", "/recipients?qualquer=1")).toBe(false);
+    expect(permitido("GET", "/recipients/")).toBe(false);
+  });
+
+  it("a negação sempre explica o motivo - 403 seco pareceria o sistema quebrado", () => {
+    expect(judgeMayAccess("POST", "/recipients/test").reason).toBeTruthy();
   });
 });
 
@@ -136,19 +168,22 @@ describe("marcação de sessões de jurado", () => {
 });
 
 describe("a recusa explica, em vez de parecer quebrada", () => {
-  it("diz que é sessão de avaliação e por que não altera nada", () => {
-    const html = readOnlyNoticeHtml();
+  const html = () => readOnlyNoticeHtml("Motivo de teste.");
 
-    expect(html).toContain("somente leitura");
-    expect(html).toContain("TOTP");
+  it("mostra o motivo específico da recusa", () => {
+    expect(html()).toContain("Motivo de teste.");
+  });
+
+  it("diz o que AINDA funciona, pro jurado não achar que travou tudo", () => {
+    expect(html()).toContain("Cadastrar conta monitorada e editar limiares funcionam normalmente");
   });
 
   it("aponta o caminho que mostra o conteúdo do alerta sem disparar nada", () => {
-    expect(readOnlyNoticeHtml()).toContain("/alerts/preview");
+    expect(html()).toContain("/alerts/preview");
   });
 
-  it("explica que disparar teste tocaria uma ligação real", () => {
-    // O jurado precisa entender que é consideração, não limitação arbitrária.
-    expect(readOnlyNoticeHtml()).toContain("ligação real");
+  it("escapa o motivo antes de interpolar", () => {
+    // O motivo é texto nosso, mas a regra do projeto é escapar sempre.
+    expect(readOnlyNoticeHtml("<script>x</script>")).not.toContain("<script>x");
   });
 });
