@@ -16,6 +16,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isAddress, type Address } from "viem";
 import { verifyPassword } from "./password.js";
+import type { JudgeAccessConfig } from "./judge-access.js";
+import {
+  isJudgeLogin,
+  JUDGE_ACCESS_EXPIRES_AT,
+  JudgeSessions,
+  readJudgeAccessConfig,
+  readOnlyNoticeHtml,
+  judgeMayAccess,
+} from "./judge-access.js";
 import { asRequestListener } from "../async-request-handler.js";
 import { verifyTotp } from "./totp.js";
 import { renderOtpQrSvg } from "./otp-qr.js";
@@ -197,12 +206,41 @@ const SESSION_COOKIE_TTL_SECONDS = 30 * 60;
  */
 export function createDashboardRequestHandler(deps: DashboardServerDeps) {
   const loginLimiter = new RateLimiter(5, 15 * 60_000); // 5 tentativas / 15 min por identificador
+  /**
+   * Acesso de jurado (ver judge-access.ts). `null` = desligado, que e o caso
+   * em qualquer ambiente sem JUDGE_ACCESS_PASSWORD definida.
+   */
+  const judgeAccess = readJudgeAccessConfig(process.env);
+  const judgeSessions = new JudgeSessions();
+  if (judgeAccess) {
+    console.log(`[jurado] acesso de avaliacao HABILITADO para "${judgeAccess.username}" - somente leitura, expira em ${JUDGE_ACCESS_EXPIRES_AT.toISOString()}`);
+  }
   const waitlistLimiter = new RateLimiter(5, 60 * 60_000); // 5 inscrições / hora por IP
   const sessions = new SessionStore();
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
-      await route(req, res, deps, loginLimiter, waitlistLimiter, sessions);
+      /**
+       * Ponto UNICO da politica de jurado, antes de qualquer rota - nao ha
+       * caminho que escape por esquecimento num handler. Ver judge-access.ts.
+       *
+       * Loga TODA requisicao da sessao de jurado, permitida ou negada: o dono
+       * precisa poder auditar depois o que foi acessado. Prefixo "[jurado]"
+       * pra filtrar (`railway logs | grep "\[jurado\]"`).
+       */
+      const sessionToken = parseCookies(req.headers.cookie)["viligion_session"];
+      if (judgeSessions.isReadOnly(sessionToken)) {
+        const decisao = judgeMayAccess(req.method, req.url);
+        console.log(
+          `[jurado] ${decisao.allowed ? "ok     " : "NEGADO "} ${req.method ?? "?"} ${(req.url ?? "?").split("?")[0]}`,
+        );
+        if (!decisao.allowed) {
+          res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(readOnlyNoticeHtml(decisao.reason ?? "Ação não permitida nesta sessão de avaliação."));
+          return;
+        }
+      }
+      await route(req, res, deps, loginLimiter, waitlistLimiter, sessions, judgeAccess, judgeSessions);
     } catch (err) {
       console.error("[painel] erro não tratado:", err);
       if (!res.headersSent) {
@@ -230,6 +268,8 @@ async function route(
   loginLimiter: RateLimiter,
   waitlistLimiter: RateLimiter,
   sessions: SessionStore,
+  judgeAccess: JudgeAccessConfig | null,
+  judgeSessions: JudgeSessions,
 ): Promise<void> {
   const url = req.url ?? "";
   const path = url.split("?")[0];
@@ -268,7 +308,7 @@ async function route(
   if (req.method === "GET" && url === "/signup") return renderSignupPage(res);
   if (req.method === "POST" && url === "/signup") return handleSignup(req, res, deps.signup);
   if (req.method === "GET" && url === "/login") return send(res, 200, loginPage({}));
-  if (req.method === "POST" && url === "/session") return handleSessionLogin(req, res, deps.users, loginLimiter, sessions);
+  if (req.method === "POST" && url === "/session") return handleSessionLogin(req, res, deps.users, loginLimiter, sessions, judgeAccess, judgeSessions);
   if (req.method === "GET" && url === "/logout") return handleLogout(req, res, sessions);
 
   if (req.method === "GET" && url === "/dashboard") return withSession(req, res, sessions, (userId) => renderDashboard(res, deps, userId));
@@ -620,6 +660,8 @@ async function handleSessionLogin(
   users: UserRepository,
   loginLimiter: RateLimiter,
   sessions: SessionStore,
+  judgeAccess: JudgeAccessConfig | null,
+  judgeSessions: JudgeSessions,
 ): Promise<void> {
   const body = await readFormBody(req);
   const { username, password, totpCode } = body;
@@ -628,6 +670,26 @@ async function handleSessionLogin(
   if (!loginLimiter.attempt(identifier)) {
     return send(res, 429, loginPage({ error: "Muitas tentativas. Tente novamente mais tarde." }));
   }
+
+  /**
+   * Caminho de jurado: UM fator, e por isso SOMENTE LEITURA (ver
+   * judge-access.ts). Vem antes da exigencia de TOTP porque a ausencia do
+   * codigo e justamente o ponto - mas continua DEPOIS do rate limiter, que e
+   * a unica barreira contra forca bruta num caminho sem segundo fator.
+   *
+   * Nao enfraquece o login normal: quem entra por aqui recebe uma sessao
+   * marcada, e nenhuma requisicao que altere estado passa por ela.
+   */
+  if (username && password && isJudgeLogin(judgeAccess, { username, password })) {
+    loginLimiter.reset(identifier);
+    const user = await users.findByUsername(username);
+    if (!user) return send(res, 401, loginPage({ error: "Credenciais inválidas." }));
+    const session = sessions.create(user.userId);
+    judgeSessions.mark(session.token);
+    console.log(`[jurado] sessao de avaliacao aberta (somente leitura) para "${username}"`);
+    return redirect(res, "/dashboard", { "Set-Cookie": buildSessionCookie(session.token, SESSION_COOKIE_TTL_SECONDS) });
+  }
+
   if (!username || !password || !totpCode) {
     return send(res, 400, loginPage({ error: "Usuário, senha e código são obrigatórios." }));
   }
