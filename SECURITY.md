@@ -53,6 +53,23 @@ The boundary, and how each half is enforced:
 
 **Honest limit of these controls:** the structural checks catch the good-faith mistake — someone parking a signer on an adapter because they expect to need it later. They do not stop a deliberately malicious adapter, which can hide from a name-based check. For that, the control is **mandatory human review of every adapter before merge**, plus the requirement that an adapter's tests run offline with no credentials so a reviewer can actually run them. A new runtime dependency introduced by an adapter is new attack surface in the alert path and is reviewed as such.
 
+## Evaluation access for judges (added 2026-10-15, expires 2026-11-14)
+
+A hackathon reviewer cannot reasonably be asked to set up an authenticator app before seeing anything, and an automated agent evaluating the product has the same problem. So there is a **single-factor, read-only** way in — and the trade is scope, not strength.
+
+What the judge session **cannot** do: anything that changes state. The check is one decision point on the HTTP **method** — only `GET` passes — rather than a list of protected routes, because a list protects what was in it the day it was written, while "GET only" also protects routes nobody has written yet. Registering an account, editing thresholds, **changing an alert recipient** and firing a test alert all remain `POST`, and all still require the full login with password **and** TOTP.
+
+That last point is the reason the design is shaped this way. This document and the project's submission both state that changing where an alert goes requires two factors. A single-factor shortcut that could *write* would have made that statement false. A read-only one does not.
+
+Four limits, because "temporary" without a mechanism is permanent:
+
+- **Off by default.** Without `JUDGE_ACCESS_PASSWORD` and `JUDGE_ACCESS_USERNAME` in the environment, the code path does not exist — including in any clone someone runs.
+- **Dies on its own** at `JUDGE_ACCESS_EXPIRES_AT`, a fixed date in the source rather than an environment variable, so the deadline is auditable by anyone reading the repository. Reopening it requires a commit.
+- **Rate limited.** The login limiter (5 attempts / 15 min) still applies, and it is the only barrier on a path with no second factor — which is also why a password under 12 characters is refused outright.
+- **Logged.** Every judge login and every refused write is recorded.
+
+**Honest limit:** this is still a password that grants read access to a dashboard showing a real monitored address and real alert history. It is not a safe pattern for a production account holding customer data, and it is not presented as one. It exists for a demonstration account on a testnet, with an expiry date attached.
+
 ## Known limitations
 
 Detection thresholds are "obscured, not secret" — a patient attacker could empirically probe the limits with test transfers. This is an accepted, documented limitation, not a guarantee that evasion is impossible.
