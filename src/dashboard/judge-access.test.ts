@@ -5,7 +5,7 @@ import {
   JUDGE_ACCESS_EXPIRES_AT,
   JudgeSessions,
   readJudgeAccessConfig,
-  readOnlyNoticeHtml,
+  refusalNoticeHtml,
   judgeMayAccess,
 } from "./judge-access.js";
 
@@ -131,15 +131,15 @@ describe("marcação de sessões de jurado", () => {
     const js = new JudgeSessions();
     js.mark("abc");
 
-    expect(js.isReadOnly("abc")).toBe(true);
+    expect(js.isJudgeSession("abc")).toBe(true);
   });
 
   it("token não marcado é sessão normal - o login completo não é afetado", () => {
     const js = new JudgeSessions();
     js.mark("abc");
 
-    expect(js.isReadOnly("xyz")).toBe(false);
-    expect(js.isReadOnly(undefined)).toBe(false);
+    expect(js.isJudgeSession("xyz")).toBe(false);
+    expect(js.isJudgeSession(undefined)).toBe(false);
   });
 
   it("logout esquece a marca", () => {
@@ -147,7 +147,7 @@ describe("marcação de sessões de jurado", () => {
     js.mark("abc");
     js.forget("abc");
 
-    expect(js.isReadOnly("abc")).toBe(false);
+    expect(js.isJudgeSession("abc")).toBe(false);
   });
 
   it("o conjunto é limitado - não vaza memória num processo que roda sem parar", () => {
@@ -155,20 +155,20 @@ describe("marcação de sessões de jurado", () => {
     for (let i = 0; i < JudgeSessions.MAX_TRACKED + 50; i++) js.mark(`t${i}`);
 
     // o mais antigo saiu; o mais recente continua
-    expect(js.isReadOnly("t0")).toBe(false);
-    expect(js.isReadOnly(`t${JudgeSessions.MAX_TRACKED + 49}`)).toBe(true);
+    expect(js.isJudgeSession("t0")).toBe(false);
+    expect(js.isJudgeSession(`t${JudgeSessions.MAX_TRACKED + 49}`)).toBe(true);
   });
 
   it("perder a marca de um token antigo falha para o lado seguro", () => {
     // Um token esquecido deixa de ser tratado como jurado e cai na checagem
     // normal de sessão - que, para um token antigo, já terá expirado.
     const js = new JudgeSessions();
-    expect(js.isReadOnly("token-que-nunca-foi-marcado")).toBe(false);
+    expect(js.isJudgeSession("token-que-nunca-foi-marcado")).toBe(false);
   });
 });
 
 describe("a recusa explica, em vez de parecer quebrada", () => {
-  const html = () => readOnlyNoticeHtml("Motivo de teste.");
+  const html = () => refusalNoticeHtml("Motivo de teste.");
 
   it("mostra o motivo específico da recusa", () => {
     expect(html()).toContain("Motivo de teste.");
@@ -184,6 +184,6 @@ describe("a recusa explica, em vez de parecer quebrada", () => {
 
   it("escapa o motivo antes de interpolar", () => {
     // O motivo é texto nosso, mas a regra do projeto é escapar sempre.
-    expect(readOnlyNoticeHtml("<script>x</script>")).not.toContain("<script>x");
+    expect(refusalNoticeHtml("<script>x</script>")).not.toContain("<script>x");
   });
 });

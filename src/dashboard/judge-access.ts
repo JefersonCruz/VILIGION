@@ -123,9 +123,9 @@ function constantTimeEquals(a: string, b: string): boolean {
 /**
  * Quais tokens de sessão são de jurado.
  *
- * Vive aqui, e não dentro de `Session`, de propósito: "somente leitura" é
- * uma decisão de AUTORIZAÇÃO do painel, não uma propriedade do ciclo de vida
- * da sessão. Manter separado também deixa `session.ts` livre pra evoluir
+ * Vive aqui, e não dentro de `Session`, de propósito: o que esta sessão pode
+ * fazer é uma decisão de AUTORIZAÇÃO do painel, não uma propriedade do ciclo
+ * de vida da sessão. Manter separado também deixa `session.ts` livre pra evoluir
  * (expiração deslizante, teto absoluto) sem que esta feature atrapalhe.
  */
 export class JudgeSessions {
@@ -149,7 +149,7 @@ export class JudgeSessions {
     }
   }
 
-  isReadOnly(token: string | undefined): boolean {
+  isJudgeSession(token: string | undefined): boolean {
     return token !== undefined && this.tokens.has(token);
   }
 
@@ -227,14 +227,14 @@ export function judgeMayAccess(method: string | undefined, rawUrl: string | unde
   };
 }
 
-/** Página de recusa que EXPLICA, em vez de só devolver 403 e parecer quebrado. */
-export function readOnlyNoticeHtml(reason: string): string {
+/** Página de recusa que EXPLICA qual regra se aplicou, em vez de um 403 seco que pareceria o sistema quebrado. */
+export function refusalNoticeHtml(reason: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VILIGION — sessão somente leitura</title>
+<title>VILIGION — ação não permitida nesta sessão de avaliação</title>
 <style>
   body { margin:0; min-height:100vh; display:grid; place-items:center; background:#131217; color:#e7e5ea;
          font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:24px; }
@@ -246,7 +246,7 @@ export function readOnlyNoticeHtml(reason: string): string {
 </head>
 <body>
   <div class="card">
-    <h1>Esta é uma sessão de avaliação, somente leitura</h1>
+    <h1>Esta ação não é permitida na sessão de avaliação</h1>
     <p>Você entrou com a senha de avaliação, que usa um fator só para não tomar seu tempo com a configuração de um autenticador. <strong>Cadastrar conta monitorada e editar limiares funcionam normalmente.</strong></p>
     <p>${escapeForNotice(reason)}</p>
     <p>Trocar destinatário de alerta e disparar alerta de teste exigem o login completo, com senha e código TOTP — a mesma regra que a submissão descreve.</p>
