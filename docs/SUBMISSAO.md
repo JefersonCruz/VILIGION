@@ -4,6 +4,8 @@
 > **Para quê:** colar nos campos do formulário. Os textos em inglês abaixo são **rascunho estrutural** — reescreva na sua voz antes de enviar. Jurado lê esses campos como as palavras do time, e um texto que soa gerado conta contra em "Founder Communication".
 > **Regra:** toda frase aqui é verificável no repositório ou no produto no ar. Se você mudar alguma, mantenha isso verdadeiro.
 
+> **Ponto exato do que foi submetido:** tag `submissao-colosseum-2026-10-13`, commit `54c586d` (2026-10-13 01:34Z) — o ultimo dentro da janela, que fechou as 06:59Z. O jurado confere com `git checkout submissao-colosseum-2026-10-13`. O unico commit posterior na master e o acesso de avaliacao (`e6cf513`), que nao acrescenta capacidade de produto e esta declarado no topo do README.
+
 ## Estado verificado em 2026-10-13 00:20Z
 
 | Item | Estado |
