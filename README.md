@@ -4,6 +4,25 @@
 
 Built for the **Crypto World's Fair** hackathon (Colosseum), **Tempo** track.
 
+> ### Submission snapshot — what the judges are evaluating
+>
+> The hackathon submission deadline was **2026-10-13 06:59 UTC**. Everything the submission claims refers to the tree tagged **[`submissao-colosseum-2026-10-13`](https://github.com/JefersonCruz/VILIGION/releases/tag/submissao-colosseum-2026-10-13)** (commit [`54c586d`](https://github.com/JefersonCruz/VILIGION/commit/54c586d), 2026-10-13 01:34 UTC — the last commit inside the window).
+>
+> ```bash
+> git checkout submissao-colosseum-2026-10-13   # exactly what was submitted
+> npm ci && npm test                            # 382 tests, 40 files
+> ```
+>
+> **One commit on `master` is newer than that deadline, and it is not part of the submission:**
+>
+> | Commit | What it is |
+> |---|---|
+> | [`e6cf513`](https://github.com/JefersonCruz/VILIGION/commit/e6cf513) (2026-10-15) | Evaluation access for judges — a single-factor login so a reviewer, or an agent acting for one, can look at the product without setting up an authenticator app. See [`docs/JUDGE-ACCESS.md`](./docs/JUDGE-ACCESS.md). |
+>
+> That change adds **no product capability**: it cannot change an alert destination, cannot fire an alert, and expires on 2026-11-14. It was added after the platform's own submission review recommended reducing evaluation friction. Judging the tag rather than `master` costs nothing — the product is identical in both.
+>
+> Anything committed after that is ordinary post-hackathon work and is equally outside the submission.
+
 ## The problem
 
 Business owners who receive/hold stablecoin in on-chain treasuries on Tempo have no way to know, in real time, when something falls outside the norm — a sudden balance drop, a transfer blocked by a receive policy — unless they're watching a dashboard all day. Existing monitoring tools (Hexagate, Elliptic, TRM Labs, Blockaid) are built for institutional security teams, not for an SMB owner without one.
