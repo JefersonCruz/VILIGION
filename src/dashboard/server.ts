@@ -22,7 +22,7 @@ import {
   JUDGE_ACCESS_EXPIRES_AT,
   JudgeSessions,
   readJudgeAccessConfig,
-  readOnlyNoticeHtml,
+  refusalNoticeHtml,
   judgeMayAccess,
 } from "./judge-access.js";
 import { asRequestListener } from "../async-request-handler.js";
@@ -213,7 +213,7 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
   const judgeAccess = readJudgeAccessConfig(process.env);
   const judgeSessions = new JudgeSessions();
   if (judgeAccess) {
-    console.log(`[jurado] acesso de avaliacao HABILITADO para "${judgeAccess.username}" - somente leitura, expira em ${JUDGE_ACCESS_EXPIRES_AT.toISOString()}`);
+    console.log(`[jurado] acesso de avaliacao HABILITADO para "${judgeAccess.username}" - le tudo e configura conta/limiares; NAO troca destinatario nem dispara alerta. Expira em ${JUDGE_ACCESS_EXPIRES_AT.toISOString()}`);
   }
   const waitlistLimiter = new RateLimiter(5, 60 * 60_000); // 5 inscrições / hora por IP
   const sessions = new SessionStore();
@@ -229,14 +229,14 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
        * pra filtrar (`railway logs | grep "\[jurado\]"`).
        */
       const sessionToken = parseCookies(req.headers.cookie)["viligion_session"];
-      if (judgeSessions.isReadOnly(sessionToken)) {
+      if (judgeSessions.isJudgeSession(sessionToken)) {
         const decisao = judgeMayAccess(req.method, req.url);
         console.log(
           `[jurado] ${decisao.allowed ? "ok     " : "NEGADO "} ${req.method ?? "?"} ${(req.url ?? "?").split("?")[0]}`,
         );
         if (!decisao.allowed) {
           res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(readOnlyNoticeHtml(decisao.reason ?? "Ação não permitida nesta sessão de avaliação."));
+          res.end(refusalNoticeHtml(decisao.reason ?? "Ação não permitida nesta sessão de avaliação."));
           return;
         }
       }
@@ -672,8 +672,8 @@ async function handleSessionLogin(
   }
 
   /**
-   * Caminho de jurado: UM fator, e por isso SOMENTE LEITURA (ver
-   * judge-access.ts). Vem antes da exigencia de TOTP porque a ausencia do
+   * Caminho de jurado: UM fator, e por isso com escrita LIMITADA a uma lista
+   * explicita (ver judge-access.ts#judgeMayAccess). Vem antes da exigencia de TOTP porque a ausencia do
    * codigo e justamente o ponto - mas continua DEPOIS do rate limiter, que e
    * a unica barreira contra forca bruta num caminho sem segundo fator.
    *
@@ -686,7 +686,7 @@ async function handleSessionLogin(
     if (!user) return send(res, 401, loginPage({ error: "Credenciais inválidas." }));
     const session = sessions.create(user.userId);
     judgeSessions.mark(session.token);
-    console.log(`[jurado] sessao de avaliacao aberta (somente leitura) para "${username}"`);
+    console.log(`[jurado] sessao de avaliacao aberta para "${username}" - escrita limitada`);
     return redirect(res, "/dashboard", { "Set-Cookie": buildSessionCookie(session.token, SESSION_COOKIE_TTL_SECONDS) });
   }
 
