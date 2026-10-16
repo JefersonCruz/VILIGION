@@ -55,6 +55,22 @@ That gap is small for an EVM chain and genuinely easy to close — which is part
 
 ---
 
+## What the chains say about their own finality — measured 2026-10-16
+
+`scripts/verify-chain.ts` now reads each chain's own `safe` and `finalized` block tags and compares them with the depth we declare. The result is the same on all three, and it is not flattering:
+
+| Chain | `safe` is behind `latest` by | `finalized` by | What our declared depth of 3 buys |
+|---|---|---|---|
+| Base | ~7–21 blocks (14–42 s) | ~471 blocks (~16 min) | **~6 s** |
+| Arbitrum One | ~2 400–2 600 blocks (~11–12 min) | ~3 900 blocks (~17 min) | **~0.75 s** |
+| Ethereum L1 | ~45–50 blocks (9–10 min) | ~77 blocks (~15 min) | **~36 s** |
+
+**A depth of 3 blocks is shallower than what every one of these chains itself considers still-reversible.** On Arbitrum it is roughly three orders of magnitude shallower. So the honest reading is not "3 is a bit low" — it is that *counting blocks is the wrong instrument here*, and the number was never measuring what it appeared to measure.
+
+**Why simply raising it is not the fix.** Waiting for `safe` would delay a critical alert by ~11 minutes on Arbitrum and ~10 on Ethereum. The product exists to tell an owner their treasury is being drained; eleven minutes of silence is a real cost, paid in the exact scenario the product is for. Depth trades a false alert against a late one, and for this product the late one is worse.
+
+That points at the gap already recorded in [`ARCHITECTURE.md`](../ARCHITECTURE.md) → "Still open": **reorg rewind**. Alerting early and retracting an event that later disappears is a better shape for this product than alerting slowly. Until that exists, the depth stays as it is and `confirmationJustified` stays `false` on every chain — now for a measured reason rather than an unexamined one.
+
 ## Confirmation depth
 
 Every network currently runs at **3 confirmations**, and **none of those values has been justified for the network it applies to.** That gap is now declared in code (`confirmationJustified: false` in `chain-registry.ts`) and warned about at boot, rather than sitting invisible in four hardcoded call sites as it did before.

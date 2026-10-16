@@ -216,6 +216,50 @@ async function main(): Promise<void> {
     registra("paginacao", false, "capacidade", `paginação falhou: ${descreve(err)}`);
   }
 
+  // --- 6. Marcos de finalidade da propria rede ---
+  //
+  // O dado que falta pra decidir `minConfirmations` com base em algo. As
+  // chains EVM expoem `safe` e `finalized`; comparar com `latest` mostra
+  // quanto a profundidade declarada realmente protege - em vez de herdar um
+  // numero e torcer.
+  console.log("\n=== 6. Marcos de finalidade (latest / safe / finalized) ===");
+  try {
+    const [latest, safe, finalized] = await Promise.all([
+      client.getBlock({ blockTag: "latest" }),
+      client.getBlock({ blockTag: "safe" }).catch(() => null),
+      client.getBlock({ blockTag: "finalized" }).catch(() => null),
+    ]);
+    const relata = (nome: string, b: { number: bigint | null; timestamp: bigint } | null): void => {
+      if (!b || b.number === null) {
+        console.log(`   ${nome}: nao exposto por este RPC`);
+        return;
+      }
+      const blocos = latest.number === null ? 0n : latest.number - b.number;
+      const seg = latest.timestamp - b.timestamp;
+      console.log(`   ${nome}: ${blocos} blocos atras (${seg}s)`);
+    };
+    relata("safe     ", safe);
+    relata("finalized", finalized);
+
+    const d = BigInt(integration.defaultMinConfirmations);
+    if (safe?.number != null && latest.number != null) {
+      const ateSafe = latest.number - safe.number;
+      const raso = ateSafe > d;
+      registra(
+        "finalidade",
+        !raso,
+        "capacidade",
+        raso
+          ? `a profundidade declarada (${d}) e MAIS RASA que o marco 'safe' da propria rede (${ateSafe} blocos) - ela nao protege contra o que a rede considera reversivel`
+          : `a profundidade declarada (${d}) alcanca o marco 'safe' da rede (${ateSafe} blocos)`,
+      );
+    } else {
+      console.log("   (sem 'safe' exposto, nao da pra comparar a profundidade declarada)");
+    }
+  } catch (err) {
+    console.log(`   nao foi possivel ler os marcos: ${descreve(err)}`);
+  }
+
   resumo(integration.supportStatus);
 }
 
