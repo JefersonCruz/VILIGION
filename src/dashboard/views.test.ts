@@ -96,3 +96,39 @@ describe("aviso de instalação do PWA no login", () => {
     expect(html.indexOf("Credenciais inválidas.")).toBeLessThan(html.indexOf("Instale no celular"));
   });
 });
+
+describe("campo do autenticador no login", () => {
+  it("NAO e required - senao o navegador trava o login de avaliacao antes de sair da tela", () => {
+    /**
+     * Bug real, pego antes de entregar aos jurados: o campo tinha `required`,
+     * entao quem recebeu a senha de avaliacao (que nao usa autenticador)
+     * digitava usuario e senha, clicava em Entrar e o navegador recusava o
+     * envio. A logica do servidor estava certa - checa o caminho de jurado
+     * antes de exigir o codigo - mas a requisicao nunca chegava la.
+     */
+    const campo = /<input[^>]*name="totpCode"[^>]*>/.exec(loginPage({}))?.[0] ?? "";
+
+    expect(campo).not.toContain("required");
+  });
+
+  it("mantem o pattern de 6 digitos - vazio passa, meio preenchido nao", () => {
+    // `pattern` so e avaliado quando ha valor, entao continua pegando o erro
+    // de digitacao de quem de fato usa o autenticador.
+    const campo = /<input[^>]*name="totpCode"[^>]*>/.exec(loginPage({}))?.[0] ?? "";
+
+    expect(campo).toContain('pattern="[0-9]{6}"');
+  });
+
+  it("diz ao jurado que pode deixar em branco", () => {
+    expect(loginPage({})).toContain("Deixe em branco se você recebeu uma senha de avaliação");
+  });
+
+  it("usuario e senha continuam obrigatorios", () => {
+    const html = loginPage({});
+    const usuario = /<input[^>]*name="username"[^>]*>/.exec(html)?.[0] ?? "";
+    const senha = /<input[^>]*name="password"[^>]*>/.exec(html)?.[0] ?? "";
+
+    expect(usuario).toContain("required");
+    expect(senha).toContain("required");
+  });
+});
