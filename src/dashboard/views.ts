@@ -415,6 +415,9 @@ const DISPLAY_FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap">`;
 
 const NAV_LINKS: Array<[string, string]> = [
+  // Primeiro item de proposito: um jurado que acabou de entrar precisa de um
+  // ponto de partida, nao de um painel parado que ele nao sabe ler.
+  ["/guia", "Como avaliar"],
   ["/dashboard", "Painel"],
   ["/accounts", "Contas monitoradas"],
   ["/thresholds", "Limiares"],
@@ -1353,6 +1356,14 @@ export function dashboardPage(params: {
   const balanceLabel = balanceUnits === null ? "—" : `US$ ${formatUsdDisplay(balanceUnits)}`;
 
   const body = `
+<!-- Faixa pro avaliador que caiu aqui direto: um painel de monitoramento
+     parado nao se explica sozinho, e o /guia leva ate um alerta tocando. -->
+<div class="card" style="margin-top:16px; border-color:color-mix(in srgb, var(--accent) 35%, transparent); background:color-mix(in srgb, var(--accent) 5%, var(--surface));">
+  <div class="row" style="justify-content:space-between; gap:12px;">
+    <span class="muted">Avaliando este produto? Há um caminho de 3 minutos que termina com um alerta crítico chegando até você.</span>
+    <a class="link" href="/guia" style="white-space:nowrap;">Como avaliar →</a>
+  </div>
+</div>
 ${watchbar(params.accountsCount, params.monitors ?? null)}
 <div class="grid-2">
   <div class="card">
@@ -1680,6 +1691,120 @@ export function recipientsPage(params: {
  * marketing: o usuário vê, com os próprios olhos, que nenhuma mensagem contém
  * saldo, valor ou endereço.
  */
+/**
+ * Guia de avaliação — a primeira tela que um jurado deveria ver.
+ *
+ * Existe porque o problema de um produto de monitoramento é estrutural: o
+ * valor dele é a AUSÊNCIA de um evento ruim. Quem entra no painel vê números
+ * parados e não tem como saber se aquilo funciona. Um dashboard de DeFi
+ * mostra um swap acontecendo; aqui não há o que acontecer sob demanda.
+ *
+ * Então esta página faz uma coisa só: leva a pessoa do login até um alerta
+ * tocando de verdade, em quatro passos, sem precisar de telefone nem de
+ * conhecimento prévio do produto.
+ *
+ * O passo 2 vem antes do 3 de propósito: ver o conteúdo do alerta ANTES de
+ * disparar um é o que torna o disparo compreensível. E o passo 4 é o que a
+ * maioria dos produtos de alerta não tem — registrar o que o dono concluiu,
+ * não só que ele ouviu.
+ */
+export function guidePage(params: { hasPush: boolean; hasPhone: boolean; canTest: boolean }): string {
+  function passo(n: string, titulo: string, corpo: string, acao?: string): string {
+    return `
+<div class="card">
+  <div class="row" style="align-items:baseline; gap:12px;">
+    <span class="badge" style="font-family:var(--font-display); color:var(--accent);">${n}</span>
+    <h2 style="margin:0;">${escapeHtml(titulo)}</h2>
+  </div>
+  <div class="muted" style="margin-top:10px; line-height:1.65;">${corpo}</div>
+  ${acao ? `<div style="margin-top:14px;">${acao}</div>` : ""}
+</div>`;
+  }
+
+  const prontoParaTestar = params.hasPush || params.hasPhone;
+
+  const body = `
+<p class="muted" style="max-width:72ch; margin:0 0 4px;">
+  Monitorar é difícil de demonstrar: o valor do produto é um evento ruim <strong>não</strong> passar despercebido,
+  e num painel parado isso não aparece. Então este guia faz uma coisa só — leva você de onde está até
+  <strong>um alerta crítico tocando de verdade</strong>, em quatro passos. Leva cerca de três minutos e
+  <strong>não exige telefone</strong>.
+</p>
+
+${passo(
+  "01",
+  "Entenda o que está sendo vigiado",
+  `A conta monitorada é uma carteira de teste na rede <strong>Moderato</strong>, a testnet da Tempo — sem fundos reais.
+   O motor lê o saldo TIP-20 e os eventos de bloqueio por política de recebimento (TIP-403) direto por RPC.
+   No painel, a faixa do topo mostra o estado medido: quando foi o último ciclo completo, não apenas "ligado".`,
+  `<a class="link" href="/accounts">Ver as contas e a rede</a> · <a class="link" href="/dashboard">Ver a faixa de monitoramento</a>`,
+)}
+
+${passo(
+  "02",
+  "Veja o que o alerta diz — sem disparar nada",
+  `Esta é a decisão de produto mais importante aqui, e dá para conferi-la antes de qualquer teste:
+   <strong>o conteúdo do alerta nunca revela saldo, valor ou endereço</strong>, em canal nenhum.
+   A página abaixo mostra o texto exato de cada canal, gerado pelas mesmas funções que a entrega real usa —
+   não é maquete. A regra é garantida por teste automatizado, não por revisão manual.`,
+  `<a class="link" href="/alerts/preview">Ver o conteúdo de cada canal</a>`,
+)}
+
+${passo(
+  "03",
+  "Faça um alerta chegar até você",
+  params.hasPush
+    ? `Este navegador já está registrado como destinatário. Dispare o teste e observe:
+       a notificação chega em tela cheia, <strong>sem nenhum número de telefone envolvido</strong> —
+       não existe número para vincular a esta conta, nem registro de operadora.`
+    : `Registre <strong>este navegador</strong> como destinatário em um clique. Não pede telefone, não pede
+       instalação, e você pode remover depois. Em seguida dispare o alerta de teste e veja a notificação chegar.`,
+  `<a class="link" href="/recipients">${params.hasPush ? "Ir para destinatários e disparar o teste" : "Registrar este navegador e testar"}</a>`,
+)}
+
+${passo(
+  "04",
+  "Responda o alerta — é aqui que o produto se separa dos outros",
+  `Confirmar que você <em>ouviu</em> é pouco. No histórico, cada alerta pede o que você <em>concluiu</em>:
+   <strong>"Fui eu"</strong> ou <strong>"Não reconheço"</strong>.
+   A segunda resposta é o sinal que este produto existe para capturar — é o que separa uma saída esperada
+   de uma movimentação não autorizada, e é o dado que uma notificação sozinha nunca produz.`,
+  `<a class="link" href="/alerts">Ver o histórico e responder</a>`,
+)}
+
+<div class="card">
+  <h2>Onde mexer na configuração</h2>
+  <p class="muted" style="margin:0 0 10px;">
+    Em <a class="link" href="/thresholds">Quando avisar</a> você define o que conta como crítico: a queda de saldo
+    que dispara ligação, o valor de transferência bloqueada, e a janela de tempo. Há perfis prontos e uma prévia
+    que usa o saldo real da conta — dá para ver o efeito antes de salvar.
+  </p>
+  <p class="muted" style="margin:0;">
+    Em <a class="link" href="/recipients">Destinatários</a> ficam os canais. Telefone recebe ligação, dispositivo
+    recebe notificação sem telefone, e-mail recebe severidade normal. Todos são armazenados criptografados,
+    separados do endereço monitorado.
+  </p>
+</div>
+
+<div class="card" style="border-color:color-mix(in srgb, var(--warning) 35%, transparent);">
+  <h2>O que esta demonstração <em>não</em> faz</h2>
+  <p class="muted" style="margin:0 0 8px;">Dito aqui para você não procurar:</p>
+  <ul class="muted" style="margin:0; padding-left:20px; line-height:1.8;">
+    <li><strong>E-mail não está configurado</strong> neste ambiente — alerta de severidade normal só é registrado em log.</li>
+    <li><strong>A chave de criptografia não vem de um KMS gerenciado</strong> ainda. É o item que bloqueia qualquer dado de cliente real, e está rastreado como issue aberta.</li>
+    <li><strong>Não provisionamos número de telefone dedicado.</strong> Recomendamos usar um, mas o produto não fornece.</li>
+    <li><strong>Detecção por padrão estatístico de transferências não existe.</strong> É roadmap; o que roda hoje é queda de saldo em janela e bloqueio por política.</li>
+  </ul>
+</div>
+
+<p class="muted" style="margin-top:18px;">
+  Código aberto sob MIT em <a class="link" href="https://github.com/JefersonCruz/VILIGION" target="_blank" rel="noopener">github.com/JefersonCruz/VILIGION</a>.
+  ${prontoParaTestar ? "" : `<br><strong style="color:var(--text);">Comece pelo passo 3</strong> — sem destinatário cadastrado, nenhum alerta sai.`}
+</p>`;
+
+  return layout({ title: "Como avaliar este produto", body, authed: true, active: "/guia" });
+}
+
 export function alertPreviewPage(params: {
   voiceMessage: string;
   pushTitle: string;

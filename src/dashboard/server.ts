@@ -43,6 +43,7 @@ import { getContributors } from "./contributors.js";
 import {
   accountsPage,
   alertPreviewPage,
+  guidePage,
   alertsHistoryPage,
   dashboardPage,
   landingPage,
@@ -327,6 +328,7 @@ async function route(
     const recipientId = recipientDeleteMatch[1] as string;
     return withSession(req, res, sessions, (userId) => handleDeleteRecipient(res, deps, userId, recipientId));
   }
+  if (req.method === "GET" && url === "/guia") return withSession(req, res, sessions, (userId) => renderGuide(res, deps, userId));
   if (req.method === "GET" && url === "/alerts/preview") return withSession(req, res, sessions, (userId) => renderAlertPreview(res, deps, userId));
   if (req.method === "GET" && url === "/alerts") return withSession(req, res, sessions, (userId) => renderAlerts(res, deps, userId));
   if (req.method === "POST" && path?.startsWith("/alerts/") && path.endsWith("/ack")) {
@@ -993,6 +995,20 @@ async function renderAlertPreview(res: ServerResponse, deps: DashboardServerDeps
       hasPhone: recipients.some((r) => r.kind === "phone"),
       hasPush: recipients.some((r) => r.kind === "push"),
       hasEmail: recipients.some((r) => r.kind === "email"),
+      canTest: Boolean(deps.testAlert),
+    }),
+  );
+}
+
+/** Guia de avaliacao - le os destinatarios so pra adaptar o passo 3 ao estado real da conta. */
+async function renderGuide(res: ServerResponse, deps: DashboardServerDeps, userId: string): Promise<void> {
+  const recipients = await deps.recipients.listForUser(userId);
+  send(
+    res,
+    200,
+    guidePage({
+      hasPush: recipients.some((r) => r.kind === "push"),
+      hasPhone: recipients.some((r) => r.kind === "phone"),
       canTest: Boolean(deps.testAlert),
     }),
   );
