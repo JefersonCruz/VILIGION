@@ -13,13 +13,37 @@ Last updated: 2026-10-12. Status definitions are in [`ADAPTER_SPEC.md` §7](./AD
 | Network | Adapter | Implemented | Verified against real network | Environment | Known limitations | Maintainer | Status |
 |---|---|---|---|---|---|---|---|
 | **Tempo** | `TempoAdapter` (extends `EvmAdapter`) + `TempoBlockedTransferExtension` | TIP-20 balance via `balanceOf`; `TransferBlocked` (TIP-403) decoding; ClaimReceiptV1 witness decoding via `ox/tempo`; fee classification against the FeeManager precompile; log pagination; confirmation depth | Yes — `scripts/verify-testnet.ts` against Moderato testnet: RPC reachable, chain ID, `RECEIVE_POLICY_GUARD_ADDRESS` cross-checked against `Addresses.receivePolicyGuard` from `viem/tempo`, `TransferBlocked` decoding exercised | Moderato testnet (chain ID 42431). Mainnet chain ID 4217 is configured but **not** exercised | No reorg-rewind handling (forward-only cursor); events older than `maxHistoryWindow` are dropped after a long outage, by design; `eth_getBalance` is meaningless here, so `tokenAddress` is mandatory | @JefersonCruz | **validating** |
-| **Base** | `EvmAdapter` (generic) | ERC-20 and native balance; log pagination; confirmation depth | **No** | — | Never exercised against Base. Default public RPC is a development convenience, not a production endpoint. Fee classification is a no-op, which is correct for a chain with a real native gas token but untested here | *none declared* | **experimental** |
-| **Arbitrum One** | `EvmAdapter` (generic) | Same as Base | **No** | — | Same as Base. Arbitrum's finality model differs from L1's; the generic confirmation depth of 3 has not been justified for it | *none declared* | **experimental** |
-| **Ethereum L1** | `EvmAdapter` (generic) | Same as Base | **No** | — | Same as Base. A confirmation depth of 3 is likely too shallow for L1 treasury-grade monitoring and has not been reviewed | *none declared* | **experimental** |
+| **Base** | `EvmAdapter` (generic) | ERC-20 and native balance; log pagination; confirmation depth | **Monitoring path yes** (2026-10-16, see below); `eth_getLogs` **no** | Base mainnet via public RPC | Never exercised against Base. Default public RPC is a development convenience, not a production endpoint. Fee classification is a no-op, which is correct for a chain with a real native gas token but untested here | *none declared* | **experimental** |
+| **Arbitrum One** | `EvmAdapter` (generic) | Same as Base | **Yes** (2026-10-16, see below) | Arbitrum One mainnet via public RPC | Same as Base. Arbitrum's finality model differs from L1's; the generic confirmation depth of 3 has not been justified for it | *none declared* | **experimental** |
+| **Ethereum L1** | `EvmAdapter` (generic) | Same as Base | **Monitoring path yes** (2026-10-16, see below); `eth_getLogs` **no** | Ethereum mainnet via public RPC | Same as Base. A confirmation depth of 3 is likely too shallow for L1 treasury-grade monitoring and has not been reviewed | *none declared* | **experimental** |
 
 No network is `stable`. Tempo is the only one with any real-network evidence.
 
 ---
+
+## First real-network run — 2026-10-16
+
+Until this date the three EVM chains had **never been exercised against their real networks**. `scripts/verify-chain.ts` now does that for any registered EVM chain, and the first run produced the table below. Reproduce with `npx tsx scripts/verify-chain.ts --chain base`.
+
+| Check | Base | Arbitrum One | Ethereum L1 |
+|---|---|---|---|
+| RPC reachable | pass | pass | pass |
+| chain ID matches the registry | pass (8453) | pass (42161) | pass (1) |
+| Balance read through the registry's adapter | pass | pass | pass |
+| Confirmed cursor respects declared depth | pass | pass | pass |
+| `eth_getLogs` pagination | **fail** | pass (51k blocks) | **fail** |
+
+**The monitoring path works on all three.** That is the part that matters for what VILIGION actually does on a generic EVM chain: `Monitor.tick` reads a balance and a cursor, and `getConfirmedLogs` only runs when a chain has a protocol extension — which only Tempo has.
+
+**What the log failures mean, per chain:**
+
+- **Base** (`https://mainnet.base.org`): refuses `eth_getLogs` for anonymous callers with `request limit reached`. **Not a window-size problem** — probed at 10, 1 000, 10 000 and 50 000 blocks and all four failed. The declared capability `historicalEvents: true` is therefore **not true with this RPC**, and any future protocol extension on Base will need a dedicated provider.
+- **Ethereum L1** (`https://ethereum-rpc.publicnode.com`): `Invalid parameters` on a 51 000-block range — the classic provider range cap. A smaller window would likely work; the exact limit was not measured.
+- **Arbitrum One** (`https://arb1.arbitrum.io/rpc`): handled 51 000 blocks without complaint.
+
+This is the concrete form of the warning already in this file: the default public RPCs are a development convenience, not production endpoints.
+
+**Status unchanged — all three stay `experimental`.** Per [`ADAPTER_SPEC.md` §7](./ADAPTER_SPEC.md#7-what-a-network-needs-before-it-is-called-stable), `validating` also requires a justified confirmation depth for that network and a declared maintainer. Neither exists yet. A successful run is an instant, not a history.
 
 ## What "experimental" means here, concretely
 
@@ -30,6 +54,22 @@ What is missing is specific to each network: nobody has run VILIGION against Bas
 That gap is small for an EVM chain and genuinely easy to close — which is part of why it is a good first contribution. It is also exactly the gap that, left undeclared, turns into "VILIGION supports 4 chains" in a pitch deck and an unprotected treasury in reality.
 
 ---
+
+## What the chains say about their own finality — measured 2026-10-16
+
+`scripts/verify-chain.ts` now reads each chain's own `safe` and `finalized` block tags and compares them with the depth we declare. The result is the same on all three, and it is not flattering:
+
+| Chain | `safe` is behind `latest` by | `finalized` by | What our declared depth of 3 buys |
+|---|---|---|---|
+| Base | ~7–21 blocks (14–42 s) | ~471 blocks (~16 min) | **~6 s** |
+| Arbitrum One | ~2 400–2 600 blocks (~11–12 min) | ~3 900 blocks (~17 min) | **~0.75 s** |
+| Ethereum L1 | ~45–50 blocks (9–10 min) | ~77 blocks (~15 min) | **~36 s** |
+
+**A depth of 3 blocks is shallower than what every one of these chains itself considers still-reversible.** On Arbitrum it is roughly three orders of magnitude shallower. So the honest reading is not "3 is a bit low" — it is that *counting blocks is the wrong instrument here*, and the number was never measuring what it appeared to measure.
+
+**Why simply raising it is not the fix.** Waiting for `safe` would delay a critical alert by ~11 minutes on Arbitrum and ~10 on Ethereum. The product exists to tell an owner their treasury is being drained; eleven minutes of silence is a real cost, paid in the exact scenario the product is for. Depth trades a false alert against a late one, and for this product the late one is worse.
+
+That points at the gap already recorded in [`ARCHITECTURE.md`](../ARCHITECTURE.md) → "Still open": **reorg rewind**. Alerting early and retracting an event that later disappears is a better shape for this product than alerting slowly. Until that exists, the depth stays as it is and `confirmationJustified` stays `false` on every chain — now for a measured reason rather than an unexamined one.
 
 ## Confirmation depth
 
