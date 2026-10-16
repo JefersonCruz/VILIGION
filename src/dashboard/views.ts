@@ -514,6 +514,7 @@ ${DISPLAY_FONT_LINK}
   .auth-title { font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 4px; }
   .auth-subtitle { color:var(--text-muted); font-size:14px; margin:0 0 20px; line-height:1.55; }
   .auth-footer { text-align:center; margin-top:18px; font-size:13.5px; color:var(--text-muted); }
+  .field-hint { margin:-6px 0 14px; font-size:12.5px; color:var(--text-muted); }
   .install-hint { margin-top:22px; padding:14px 16px; border:1px solid var(--border, rgba(255,255,255,.12)); border-radius:10px; font-size:13px; line-height:1.55; color:var(--text-muted); }
   .install-hint strong { color:var(--text, #fff); font-weight:600; }
   .install-hint p { margin:0 0 8px; }
@@ -1215,7 +1216,8 @@ export function loginPage(params: { error?: string }): string {
       <input type="password" id="password" name="password" required>
 
       <label for="totpCode">Código do autenticador</label>
-      <input type="text" id="totpCode" name="totpCode" inputmode="numeric" pattern="[0-9]{6}" placeholder="000000" required>
+      <input type="text" id="totpCode" name="totpCode" inputmode="numeric" pattern="[0-9]{6}" placeholder="000000">
+      <p class="field-hint">Deixe em branco se você recebeu uma senha de avaliação.</p>
 
       <button type="submit">Entrar</button>
     </form>
