@@ -77,6 +77,26 @@ Five limits, because "temporary" without a mechanism is permanent:
 
 **Honest limits.** This is still a password granting read access to a dashboard showing a real monitored address and real alert history — not a pattern to copy for a production account with customer data, and not presented as one. It exists for a demonstration account on a testnet, with an expiry date attached. And because the session may edit thresholds and accounts, one judge can change what a later judge sees; on a demo account that is an acceptable trade for being able to evaluate the product at all.
 
+## Incident — upstream platform breach, 2026-10-22
+
+On 2026-10-22 our hosting provider (Railway) notified customers that an unauthorized third party may have accessed customer environment variables, in some cases obtaining decrypted contents.
+
+**This is the exact scenario the row above describes.** This document already said, about the `LocalDevKeyProvider` gap tracked in [issue #9](https://github.com/JefersonCruz/VILIGION/issues/9):
+
+> *"A leak of the database alone still yields ciphertext, but an attacker who also reads the app's environment gets the key."*
+
+The master encryption key lives in an environment variable in the same deployment as the application. So does the database URL. An attacker holding both can decrypt alert recipients. We are treating every secret that was in that environment as compromised.
+
+**Scope of real data.** One monitored account (ours, on a testnet, no real funds), its recipients (ours), and **four waitlist sign-ups — three of them from people who are not us**. No paying customers, no third-party treasury. The incident is serious as a precedent, not for the size of the loss.
+
+**What we checked in our own logs:** no deployment we did not make, no dashboard access we cannot account for, and no sign of abuse. That is not exoneration — the breach happened at the platform layer, reading environment variables directly, which leaves no trace in our application.
+
+**What this changes.** Issue #9 moves from "required before any real customer data" to blocking. The argument that a key may sit in the application's environment was not refuted in review; it was refuted in production, by the provider.
+
+**Key rotation is now possible without data loss.** Encryption here is envelope-based: each record carries its own data key, wrapped by the master key. `scripts/rotate-encryption-key.ts` unwraps each data key with the old master key and rewraps it with the new one, touching only the wrapped key — the ciphertext is never decrypted, so no plaintext passes through rotation. Before this script existed, changing the master key meant losing every encrypted record, which in practice meant never changing it. A rotation path that destroys data is not a rotation path.
+
+**What rotation does not do.** It closes the door going forward. If the old key left the building alongside a database dump, whoever holds both can still read what they already took. Rotation is not retroactive, and we are not claiming it is.
+
 ## Known limitations
 
 Detection thresholds are "obscured, not secret" — a patient attacker could empirically probe the limits with test transfers. This is an accepted, documented limitation, not a guarantee that evasion is impossible.
