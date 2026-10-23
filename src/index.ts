@@ -375,7 +375,7 @@ async function mainDemo() {
     });
     const baseMonitor = new Monitor(
       baseAdapter,
-      { address: process.env.DEMO_SECOND_CHAIN_ADDRESS as Address, thresholds: liveThresholds, pollIntervalMs: 15_000 },
+      { address: process.env.DEMO_SECOND_CHAIN_ADDRESS, thresholds: liveThresholds, pollIntervalMs: 15_000 },
       dispatchAlert,
       undefined,
       buildUnhealthyNotifierIfConfigured(`demo-base:${process.env.DEMO_SECOND_CHAIN_ADDRESS}`),
@@ -611,7 +611,7 @@ async function mainWithDatabase(databaseUrl: string) {
         minConfirmations: getChainIntegration(primary.chainKey).defaultMinConfirmations,
         tokenAddress: primary.tokenAddress as Address,
       });
-      const balance = await adapter.getBalance(primary.watchedAddress as Address);
+      const balance = await adapter.getBalance(primary.watchedAddress);
       const recent = await alertLog.recentForUser(userId);
       return {
         address: primary.watchedAddress,
@@ -753,7 +753,7 @@ async function startMonitorForAccount(
 
   const monitor = new Monitor(
     adapter,
-    { address: account.watchedAddress as Address, thresholds, pollIntervalMs: 15_000 },
+    { address: account.watchedAddress, thresholds, pollIntervalMs: 15_000 },
     dispatchAlert,
     extension,
     onUnhealthy,

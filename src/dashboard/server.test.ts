@@ -19,7 +19,11 @@ describe("dashboard server - registro dinâmico de monitor", () => {
   const PASSWORD = "senha-forte-123";
   const USER_ID = "user-1";
   const totpSecret = generateBase32Secret();
-  /** Enderecos com formato VALIDO: /accounts passou a validar via viem#isAddress. */
+  /**
+   * Enderecos com formato VALIDO. Desde 23/10/2026 /accounts nao chama
+   * viem#isAddress direto: pergunta pro validador da rede escolhida (ver
+   * chain-registry). Pra rede EVM o rigor e o mesmo de antes.
+   */
   const TOKEN_ADDRESS = "0x20c0000000000000000000000000000000000000";
   const WATCHED_ADDRESS = "0x4f3a9c2b7e81d5460a1f8c3b2d9e7f6a0b1c2d34";
 
@@ -192,6 +196,91 @@ describe("dashboard server - registro dinâmico de monitor", () => {
     });
 
     expect(await res.text()).toContain("Endereço do token inválido");
+    expect(monitorControl.started).toHaveLength(0);
+  });
+
+  it("grava a forma normalizada do endereço, não a digitada", async () => {
+    /*
+     * Duas grafias do mesmo endereco EVM (maiuscula com checksum valido e
+     * minuscula) criavam DUAS contas monitoradas, cada uma com seu monitor e
+     * suas ligacoes - o mesmo movimento de tesouraria gerava alerta dobrado.
+     * Guardar a forma normalizada fecha isso.
+     */
+    const cookie = await login();
+    const comChecksum = "0x000000000000000000000000000000000000dEaD";
+
+    const res = await fetch(`${baseUrl}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+      body: new URLSearchParams({ chainKey: "tempo", tokenAddress: TOKEN_ADDRESS, watchedAddress: comChecksum }),
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(302);
+    expect(monitorControl.started).toHaveLength(1);
+    const subido = monitorControl.started[0] as { watchedAddress: string };
+    expect(subido.watchedAddress).toBe(comChecksum.toLowerCase());
+  });
+
+  it("aceita endereço colado com espaço em volta, em vez de dizer só 'inválido'", async () => {
+    // Colar de um explorador de blocos costuma trazer espaco. Antes isso era
+    // recusado com uma mensagem que nao dizia que o problema era o espaco.
+    const cookie = await login();
+
+    const res = await fetch(`${baseUrl}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+      body: new URLSearchParams({ chainKey: "tempo", tokenAddress: TOKEN_ADDRESS, watchedAddress: `  ${WATCHED_ADDRESS}  ` }),
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(302);
+    const subido = monitorControl.started[0] as { watchedAddress: string };
+    expect(subido.watchedAddress).toBe(WATCHED_ADDRESS);
+  });
+
+  it("continua recusando endereço de outra notação numa rede EVM - mover a validação não afrouxou", async () => {
+    /*
+     * A mudanca de 23/10/2026 tirou a validacao fixa do servidor e passou a
+     * perguntar pra rede. O risco dessa forma de mudanca e afrouxar o controle
+     * sem perceber: este teste fixa que um endereco base58 (valido em Solana,
+     * nao em EVM) continua recusado na Tempo.
+     */
+    const cookie = await login();
+
+    const res = await fetch(`${baseUrl}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+      body: new URLSearchParams({
+        chainKey: "tempo",
+        tokenAddress: TOKEN_ADDRESS,
+        watchedAddress: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+      }),
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Endereço monitorado inválido");
+    expect(monitorControl.started).toHaveLength(0);
+  });
+
+  it("recusa endereço EVM com maiúscula e checksum errado - o rigor do isAddress continua valendo", async () => {
+    const cookie = await login();
+
+    const res = await fetch(`${baseUrl}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+      body: new URLSearchParams({
+        chainKey: "tempo",
+        tokenAddress: TOKEN_ADDRESS,
+        // mesmo endereco de cima, mas com DEAD todo em maiuscula: checksum invalido
+        watchedAddress: "0x000000000000000000000000000000000000DEAD",
+      }),
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Endereço monitorado inválido");
     expect(monitorControl.started).toHaveLength(0);
   });
 

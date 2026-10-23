@@ -14,7 +14,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isAddress, type Address } from "viem";
+import type { Address } from "viem";
 import { verifyPassword } from "./password.js";
 import type { JudgeAccessConfig } from "./judge-access.js";
 import {
@@ -54,6 +54,7 @@ import {
   type ThresholdsFormValues,
 } from "./views.js";
 import { getKnownChain, KNOWN_CHAINS } from "../engine/chains/known-chains.js";
+import { getChainIntegration } from "../engine/chains/chain-registry.js";
 import type { UserThresholds } from "../engine/rules/detection-rules.js";
 import { validateThresholds } from "../engine/rules/threshold-validation.js";
 import { parseUsdToUnits, unitsToUsdString } from "../engine/rules/token-units.js";
@@ -748,8 +749,10 @@ async function handleAddAccount(req: IncomingMessage, res: ServerResponse, deps:
   if (!chainKey || !tokenAddress || !watchedAddress) {
     return renderAccounts(res, deps, userId, "Preencha chain, token e endereço monitorado.");
   }
+  let integracao;
   try {
     getKnownChain(chainKey); // valida a chave ANTES de gravar - nunca aceita chain desconhecida
+    integracao = getChainIntegration(chainKey);
   } catch {
     return renderAccounts(res, deps, userId, `Chain desconhecida: "${chainKey}".`);
   }
@@ -764,18 +767,50 @@ async function handleAddAccount(req: IncomingMessage, res: ServerResponse, deps:
    * de digitacao passava a deixar o painel inteiro em "degradado", sem dizer
    * por que - um typo derrubando a confianca na tela que existe justamente
    * pra provar que a vigilancia esta viva.
+   *
+   * Em 23/10/2026 deixou de chamar `isAddress` da viem direto aqui e passou a
+   * perguntar PRA REDE escolhida. O motivo nao e elegancia: com `isAddress`
+   * fixo neste ponto, nenhum endereco fora do formato EVM podia ser
+   * cadastrado, e um adaptador de Solana perfeito - aprovado por toda a suite
+   * de conformidade - continuaria impossivel de usar, porque o endereco dele
+   * nao passava por esta linha. Era o gargalo real da issue #19.
+   *
+   * O rigor pra EVM nao mudou: `checkEvmAddress` chama o mesmo `isAddress`,
+   * do mesmo jeito. O que mudou e que a regra agora mora na rede, que e quem
+   * sabe qual ela e.
    */
-  if (!isAddress(tokenAddress)) {
-    return renderAccounts(res, deps, userId, "Endereço do token inválido - precisa ser um endereço 0x com 40 caracteres hexadecimais.");
+  const tokenConferido = integracao.checkAddress(tokenAddress);
+  if (!tokenConferido.ok) {
+    return renderAccounts(res, deps, userId, `Endereço do token inválido - ${tokenConferido.reason}.`);
   }
-  if (!isAddress(watchedAddress)) {
-    return renderAccounts(res, deps, userId, "Endereço monitorado inválido - precisa ser um endereço 0x com 40 caracteres hexadecimais.");
+  const vigiadoConferido = integracao.checkAddress(watchedAddress);
+  if (!vigiadoConferido.ok) {
+    return renderAccounts(res, deps, userId, `Endereço monitorado inválido - ${vigiadoConferido.reason}.`);
   }
 
-  const id = await deps.monitoredAccounts.add({ userId, chainKey, tokenAddress, watchedAddress });
+  /*
+   * Grava a forma NORMALIZADA, nao a digitada. Antes, duas grafias do mesmo
+   * endereco EVM criavam duas contas monitoradas distintas, cada uma com seu
+   * monitor e suas ligacoes - alerta duplicado pelo mesmo movimento.
+   */
+  const { normalized: tokenAddressNorm } = tokenConferido;
+  const { normalized: watchedAddressNorm } = vigiadoConferido;
+
+  const id = await deps.monitoredAccounts.add({
+    userId,
+    chainKey,
+    tokenAddress: tokenAddressNorm,
+    watchedAddress: watchedAddressNorm,
+  });
   // Sobe o monitor AGORA, sem esperar um restart do processo (achado de
   // capacidade de 2026-10-04 - ver nota em MonitorControlPort).
-  await deps.monitorControl.start({ id, userId, chainKey, tokenAddress, watchedAddress });
+  await deps.monitorControl.start({
+    id,
+    userId,
+    chainKey,
+    tokenAddress: tokenAddressNorm,
+    watchedAddress: watchedAddressNorm,
+  });
   redirect(res, "/accounts");
 }
 
