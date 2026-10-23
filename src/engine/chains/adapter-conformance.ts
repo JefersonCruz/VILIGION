@@ -36,14 +36,24 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Address } from "viem";
-import type { MonitoredChainAdapter } from "./chain-adapter.js";
+import type { ChainAddress, MonitoredChainAdapter } from "./chain-adapter.js";
 
 export interface ConformanceSubject {
   /** nome que aparece na saída do teste */
   label: string;
-  /** endereço válido na rede, só pra passar pra getBalance - nunca é usado em rede */
-  sampleAddress: Address;
+  /**
+   * Endereço VÁLIDO na notação desta rede - 0x hex no EVM, base58 numa rede
+   * SVM. Nunca é usado em rede. Deixou de ser o `Address` da viem em
+   * 23/10/2026: tipar como `0x${string}` aqui obrigava toda rede a parecer
+   * EVM só pra rodar a suíte.
+   */
+  sampleAddress: ChainAddress;
+  /**
+   * Texto que NÃO é endereço válido nesta rede, pra verificar que a validação
+   * recusa. Obrigatório pelo mesmo motivo que `createFailing`: sem um exemplo
+   * negativo, uma validação que aceita tudo passaria na suíte inteira.
+   */
+  invalidAddress: string;
   /** saldo que `create()` deve devolver, pra conferir que o número chega intacto ao núcleo */
   expectedBalance: bigint;
   /** adaptador com fixtures determinísticas, que responde sem tocar rede */
@@ -55,6 +65,75 @@ export interface ConformanceSubject {
    * e sem este construtor não há como verificar isso.
    */
   createFailing(): MonitoredChainAdapter;
+}
+
+/**
+ * Bateria de validação de endereço.
+ *
+ * Existe porque, até 23/10/2026, o produto validava endereço com o `isAddress`
+ * da viem direto em `server.ts`. Um adaptador não-EVM perfeito, aprovado por
+ * toda esta suíte, continuaria inutilizável: não havia onde digitar um
+ * endereço que não fosse 0x. A validação virou parte do contrato, e estes
+ * testes são o que impede que ela volte a ser decorativa.
+ */
+function describeAddressChecking(subject: ConformanceSubject): void {
+  describe("validação de endereço", () => {
+    it("aceita um endereço válido da própria rede", () => {
+      const result = subject.create().checkAddress(subject.sampleAddress);
+      expect(result.ok).toBe(true);
+    });
+
+    it("recusa um endereço inválido, e diz por quê - a frase vai pra tela de quem digitou", () => {
+      const result = subject.create().checkAddress(subject.invalidAddress);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason.trim().length).toBeGreaterThan(0);
+    });
+
+    it("recusa texto vazio", () => {
+      expect(subject.create().checkAddress("").ok).toBe(false);
+    });
+
+    it("a forma normalizada é ela mesma válida - normalizar duas vezes dá o mesmo resultado", () => {
+      /*
+       * Pega um erro real e silencioso: uma normalização que produz algo que a
+       * própria validação recusaria. Aconteceria, por exemplo, num adaptador
+       * EVM que valida exigindo checksum EIP-55 mas normaliza pra minúsculo.
+       * Sem este teste, o endereço entraria no banco numa forma que nenhuma
+       * revalidação posterior aceita.
+       */
+      const adapter = subject.create();
+      const primeira = adapter.checkAddress(subject.sampleAddress);
+      expect(primeira.ok).toBe(true);
+      if (!primeira.ok) return;
+
+      const segunda = adapter.checkAddress(primeira.normalized);
+      expect(segunda.ok).toBe(true);
+      if (!segunda.ok) return;
+      expect(segunda.normalized).toBe(primeira.normalized);
+    });
+
+    it("valida SEM tocar a rede - funciona até no adaptador cujo RPC sempre falha", () => {
+      /*
+       * A propriedade que mais importa aqui. Se a validação consultasse a
+       * rede, um RPC fora do ar passaria a impedir o dono de CADASTRAR a conta
+       * que ele quer vigiar - justo quando ele mais quer vigiá-la. O adaptador
+       * de `createFailing()` tem a rede morta por construção, então ele passar
+       * neste teste é a prova de que nenhuma consulta acontece.
+       */
+      const falho = subject.createFailing();
+      expect(falho.checkAddress(subject.sampleAddress).ok).toBe(true);
+      expect(falho.checkAddress(subject.invalidAddress).ok).toBe(false);
+    });
+
+    it("é síncrono - validação de formulário não pode devolver Promise", () => {
+      // Um autor de adaptador que declara `async checkAddress` ainda compila
+      // (Promise é objeto), e aí `result.ok` seria `undefined`, que é falsy:
+      // TODO endereço seria recusado, inclusive os válidos.
+      const result: unknown = subject.create().checkAddress(subject.sampleAddress);
+      expect(result).not.toBeInstanceOf(Promise);
+    });
+  });
 }
 
 /** Nomes de propriedade que denunciariam material de assinatura num adaptador de LEITURA. */
@@ -80,6 +159,8 @@ export function describeAdapterConformance(subject: ConformanceSubject): void {
         expect(typeof metadata.chainId).toBe("number");
       });
     });
+
+    describeAddressChecking(subject);
 
     describe("capacidades declaradas", () => {
       it("declara pelo menos uma forma de ler saldo - um adaptador que não lê saldo nenhum não monitora nada", () => {

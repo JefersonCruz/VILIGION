@@ -188,4 +188,46 @@ describe("registro de integrações de rede", () => {
       expect(built.adapter.metadata.chainKey).toBe("base");
     });
   });
+  describe("validação de endereço", () => {
+    /**
+     * O teste que mantém as duas pontas honestas.
+     *
+     * A validação existe em dois lugares por necessidade: no adaptador (que o
+     * monitor usa) e na entrada do registro (que o formulário de /accounts usa,
+     * sem construir adaptador). Se as duas divergirem, o sintoma é "o
+     * formulário aceitou o endereço e o monitor recusa" - conta gravada,
+     * monitor reiniciando a cada ciclo, painel degradado sem explicação.
+     *
+     * Em vez de confiar em quem integrar lembrar de apontar as duas pro mesmo
+     * lugar, isto confere o comportamento das duas em cada rede registrada.
+     */
+    const AMOSTRAS = [
+      "0x000000000000000000000000000000000000dEaD",
+      "0x000000000000000000000000000000000000dead",
+      "0x000000000000000000000000000000000000DEAD", // maiúscula sem checksum válido
+      "  0x000000000000000000000000000000000000dead  ",
+      "0xabc123",
+      "",
+      "nao-e-endereco",
+      "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T", // base58: inválido em rede EVM
+    ];
+
+    for (const chainKey of Object.keys(CHAIN_INTEGRATIONS)) {
+      it(`${chainKey}: registro e adaptador validam igual`, () => {
+        const integracao = getChainIntegration(chainKey);
+        const { adapter } = buildChainIntegration({ chainKey, tokenAddress: TOKEN, minConfirmations: 3 });
+
+        for (const amostra of AMOSTRAS) {
+          expect(integracao.checkAddress(amostra)).toEqual(adapter.checkAddress(amostra));
+        }
+      });
+
+      it(`${chainKey}: recusa endereço de outra notação em vez de aceitar calado`, () => {
+        // Toda rede registrada hoje é EVM. Um endereço base58 passar aqui
+        // significaria que a validação dessa rede não valida nada.
+        const r = getChainIntegration(chainKey).checkAddress("4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T");
+        expect(r.ok).toBe(false);
+      });
+    }
+  });
 });

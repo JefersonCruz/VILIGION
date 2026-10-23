@@ -21,8 +21,8 @@
 
 import type { Address } from "viem";
 import type { ChainExtension } from "../chain-extension.js";
-import type { ChainFamily, MonitoredChainAdapter } from "./chain-adapter.js";
-import { EvmAdapter } from "./evm-adapter.js";
+import type { AddressCheck, ChainFamily, MonitoredChainAdapter } from "./chain-adapter.js";
+import { checkEvmAddress, EvmAdapter } from "./evm-adapter.js";
 import { RECEIVE_POLICY_GUARD_ADDRESS, TempoAdapter } from "./tempo.adapter.js";
 import { TempoBlockedTransferExtension } from "./tempo-extension.js";
 import { getKnownChain, resolveRpcUrl } from "./known-chains.js";
@@ -128,6 +128,21 @@ export interface ChainIntegration {
    * "testadas") convidaria a marcar caixinhas sem evidência.
    */
   readonly validationEvidence: string;
+  /**
+   * Valida e normaliza um endereco desta rede, SEM construir o adaptador.
+   *
+   * Existe separado de `build` porque o formulario de /accounts precisa
+   * validar antes de gravar, e construir o adaptador ali exigiria URL de RPC
+   * configurada so pra conferir um campo de texto - um RPC nao configurado
+   * passaria a impedir o cadastro da conta.
+   *
+   * DEVE ser literalmente a mesma funcao que o adaptador usa no
+   * `checkAddress` dele, nao uma segunda copia da regra. Duas copias viram
+   * duas regras diferentes com o tempo, e a divergencia aparece como "o
+   * formulario aceitou, o monitor recusa". `chain-registry.test.ts` verifica
+   * essa igualdade pra toda rede registrada.
+   */
+  checkAddress(raw: string): AddressCheck;
   build(context: AdapterBuildContext): BuiltChainIntegration;
 }
 
@@ -188,6 +203,7 @@ function genericEvmIntegration(chainKey: string): ChainIntegration {
       "L2 ainda pode ser revertido se o lote correspondente na L1 reorganizar, então contar " +
       "blocos da L2 não mede o risco real. Ver docs/CHAIN-SUPPORT-MATRIX.md.",
     maintainer: null,
+    checkAddress: checkEvmAddress,
     validationEvidence:
       "Nenhuma verificação contra a rede real. O adaptador EVM genérico tem testes " +
       "determinísticos (paginação, conformidade), mas nenhum smoke test desta rede " +
@@ -223,6 +239,8 @@ export const CHAIN_INTEGRATIONS: Record<string, ChainIntegration> = {
       "compara RECEIVE_POLICY_GUARD_ADDRESS com Addresses.receivePolicyGuard do viem/tempo, e " +
       "exercita a decodificação do TransferBlocked. Classificação de taxa (getFeeAdjustment) e " +
       "decodificação do witness têm testes determinísticos em tempo.adapter.test.ts.",
+    // Tempo e EVM-compativel, entao o endereco tem exatamente o formato de EVM.
+    checkAddress: checkEvmAddress,
     build: (context) => {
       const chain = getKnownChain("tempo");
       const adapter = new TempoAdapter({

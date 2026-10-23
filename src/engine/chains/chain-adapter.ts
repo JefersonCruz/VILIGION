@@ -26,7 +26,34 @@
  *   é declarado em `capabilities`, não simulado com um valor plausível.
  */
 
-import type { Address } from "viem";
+/**
+ * Endereco na notacao da PROPRIA rede, ainda nao validado quando vem de fora.
+ *
+ * Deliberadamente `string`, e nao o `Address` da viem (`0x${string}`). Esse
+ * tipo da viem esteve aqui ate 23/10/2026 e era a ultima suposicao de EVM que
+ * sobrou neste contrato - e a mais custosa, porque endereco de Solana e base58
+ * e nunca satisfaria `0x${string}`. Um adaptador perfeito, aprovado pela suite
+ * de conformidade, continuaria inutil: nao daria pra digitar o endereco em
+ * lugar nenhum do produto.
+ *
+ * Ser `string` NAO afrouxa validacao - muda quem valida. Ver `checkAddress`.
+ */
+export type ChainAddress = string;
+
+/**
+ * Resultado de validar um endereco.
+ *
+ * Soma, nao booleano, por dois motivos. O motivo da recusa vai pra tela de
+ * quem digitou, e "precisa ser 0x com 40 hex" e util onde "endereco invalido"
+ * nao e - e essa frase depende da rede, que e exatamente o que o nucleo nao
+ * pode saber. E `normalized` existe porque validar sem dizer qual forma
+ * guardar deixa a normalizacao espalhada pelo nucleo, que foi como o
+ * `toLowerCase()` de EVM acabou dentro de hashAddress (ver ADAPTER_SPEC.md).
+ */
+export type AddressCheck =
+  | { readonly ok: true; readonly normalized: ChainAddress }
+  | { readonly ok: false; readonly reason: string };
+
 
 /**
  * Família técnica da rede. Existe pra um colaborador (e o processo de revisão)
@@ -47,7 +74,7 @@ export type ChainFamily = "evm" | "svm" | "other";
  * quem produz o bloco - nenhum desses é base confiável pra decidir alerta.
  */
 export interface BalanceSnapshot {
-  address: Address;
+  address: ChainAddress;
   /** saldo bruto, na menor unidade do ativo monitorado */
   raw: bigint;
   /** cursor da rede em que esta leitura vale (bloco no EVM, slot em Solana) */
@@ -155,8 +182,28 @@ export interface MonitoredChainAdapter {
    */
   readonly maxHistoryWindow: bigint;
 
+  /**
+   * Valida e normaliza um endereco na notacao desta rede.
+   *
+   * OBRIGATORIO, e de proposito. A tentacao obvia era deixar opcional com um
+   * padrao permissivo - e isso afrouxaria um controle de seguranca pra
+   * facilitar integracao, que e precisamente o que nao se faz aqui. Um
+   * adaptador que esquece de implementar isto nao compila; um adaptador que
+   * aceita qualquer coisa esta declarando isso explicitamente, na revisao.
+   *
+   * SINCRONO, tambem de proposito: e checagem de formato, nao de existencia.
+   * Se fosse assincrono, convidaria um adaptador a consultar a rede no meio da
+   * validacao de um formulario - e um RPC fora do ar passaria a impedir o
+   * dono de cadastrar a conta que ele quer vigiar.
+   *
+   * NAO responde "esta conta existe" nem "tem saldo". So "este texto e um
+   * endereco desta rede". Existencia se descobre em `getBalance`, que e onde
+   * um erro de rede pode ser distinguido de um endereco mal digitado.
+   */
+  checkAddress(raw: string): AddressCheck;
+
   /** Saldo do ativo monitorado. Deve lançar em vez de devolver 0n quando não conseguir ler. */
-  getBalance(address: Address): Promise<BalanceSnapshot>;
+  getBalance(address: ChainAddress): Promise<BalanceSnapshot>;
 
   /** Cursor mais recente já confirmado o suficiente pra confiar (ver reorgPossible/minConfirmations). */
   getConfirmedBlockNumber(): Promise<bigint>;
@@ -166,7 +213,7 @@ export interface MonitoredChainAdapter {
    * saída real de valor. `0n` é a resposta CORRETA (não um placeholder)
    * quando `capabilities.feePaidInMonitoredAsset` é false.
    */
-  getFeeAdjustment(fromBlock: bigint, toBlock: bigint, address: Address): Promise<bigint>;
+  getFeeAdjustment(fromBlock: bigint, toBlock: bigint, address: ChainAddress): Promise<bigint>;
 
   /**
    * Libera recursos (socket, pool, subscription). Opcional porque adaptador

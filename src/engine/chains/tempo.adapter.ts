@@ -46,7 +46,7 @@
 import { type Address, type Log, decodeEventLog, parseAbi } from "viem";
 import { ReceivePolicyReceipt } from "ox/tempo";
 import { EvmAdapter, type EvmAdapterConfig } from "./evm-adapter.js";
-import { UnsupportedCapabilityError, type ChainCapabilities } from "./chain-adapter.js";
+import { UnsupportedCapabilityError, type ChainAddress, type ChainCapabilities } from "./chain-adapter.js";
 
 /**
  * Endereço oficial do ReceivePolicyGuard na Tempo (igual em mainnet e
@@ -224,9 +224,21 @@ export class TempoAdapter extends EvmAdapter {
    * então não dá pra usar getBlockedTransfers/decodeEventLog do Guard aqui;
    * é o ABI padrão de Transfer, aplicado ao endereço do TOKEN, não do Guard.
    */
-  async getFeeAdjustment(fromBlock: bigint, toBlock: bigint, address: Address): Promise<bigint> {
+  async getFeeAdjustment(fromBlock: bigint, toBlock: bigint, address: ChainAddress): Promise<bigint> {
     const tokenAddress = this.config.tokenAddress;
     if (!tokenAddress || fromBlock >= toBlock) return 0n;
+
+    /*
+     * Estreita pro tipo EVM na fronteira, igual getBalance. Lanca em vez de
+     * devolver 0n: aqui 0n significa "nao houve taxa", e um endereco
+     * malformado nao e isso - seria classificar pagamento de taxa como saida
+     * real de valor, ou seja, um alerta falso de queda de saldo.
+     */
+    const conferido = this.checkAddress(address);
+    if (!conferido.ok) {
+      throw new Error(`Endereço inválido para "${this.metadata.chainKey}": ${conferido.reason}`);
+    }
+    const enderecoEvm = conferido.normalized as Address;
 
     const logs = await this.getConfirmedLogs({ address: tokenAddress, fromBlock: fromBlock + 1n, toBlock });
 
@@ -239,9 +251,9 @@ export class TempoAdapter extends EvmAdapter {
         if (decoded.eventName !== "Transfer") continue;
 
         const { from, to, value } = decoded.args as unknown as { from: Address; to: Address; value: bigint };
-        if (sameAddress(from, address) && sameAddress(to, FEE_MANAGER_ADDRESS)) {
+        if (sameAddress(from, enderecoEvm) && sameAddress(to, FEE_MANAGER_ADDRESS)) {
           feesPaid += value;
-        } else if (sameAddress(from, FEE_MANAGER_ADDRESS) && sameAddress(to, address)) {
+        } else if (sameAddress(from, FEE_MANAGER_ADDRESS) && sameAddress(to, enderecoEvm)) {
           refunded += value;
         }
       } catch {
