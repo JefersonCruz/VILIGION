@@ -49,10 +49,11 @@ CI runs both. Run them locally first.
 Minimal non-EVM skeleton:
 
 ```ts
-import type { Address } from "viem";
 import type {
+  AddressCheck,
   AdapterMetadata,
   BalanceSnapshot,
+  ChainAddress,
   ChainCapabilities,
   MonitoredChainAdapter,
 } from "./chain-adapter.js";
@@ -89,7 +90,22 @@ export class MyChainAdapter implements MonitoredChainAdapter {
     }
   }
 
-  async getBalance(address: Address): Promise<BalanceSnapshot> {
+  /**
+   * Your network's address format. NOT viem's isAddress — that is EVM's
+   * format, and the whole point of this method is that the core must not
+   * assume it. Synchronous: never query the network to validate a form.
+   */
+  checkAddress(raw: string): AddressCheck {
+    const trimmed = raw.trim();
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) {
+      return { ok: false, reason: "must be a base58 address of 32 to 44 characters" };
+    }
+    // Base58 is CASE-SENSITIVE: lowercasing here would merge two distinct
+    // addresses into one. EVM can lowercase; you probably cannot.
+    return { ok: true, normalized: trimmed };
+  }
+
+  async getBalance(address: ChainAddress): Promise<BalanceSnapshot> {
     const raw = await this.readTokenBalance(address); // throws on failure — do not catch
     return {
       address,
@@ -111,7 +127,9 @@ export class MyChainAdapter implements MonitoredChainAdapter {
 }
 ```
 
-Three things to get right from the start, because they are the ones reviewers send back:
+Four things to get right from the start, because they are the ones reviewers send back:
+
+**`checkAddress` is not a formality.** It is the method that decides whether your network is usable at all: the account form asks it before writing anything, and until 2026-10-23 that form called viem's `isAddress` directly, so no non-EVM address could be registered no matter how good the adapter was. Get the case-sensitivity right, return a reason a human can act on, and point your registry entry at the *same function* — `chain-registry.test.ts` checks that the two agree.
 
 **`observedAt` is your local clock.** Not a block timestamp. The detection window measures wall-clock time between two of *our* observations. A chain timestamp can be stale, skewed, or influenced by whoever produced the block — none of which is a sound basis for deciding whether to call someone.
 
@@ -175,6 +193,10 @@ minharede: {
   supportStatus: "experimental",   // see below
   maintainer: "@seu-handle",       // or null
   validationEvidence: "Deterministic tests only. Not yet exercised against the real network.",
+  // The SAME function your adapter's checkAddress uses. Not a second copy of
+  // the rule: the form validates through this entry, before any adapter is
+  // built, because building one needs a configured RPC URL.
+  checkAddress: checkMyChainAddress,
   build: (context) => {
     const adapter = new MyChainAdapter({ ...context });
     return { adapter, extension: new MyChainRestrictedTransferExtension(adapter) };
@@ -190,6 +212,8 @@ minharede: {
 
 Nothing else in the core needs to change. If it does, that is a finding — report it.
 
+That instruction has been used once, and it is the reason `checkAddress` exists. The first attempt to describe how a Solana adapter would be registered (issue #19) ran into the account form validating addresses with viem's `isAddress` directly: the adapter contract was chain-agnostic about cursors, fees, finality and native balance, but the *address* was still `0x${string}`, and no base58 address could be entered anywhere in the product. The core changed. If you hit something similar, say so in the issue rather than working around it in your adapter.
+
 ---
 
 ## 5. Test it
@@ -201,12 +225,19 @@ import { describeAdapterConformance } from "./adapter-conformance.js";
 
 describeAdapterConformance({
   label: "MyChainAdapter",
-  sampleAddress: "0x...",
+  // An address in YOUR network's notation — not a 0x address borrowed from
+  // EVM. The fictional non-EVM adapter in adapter-conformance.test.ts used a
+  // borrowed 0x address until 2026-10-23, and that is precisely what hid the
+  // fact that the product could not accept any other format.
+  sampleAddress: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+  invalidAddress: "0l0l0l0l0l0l0l0l0l0l0l0l0l0l0l0l",
   expectedBalance: 1_234n,
   create: () => new OfflineMyChainAdapter(),
   createFailing: () => new FailingMyChainAdapter(),
 });
 ```
+
+`invalidAddress` is required for the same reason as `createFailing()`: without a negative example, a `checkAddress` that accepts everything would pass the entire suite.
 
 `createFailing()` is required, not optional. It returns an adapter whose every network call throws, and it exists to prove your adapter propagates failure instead of inventing a balance. That single property is the most important thing the suite checks.
 
