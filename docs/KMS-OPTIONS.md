@@ -50,13 +50,19 @@ As A, but the unwrapped data keys (or a single key-encryption key) are cached in
 
 Also: on a cold start with KMS unreachable, nothing decrypts. Needs a decision about whether the monitor refuses to start or starts degraded.
 
-## Option C — Do not decrypt on the alert path at all
+## Option C — Do not call the key service on the alert path
 
-Change the shape of the problem rather than the key storage. Resolve recipients once, at monitor start or on recipient change, and hold what the dispatcher needs in memory. The alert path then never decrypts.
+**Revised 2026-10-22, after reading the code this option was guessing about.** The first version of this option proposed resolving recipients once and holding them in memory. That was the wrong shape, and open question 3 below is now answered.
 
-**For:** Makes A viable without its main cost — KMS is called on startup and on recipient edits, never when an alert fires. Also removes a database round trip per alert, which is independently good.
+What the reading found: the alert path does need the recipient's actual phone number, so it cannot work from a handle. But the call that would become *remote* under a KMS is narrow — only `decryptDataKey` (`src/privacy/encryption.ts`). The database read and the content decryption stay local either way. So the KMS can be taken off the hot path by caching only the unwrapping of the per-record data key.
 
-**Against:** Recipients held in memory for the life of the process, which is the same memory exposure as B but longer-lived. And a recipient change has to invalidate the cache, which is a correctness problem with a nasty failure mode: an alert going to a number the owner just removed.
+**Why not cache the recipients.** If invalidation ever fails, an alert goes to a number the owner *just removed*. In a product whose point is not leaking the link between a person and a treasury, alerting a removed destination is the one error that must not happen. Caching only the data key avoids it structurally: the database is still read on every alert, so removals and additions take effect immediately. What gets reused is only the key that opens a record — and if the record is gone, nobody asks for its key.
+
+**For:** Makes A viable without its main cost. No invalidation problem, because nothing derived from the database is held. Smaller change than the original C: a decorator around `KeyProvider`, nothing else moves.
+
+**Against:** Plaintext data keys live in process memory while cached — the same exposure as B, which is better than today (the *master* key in an environment variable is what leaked on 22/10) but weaker than "the key never exists in our process". The documentation has to say "cached in memory for N minutes".
+
+**Status: implemented as groundwork, not wired in — in a separate change, not in this one.** `src/privacy/caching-key-provider.ts` (which depends on `encryptDataKey`, so it stacks on the key-rotation change) is a `KeyProvider` decorator that memoises `decryptDataKey` with a TTL and an entry cap, and deliberately **never caches failure** — memoising the error would turn a few seconds of KMS unavailability into a fixed failure for the whole TTL, on the alert path. Nothing uses it yet, and **the benefit today is approximately zero**: the local provider unwraps with in-memory AES, which is already cheap. Its purpose is that adopting a KMS later becomes a provider swap instead of a redesign of the alert path.
 
 ## Option D — Keep the key out of the platform, but not in a cloud KMS
 
@@ -72,11 +78,11 @@ Inject the key at deploy time from somewhere the platform does not store — an 
 
 1. **Is there going to be a cloud account?** A, B and C all assume one. If the answer is no, the real choice is between D and accepting the risk with it written down.
 2. **What is the acceptable failure mode when the key service is unreachable?** "Alert fails" is not acceptable for this product. "Alert goes out using a cached key" is probably fine. That answer picks between A and B/C on its own.
-3. **Does the alert path need the recipient, or just a handle?** Option C is really asking whether the dispatcher could work from something resolved earlier. That is a code question someone can answer in an hour of reading, and it would make this decision much easier.
+3. ~~**Does the alert path need the recipient, or just a handle?**~~ **Answered 2026-10-22: it needs the recipient.** The dispatcher cannot work from something resolved earlier. But that turned out not to matter, because the only call that goes remote under a KMS is the data-key unwrap, which can be cached without caching anything derived from the database. See the revised Option C.
 
 ## Recommendation
 
-**C, then A** — remove the decrypt from the alert path first, which is useful on its own merits and does not require choosing a cloud; then adopt a managed KMS behind it, where its latency and availability no longer matter for whether an owner gets woken up.
+**C, then A** — remove the *key service* from the alert path first, which is useful on its own merits and does not require choosing a cloud; then adopt a managed KMS behind it, where its latency and availability no longer matter for whether an owner gets woken up.
 
 Doing A first, on today's code, would be trading one documented risk for an undocumented one in the path that matters most.
 
