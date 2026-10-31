@@ -1,0 +1,57 @@
+# Configuracao da varredura de segredos (gitleaks).
+#
+# Por que este arquivo existe, concretamente: em 12/10/2026 os commits
+# d3e748a e ac38be2 removeram do README credenciais de demonstracao (senha e
+# segredo TOTP de uma conta compartilhada) e o e-mail pessoal do fundador.
+# Foram removidos do texto por revisao humana, depois de ja estarem publicados.
+# Varredura automatica no CI existe pra que a proxima vez seja barrada antes
+# do merge, em vez de depois da publicacao.
+#
+# O que a varredura NAO faz: ela nao limpa o historico. Segredo que ja foi
+# publicado continua exposto nos commits antigos e precisa ser ROTACIONADO -
+# remover o texto nao invalida credencial vazada. Ver SECURITY.md.
+
+[extend]
+# Herda o conjunto completo de regras do gitleaks (Twilio, AWS, chaves
+# privadas, JWT, tokens de provedor, etc). O allowlist abaixo so subtrai
+# valores especificos ja conhecidos; nenhuma regra e desligada.
+useDefault = true
+
+[allowlist]
+description = """
+Fixtures de teste que a heuristica de entropia (regra generic-api-key) marca
+como segredo, mas que nao sao. Listados por VALOR EXATO, de proposito, e nao
+por caminho de arquivo: desligar a regra em `*.test.ts` esconderia um segredo
+de verdade colocado num teste - e CONTRIBUTING.md proibe exatamente isso
+("nunca em testes"). Com allowlist por valor, qualquer segredo NOVO, em
+qualquer arquivo, inclusive em teste, continua disparando.
+
+Se um destes valores sair do codigo, a linha correspondente aqui deve sair
+junto. Lista curta de proposito - ela cresce so com revisao humana.
+"""
+
+regexes = [
+  # Senha falsa dos testes do painel (server.test.ts, server-ack, server-push,
+  # thresholds). Nao e, nem nunca foi, credencial de nenhum ambiente real.
+  '''senha-forte-123''',
+
+  # Fixture de inscricao Web Push (push-subscription.test.ts). O par
+  # p256dh/auth aqui e valor de exemplo publico da propria especificacao de
+  # Web Push, usado pra exercitar o parse - nao da acesso a dispositivo
+  # nenhum. A inscricao REAL de um usuario e cifrada em repouso com
+  # AES-256-GCM e nunca aparece em arquivo versionado (ver SECURITY.md).
+  '''tBHItJI5svbpez7KI4CCXg''',
+
+  # Endereco Ethereum publico usado como token de teste (server.test.ts).
+  # Endereco onchain e dado publico por definicao - nao e segredo, so tem a
+  # forma hexadecimal que a heuristica de entropia confunde com chave.
+  '''0x8ba1f109551bd432803012645ac136ddd64dba72''',
+]
+
+paths = [
+  # Saida de build: copia compilada de `src/`, ja ignorada pelo git. Varrer
+  # isto duplicaria todo achado (uma vez no fonte, outra no .js gerado) e nao
+  # acrescenta cobertura nenhuma. Em CI o diretorio nem existe, porque o job
+  # de varredura roda antes de qualquer build.
+  '''^dist/''',
+]
