@@ -23,6 +23,19 @@ export interface KeyProvider {
   generateDataKey(): Promise<{ plaintextKey: Buffer; encryptedKey: Buffer }>;
   /** Decripta uma DEK previamente persistida, usando a chave mestra do KMS. */
   decryptDataKey(encryptedKey: Buffer): Promise<Buffer>;
+  /**
+   * Empacota uma DEK que JA EXISTE com a chave mestra deste provider.
+   *
+   * Existe pra tornar a troca da chave mestra possivel sem perder dado: abre a
+   * DEK com o provider antigo, reempacota com o novo, e grava so a coluna
+   * `encrypted_data_key`. O ciphertext do registro nao e tocado, e nenhum
+   * texto em claro passa pelo processo - ver scripts/rotate-encryption-key.ts.
+   *
+   * Sem isto, `generateDataKey` era a unica forma de produzir uma DEK
+   * empacotada, e ela sempre gera uma DEK NOVA - o que obrigaria a decifrar e
+   * recifrar todo o conteudo pra trocar a chave, ou a perde-lo.
+   */
+  encryptDataKey(plaintextKey: Buffer): Promise<Buffer>;
 }
 
 /**
@@ -48,6 +61,10 @@ export class LocalDevKeyProvider implements KeyProvider {
 
   async decryptDataKey(encryptedKey: Buffer): Promise<Buffer> {
     return this.localDecrypt(encryptedKey);
+  }
+
+  async encryptDataKey(plaintextKey: Buffer): Promise<Buffer> {
+    return this.localEncrypt(plaintextKey);
   }
 
   private localEncrypt(data: Buffer): Buffer {
