@@ -12,8 +12,7 @@
  * preferimos o caminho mais previsível pro caminho crítico do alerta.
  */
 
-import type { Address } from "viem";
-import type { BalanceSnapshot, MonitoredChainAdapter } from "./engine/chains/chain-adapter.js";
+import type { BalanceSnapshot, ChainAddress, MonitoredChainAdapter } from "./engine/chains/chain-adapter.js";
 import type { ChainExtension } from "./engine/chain-extension.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { BalanceWindow } from "./engine/rules/balance-window.js";
@@ -25,7 +24,13 @@ import { BalanceWindow } from "./engine/rules/balance-window.js";
 export type ThresholdsSource = UserThresholds | (() => Promise<UserThresholds>);
 
 export interface MonitorConfig {
-  address: Address;
+  /**
+   * Endereco vigiado, na notacao da rede do adaptador. `ChainAddress` e nao o
+   * `Address` da viem: o nucleo nao sabe - e nao deve saber - se a rede usa
+   * 0x hex ou base58. Quem valida e normaliza e o adaptador, via
+   * `checkAddress`.
+   */
+  address: ChainAddress;
   thresholds: ThresholdsSource;
   pollIntervalMs: number;
 }

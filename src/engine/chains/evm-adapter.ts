@@ -13,11 +13,14 @@ import {
   type Log,
   createPublicClient,
   http,
+  isAddress,
   parseAbi,
 } from "viem";
 import type {
+  AddressCheck,
   AdapterMetadata,
   BalanceSnapshot,
+  ChainAddress,
   ChainCapabilities,
   MonitoredChainAdapter,
 } from "./chain-adapter.js";
@@ -100,6 +103,50 @@ export const GENERIC_EVM_CAPABILITIES: ChainCapabilities = {
  * comum, e a prova de que o contrato não foi desenhado em torno de uma rede
  * só (ver docs/ADAPTER_SPEC.md).
  */
+/**
+ * Validacao de endereco EVM, em funcao de modulo em vez de so metodo.
+ *
+ * Existe solta porque DOIS lugares precisam dela e nao podem divergir: o
+ * adaptador (que o monitor usa) e a entrada do registro (que o formulario de
+ * /accounts usa, sem poder construir um adaptador - construir exigiria URL de
+ * RPC configurada so pra conferir um campo de texto). Duas copias da mesma
+ * regra viram, com o tempo, duas regras diferentes - e a divergencia apareceria
+ * como "o formulario aceitou, o monitor recusa", que e um painel degradado sem
+ * explicacao.
+ *
+ * `chain-registry.test.ts` verifica que as duas pontas sao mesmo esta funcao,
+ * pra toda rede registrada.
+ *
+ * Delega pro `isAddress` da viem - a MESMA funcao que `server.ts` chamava
+ * direto antes de 23/10/2026, chamada do mesmo jeito (sem opcoes), pra que a
+ * rigidez nao mude: 40 digitos hex, e maiuscula misturada so passa com
+ * checksum EIP-55 valido (conferido contra a viem em 23/10/2026). Mover a
+ * validacao de lugar nao e afrouxa-la.
+ *
+ * Normaliza pra MINUSCULO, nao pro checksum da viem. Nao e estetica:
+ * `hashAddress` (privacy/signup-service.ts) deriva do endereco em minusculo a
+ * chave de busca do mapeamento endereco -> telefone. Guardar a forma com
+ * checksum mudaria essa chave e orfanaria os mapeamentos ja gravados - o dono
+ * deixaria de receber ligacao e nada apontaria o motivo.
+ *
+ * `trim()` e novo: antes um endereco colado com espaco sobrando era recusado
+ * com "endereco invalido", sem dizer que o problema era o espaco. Aparar antes
+ * de validar nao aceita nada que a viem recusaria - o que vai pra `isAddress`
+ * continua sendo o texto aparado.
+ */
+export function checkEvmAddress(raw: string): AddressCheck {
+  const aparado = raw.trim();
+  if (!isAddress(aparado)) {
+    return {
+      ok: false,
+      reason:
+        "precisa ser um endereço 0x com 40 caracteres hexadecimais " +
+        "(se copiou com letras maiúsculas, o checksum tem que estar correto)",
+    };
+  }
+  return { ok: true, normalized: aparado.toLowerCase() };
+}
+
 export class EvmAdapter implements MonitoredChainAdapter {
   protected readonly client: PublicClient;
   protected readonly config: EvmAdapterConfig;
@@ -122,16 +169,36 @@ export class EvmAdapter implements MonitoredChainAdapter {
     };
   }
 
+  /** Ver `checkEvmAddress` - o metodo so delega, pra que registro e adaptador usem a mesma regra. */
+  checkAddress(raw: string): AddressCheck {
+    return checkEvmAddress(raw);
+  }
+
   /**
    * Lê o saldo do endereço: via `balanceOf` do token configurado
    * (`config.tokenAddress`) quando presente, ou saldo nativo (`eth_getBalance`)
    * caso contrário. Ver nota em `EvmAdapterConfig.tokenAddress` sobre por que
    * isso importa na Tempo.
    */
-  async getBalance(address: Address): Promise<BalanceSnapshot> {
+  async getBalance(address: ChainAddress): Promise<BalanceSnapshot> {
+    /*
+     * Estreita na fronteira, em vez de confiar no tipo. O nucleo passa
+     * `ChainAddress` (string), e so este adaptador sabe o que e um endereco
+     * valido nesta rede - entao se algum caminho chegar aqui sem ter passado
+     * pelo formulario, a chamada RPC nao sai com texto malformado. Lanca, em
+     * vez de devolver 0n, porque o contrato diz que "nao consegui ler" nunca
+     * pode virar "nao houve movimento" (ver ChainCapabilities).
+     */
+    const conferido = this.checkAddress(address);
+    if (!conferido.ok) {
+      throw new Error(`Endereço inválido para "${this.metadata.chainKey}": ${conferido.reason}`);
+    }
+    const enderecoEvm = conferido.normalized as Address;
     const token = this.config.tokenAddress;
     const [raw, blockNumber] = await Promise.all([
-      token ? this.rawReadTokenBalance(token, address) : this.rawReadNativeBalance(address),
+      token
+        ? this.rawReadTokenBalance(token, enderecoEvm)
+        : this.rawReadNativeBalance(enderecoEvm),
       this.rawGetBlockNumber(),
     ]);
 
@@ -185,7 +252,7 @@ export class EvmAdapter implements MonitoredChainAdapter {
    * TempoAdapter sobrescreve isto - é a única chain suportada sem gas token
    * nativo (ver ARCHITECTURE.md).
    */
-  async getFeeAdjustment(_fromBlock: bigint, _toBlock: bigint, _address: Address): Promise<bigint> {
+  async getFeeAdjustment(_fromBlock: bigint, _toBlock: bigint, _address: ChainAddress): Promise<bigint> {
     return 0n;
   }
 

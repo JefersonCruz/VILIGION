@@ -30,14 +30,34 @@ interface MonitoredChainAdapter {
   readonly capabilities: ChainCapabilities;
   readonly maxHistoryWindow: bigint;
 
-  getBalance(address: Address): Promise<BalanceSnapshot>;
+  checkAddress(raw: string): AddressCheck;
+  getBalance(address: ChainAddress): Promise<BalanceSnapshot>;
   getConfirmedBlockNumber(): Promise<bigint>;
-  getFeeAdjustment(fromBlock: bigint, toBlock: bigint, address: Address): Promise<bigint>;
+  getFeeAdjustment(fromBlock: bigint, toBlock: bigint, address: ChainAddress): Promise<bigint>;
   close?(): Promise<void>;
 }
 ```
 
-Three methods. That is deliberate — it is exactly what `monitor.ts` calls per cycle, and nothing more. Anything else your network can do belongs in your own adapter's public surface or in a `ChainExtension`, not in this interface.
+Four methods. That is deliberate — it is what `monitor.ts` calls per cycle, plus the one thing the product needs before a cycle can exist: knowing whether a typed address belongs to your network. Anything else your network can do belongs in your own adapter's public surface or in a `ChainExtension`, not in this interface.
+
+### `checkAddress` — required
+
+`ChainAddress` is `string`, not viem's `Address`. Until 2026-10-23 it *was* viem's `Address` (`0x${string}`), and that single type was enough to make this whole specification a dead end for any non-EVM chain: a base58 Solana address cannot satisfy `0x${string}`, and the account form validated with viem's `isAddress` directly. An adapter could pass every test in the conformance suite and still be unusable, because there was nowhere in the product to type its addresses.
+
+So address validation is part of the contract. Rules:
+
+| Rule | Why |
+|---|---|
+| **Required, not optional** | An optional method with a permissive default would weaken a security control to make integration easier. A missing `checkAddress` must fail to compile, not silently accept anything. |
+| **Synchronous** | It is a format check, not an existence check. If it were async, an adapter could query the network while validating a form — and then an RPC outage would stop an owner from *registering* the account they want watched. |
+| **Returns a reason on failure** | The string is shown to whoever typed the address. "must be 0x followed by 40 hex digits" is useful; "invalid address" is not. Only your network knows which sentence is right. |
+| **Returns a `normalized` form on success** | The product stores the normalized form, so two spellings of one address cannot become two monitored accounts with two monitors and two phone calls for one event. |
+| **Normalizing twice gives the same result** | The conformance suite checks this. It catches a normalization that produces something the same validator would reject — for example validating with a mandatory checksum but normalizing to lowercase. |
+| **Never touches the network** | The suite verifies this by running `checkAddress` on the `createFailing()` adapter, whose RPC is dead by construction. |
+
+**Do not assume case-insensitivity.** EVM addresses are hex and can be lowercased safely; base58 addresses are case-sensitive, and lowercasing two distinct Solana addresses can collapse them into one. Normalization is per-network, which is exactly why it lives here.
+
+Your registry entry in `chain-registry.ts` also declares `checkAddress`, because the account form must validate before any adapter is built (building one needs a configured RPC URL, and a missing RPC must not block registration). **Point both at the same function** — `chain-registry.test.ts` verifies, for every registered network, that the registry and the built adapter validate identically. Two copies of one rule become two rules, and the divergence shows up as "the form accepted it and the monitor rejects it".
 
 ### `metadata`
 
@@ -180,3 +200,11 @@ No network is `stable` today. That is a statement about available evidence, not 
 - **Adding a `ChainCapabilities` field** — breaking in practice, since every adapter must now declare it. Treated as such.
 
 If a change to this contract is the only way to support your network, that is worth discussing in an issue before you write the code. It is a legitimate outcome, and the contract being too narrow for a real network is exactly the kind of thing the first few external integrations are meant to discover.
+
+### Change log
+
+**2026-10-23 — breaking.** `checkAddress` added as a required member; `BalanceSnapshot.address`, `getBalance` and `getFeeAdjustment` changed from viem's `Address` to `ChainAddress` (`string`); `ConformanceSubject` gained a required `invalidAddress`, and its `sampleAddress` is no longer typed `0x${string}`.
+
+Migration, for an adapter outside this repo: implement `checkAddress` (see above), widen your address parameters to `ChainAddress`, narrow to your own address type at the boundary — `EvmAdapter.getBalance` is the worked example — and add `invalidAddress` to your conformance subject. Every in-repo adapter was updated in the same change.
+
+Why it was worth breaking: this is the contract being too narrow for a real network, found exactly where §8 says it gets found. The contract was already chain-agnostic about cursors, fees, finality and native balance — `FakeSlotChainAdapter` proved a slot-based chain could drive the unmodified core — but it still typed addresses as `0x${string}`, and `server.ts` validated them with viem's `isAddress`. The practical consequence was that issue #19's Solana adapter could have been written, tested and registered, and still not been usable: there was nowhere in the product to type a base58 address.

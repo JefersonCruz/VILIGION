@@ -15,11 +15,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Address } from "viem";
+import type { Address } from "viem";  /* ainda usado pelos adaptadores EVM deste arquivo */
 import { describeAdapterConformance } from "./adapter-conformance.js";
 import type {
+  AddressCheck,
   AdapterMetadata,
   BalanceSnapshot,
+  ChainAddress,
   ChainCapabilities,
   MonitoredChainAdapter,
 } from "./chain-adapter.js";
@@ -29,6 +31,22 @@ import { Monitor } from "../../monitor.js";
 import type { DetectionEvent, UserThresholds } from "../rules/detection-rules.js";
 
 const SAMPLE_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
+/** Curto demais pra ser endereco EVM - exemplo negativo da suite de conformidade. */
+const SAMPLE_ADDRESS_INVALIDO = "0xabc123";
+
+/**
+ * Endereco base58, na notacao de uma rede tipo Solana. Nao e 0x, nao e hex, e
+ * diferencia maiuscula de minuscula - as tres coisas que um endereco EVM nao
+ * faz.
+ *
+ * Existe pra que a rede ficticia abaixo seja exercitada com um endereco da
+ * NOTACAO dela, e nao com um 0x emprestado do EVM. Ate 23/10/2026 ela usava
+ * SAMPLE_ADDRESS, e isso escondia que o produto nao conseguia aceitar
+ * endereco nenhum fora do formato EVM.
+ */
+const SAMPLE_ADDRESS_SLOT = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
+/** Tem "0" e "l", que nao existem no alfabeto base58 - invalido de proposito. */
+const SAMPLE_ADDRESS_SLOT_INVALIDO = "0l0l0l0l0l0l0l0l0l0l0l0l0l0l0l0l";
 const TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001" as Address;
 const GUARD_ADDRESS = "0xB10C000000000000000000000000000000000000" as Address;
 const FIXTURE_BALANCE = 1_234_567n;
@@ -83,6 +101,7 @@ class FailingEvmAdapter extends OfflineEvmAdapter {
 describeAdapterConformance({
   label: "EvmAdapter (núcleo genérico, lendo saldo de token)",
   sampleAddress: SAMPLE_ADDRESS,
+  invalidAddress: SAMPLE_ADDRESS_INVALIDO,
   expectedBalance: FIXTURE_BALANCE,
   create: () => new OfflineEvmAdapter(TOKEN_ADDRESS),
   createFailing: () => new FailingEvmAdapter(TOKEN_ADDRESS),
@@ -91,6 +110,7 @@ describeAdapterConformance({
 describeAdapterConformance({
   label: "EvmAdapter (núcleo genérico, lendo saldo nativo)",
   sampleAddress: SAMPLE_ADDRESS,
+  invalidAddress: SAMPLE_ADDRESS_INVALIDO,
   expectedBalance: FIXTURE_BALANCE,
   create: () => new OfflineEvmAdapter(),
   createFailing: () => new FailingEvmAdapter(),
@@ -137,6 +157,7 @@ class FailingTempoAdapter extends OfflineTempoAdapter {
 describeAdapterConformance({
   label: "TempoAdapter (implementação de referência com extensão de protocolo)",
   sampleAddress: SAMPLE_ADDRESS,
+  invalidAddress: SAMPLE_ADDRESS_INVALIDO,
   expectedBalance: FIXTURE_BALANCE,
   create: () => new OfflineTempoAdapter(),
   createFailing: () => new FailingTempoAdapter(),
@@ -146,7 +167,8 @@ describeAdapterConformance({
 
 /**
  * Adaptador de uma rede imaginária baseada em slots, não em blocos. NÃO herda
- * de `EvmAdapter` e não importa nada do viem além do tipo `Address`.
+ * de `EvmAdapter` e não importa NADA do viem - nem o tipo de endereço, que até
+ * 23/10/2026 ainda vinha de lá e era a última suposição de EVM no contrato.
  *
  * Declara `feePaidInMonitoredAsset: false` e `reorgPossible: false` - uma rede
  * com finalidade determinística - justamente pra exercitar combinações de
@@ -188,7 +210,25 @@ class FakeSlotChainAdapter implements MonitoredChainAdapter {
    */
   monitor: { stop(): void } | null = null;
 
-  async getBalance(address: Address): Promise<BalanceSnapshot> {
+  /**
+   * Validação base58, como numa rede tipo Solana. Três diferenças em relação
+   * ao EVM, e cada uma quebraria se o núcleo tentasse validar por conta
+   * própria: não tem prefixo `0x`, o alfabeto exclui `0`, `O`, `I` e `l` (que
+   * se confundem na leitura), e o endereço DIFERENCIA maiúscula de minúscula.
+   *
+   * Essa última é a que importa: normalizar pra minúsculo aqui - como o
+   * adaptador EVM faz, corretamente, pra rede dele - juntaria dois endereços
+   * distintos num só. Por isso `normalized` devolve o texto como está.
+   */
+  checkAddress(raw: string): AddressCheck {
+    const aparado = raw.trim();
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(aparado)) {
+      return { ok: false, reason: "precisa ser um endereço base58 de 32 a 44 caracteres" };
+    }
+    return { ok: true, normalized: aparado };
+  }
+
+  async getBalance(address: ChainAddress): Promise<BalanceSnapshot> {
     const raw = this.balances[Math.min(this.callIndex, this.balances.length - 1)] ?? 0n;
     this.callIndex++;
     if (this.callIndex >= this.balances.length) this.monitor?.stop();
@@ -218,7 +258,8 @@ class FailingSlotChainAdapter extends FakeSlotChainAdapter {
 
 describeAdapterConformance({
   label: "FakeSlotChainAdapter (família não-EVM, prova de extensibilidade)",
-  sampleAddress: SAMPLE_ADDRESS,
+  sampleAddress: SAMPLE_ADDRESS_SLOT,
+  invalidAddress: SAMPLE_ADDRESS_SLOT_INVALIDO,
   expectedBalance: FIXTURE_BALANCE,
   create: () => new FakeSlotChainAdapter(),
   createFailing: () => new FailingSlotChainAdapter(),
@@ -236,13 +277,13 @@ const thresholds: UserThresholds = {
 };
 
 describe("o núcleo monitora uma rede de outra família sem alteração alguma", () => {
-  it("Monitor aceita um adaptador que não é EvmAdapter e detecta queda de saldo nele", async () => {
+  it("Monitor aceita um adaptador que não é EvmAdapter, com endereço base58, e detecta queda de saldo nele", async () => {
     const dispatched: DetectionEvent[] = [];
     // 1000 → 400 é queda de 60%: acima do crítico (50%)
     const adapter = new FakeSlotChainAdapter([1000n, 400n]);
     const monitor = new Monitor(
       adapter,
-      { address: SAMPLE_ADDRESS, thresholds, pollIntervalMs: 0 },
+      { address: SAMPLE_ADDRESS_SLOT, thresholds, pollIntervalMs: 0 },
       async (event) => {
         dispatched.push(event);
       },
