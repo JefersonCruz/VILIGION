@@ -64,6 +64,29 @@ Dashboard/Auth (full detail only after login)
 
 Full technical detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
+## How fast — measured, not configured
+
+The product is surveillance, so "how long until someone knows" is the question that matters. The only number published here used to be the 15s poll interval, which is a *setting*, not a measurement: it says nothing about how long the RPC takes, and therefore nothing about what the owner actually waits.
+
+Measured on 2026-11-02, 25 samples per network, public RPCs:
+
+| Network | Balance read (p50 / p95) | **Until the alert leaves** (typical / worst) |
+|---|---|---|
+| Base | 161ms / 186ms | **7.7s / 15.2s** |
+| Arbitrum One | 178ms / 213ms | **7.7s / 15.2s** |
+| Ethereum L1 | 181ms / 207ms | **7.7s / 15.2s** |
+| Tempo | — | needs `--token`: no native gas token, so a TIP-20 address is required |
+
+Rule evaluation is under 2ms with a full 24h window, so the poll wait dominates everything else.
+
+**What that number is not.** It measures *until the alert leaves this process*. It excludes writing the alert to the database and reading plus decrypting the recipients (two awaits on the critical path, see `makeDispatcher` in `index.ts`), Twilio accepting the call, and — the part the owner actually lives — **the phone ringing and someone answering**. That last one is not measurable from here at all: it depends on the carrier, the handset, and a person. "Until the alert leaves" is not "until the owner knows", and no marketing copy should blur the two.
+
+Reproduce it:
+
+```bash
+npx tsx scripts/medir-latencia-do-alerta.ts --todas --amostras 25
+```
+
 ## Chain support — what works, and what is only registered
 
 The detection core is network-agnostic: it depends on a published contract (`MonitoredChainAdapter`), not on any one chain's classes. A non-EVM network can be integrated without modifying the core, and there is a test that proves it by driving the unmodified monitor with a non-EVM adapter.
