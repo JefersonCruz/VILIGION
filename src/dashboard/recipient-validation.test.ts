@@ -60,3 +60,33 @@ describe("isValidEmail", () => {
     expect(isValidEmail("")).toBe(false);
   });
 });
+
+describe("isValidEmail — formas que o addressparser interpreta como estrutura", () => {
+  /*
+   * Cada caso abaixo PASSAVA pela validação antiga. São as formas descritas
+   * nos três avisos do nodemailer corrigidos em 10.1.4, onde o parser termina
+   * o endereço antes do fim e entrega a um destinatário que o cabeçalho não
+   * nomeia. A biblioteca foi atualizada; isto garante que a forma não entre
+   * nem que a dependência regrida.
+   */
+  it.each([
+    ['"a;b"@x.com', "ponto-e-vírgula fecha um grupo de endereços"],
+    ['"a>b"@x.com', "maior-que fecha um angle-addr"],
+    ["a(b)c@x.com", "comentário entre parênteses"],
+    ["a,b@x.com", "vírgula separa destinatários"],
+    ['a\\"b@x.com', "aspas e barra invertida citam estrutura"],
+    ["a[b]@x.com", "colchetes de domain-literal"],
+  ])("recusa %s (%s)", (endereco) => {
+    expect(isValidEmail(endereco)).toBe(false);
+  });
+
+  it("continua aceitando endereços comuns", () => {
+    for (const ok of [
+      "joao.silva@empresa.com.br",
+      "ops+alertas@viligion.com",
+      "a_b-c@sub.dominio.io",
+    ]) {
+      expect(isValidEmail(ok)).toBe(true);
+    }
+  });
+});
