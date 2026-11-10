@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "nodemailer": "^10.0.13",
+    "nodemailer": "^10.1.4",
     "ox": "0.14.45",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",
