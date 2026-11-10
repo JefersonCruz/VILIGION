@@ -11,13 +11,26 @@ import { type AlertLocale, resolveLocale } from "./locale.js";
 const MESSAGES: Record<AlertLocale, Record<DetectionEvent["kind"], string>> = {
   en: {
     "balance-drop": "VILIGION alert: unusual activity detected in your treasury. Check the dashboard for details.",
+    "slow-drain": "VILIGION alert: your treasury has been declining steadily for hours. Check the dashboard for details.",
     "transfer-blocked": "VILIGION alert: a transfer was blocked by your receive policy. Check the dashboard for details.",
   },
   pt: {
     "balance-drop": "Alerta VILIGION: atividade incomum detectada na sua tesouraria. Acesse o painel pra ver os detalhes.",
+    "slow-drain": "Alerta VILIGION: sua tesouraria vem caindo de forma contínua há horas. Acesse o painel pra ver os detalhes.",
     "transfer-blocked": "Alerta VILIGION: uma transferência foi bloqueada pela sua política de recebimento. Acesse o painel pra ver os detalhes.",
   },
 };
+
+/*
+ * Sobre o texto do dreno dizer "vem caindo há horas": é mais específico que o
+ * de queda súbita, e isso foi pesado contra a política. O que a política
+ * proíbe é saldo, valor e endereço - nada disso aparece, e nenhum número
+ * aparece. O que o texto revela a quem interceptasse o e-mail é que a conta
+ * está perdendo saldo há horas; quem está drenando já sabe disso melhor que
+ * ninguém. Em troca, o dono distingue "alguém sacou agora" de "isso vem
+ * acontecendo desde ontem", que pedem reação diferente. Sem essa distinção, o
+ * tipo de evento separado não serviria pra nada.
+ */
 
 /** Mensagem genérica pronta pra enviar por voz/e-mail - nunca inclui dado sensível, em nenhum idioma. */
 export function buildAlertMessage(event: DetectionEvent, locale: AlertLocale = resolveLocale()): string {
@@ -46,10 +59,17 @@ const SHORT_TITLE: Record<AlertLocale, string> = {
 const SHORT_MESSAGES: Record<AlertLocale, Record<DetectionEvent["kind"], string>> = {
   en: {
     "balance-drop": "Unusual activity in your treasury. Tap to open the dashboard.",
+    // hoje inalcançável: o push só sai em severidade crítica, e o dreno é
+    // sempre normal (ver slow-drain.ts). Fica escrito porque o compilador
+    // cobra a variante, e porque o dia em que a barra da ligação virar
+    // configurável este texto passa a sair - melhor existir do que ser
+    // improvisado depois.
+    "slow-drain": "Your treasury has been declining for hours. Tap to open the dashboard.",
     "transfer-blocked": "A transfer was blocked by your receive policy. Tap to open the dashboard.",
   },
   pt: {
     "balance-drop": "Atividade incomum na sua tesouraria. Toque para abrir o painel.",
+    "slow-drain": "Sua tesouraria vem caindo há horas. Toque para abrir o painel.",
     "transfer-blocked": "Transferência bloqueada pela sua política de recebimento. Toque para abrir o painel.",
   },
 };

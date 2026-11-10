@@ -13,9 +13,8 @@ interface WindowPoint {
   balance: bigint;
 }
 
+/** Nível já comunicado ao dono. Sem o pico que o gerou - ver a nota na comparação, em `evaluate`. */
 interface AlertedState {
-  peakAtMs: number;
-  peak: bigint;
   severity: AlertSeverity;
   pct: number;
 }
@@ -58,14 +57,29 @@ export class BalanceWindow {
     const event = balanceDropEvent(peak.balance, balance, elapsedMinutes, thresholds);
     if (!event || event.kind !== "balance-drop") return null;
 
+    /*
+     * A anti-repetição NÃO pode depender de qual ponto é o pico.
+     *
+     * Era isso que ela fazia (`last.peak === peak.balance && last.peakAtMs ===
+     * peak.atMs`), e num dreno contínuo o pico escorrega pra fora da janela a
+     * cada ciclo: o pico passa a ser outro ponto, a condição falha, e o
+     * alerta é tratado como incidente novo. Medido, perfil Equilibrado,
+     * amostragem de 15s: perder 40% em 2h gerava 242 alertas, e esvaziar 95%
+     * em 24h gerava 1.857 - pela MESMA perda. Um alerta que chega 242 vezes é
+     * um alerta que a pessoa desliga.
+     *
+     * Agora a comparação é com o nível já comunicado, independente de qual
+     * pico o produziu. Quem libera o estado é a histerese acima: quando a
+     * queda recua pra menos de metade do limiar, o incidente acabou.
+     */
     const last = this.alerted;
-    if (last && last.peak === peak.balance && last.peakAtMs === peak.atMs) {
+    if (last) {
       const escalated = SEVERITY_RANK[event.severity] > SEVERITY_RANK[last.severity];
       const grew = event.pctDropped >= last.pct + thresholds.maxBalanceDropPct;
       if (!escalated && !grew) return null;
     }
 
-    this.alerted = { peakAtMs: peak.atMs, peak: peak.balance, severity: event.severity, pct: event.pctDropped };
+    this.alerted = { severity: event.severity, pct: event.pctDropped };
     return event;
   }
 

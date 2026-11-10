@@ -16,6 +16,7 @@ import type { BalanceSnapshot, ChainAddress, MonitoredChainAdapter } from "./eng
 import type { ChainExtension } from "./engine/chain-extension.js";
 import type { DetectionEvent, UserThresholds } from "./engine/rules/detection-rules.js";
 import { BalanceWindow } from "./engine/rules/balance-window.js";
+import { SlowDrain } from "./engine/rules/slow-drain.js";
 
 /**
  * Fixo (testes, demo) ou uma função consultada a cada ciclo - assim uma
@@ -85,6 +86,14 @@ export type HealthListener = (info: { consecutiveFailures: number; lastError: un
 export class Monitor {
   private previousSnapshot: BalanceSnapshot | null = null;
   private readonly window = new BalanceWindow();
+  /**
+   * Segunda regra de saldo, com horizonte longo: pega a perda que a janela
+   * deslizante não consegue ver por medir percentual sobre um pico que mingua
+   * junto com o saldo (ver slow-drain.ts, que traz a medição). As duas leem a
+   * MESMA leitura ajustada de taxa, no mesmo ciclo - não há segunda chamada
+   * de RPC.
+   */
+  private readonly drain = new SlowDrain();
   private cumulativeFeeAdjustment = 0n;
   private lastGoodThresholds: UserThresholds | null = null;
   /**
@@ -248,11 +257,28 @@ export class Monitor {
     }
     const adjusted = current.raw + this.cumulativeFeeAdjustment;
     const event = this.window.evaluate(adjusted, current.observedAt, thresholds);
+    const drainEvent = this.drain.evaluate(adjusted, current.observedAt, thresholds);
     if (event) {
       try {
         await this.dispatchAlert(event);
       } catch (err) {
         this.window.forgetLastAlert();
+        throw err;
+      }
+      /*
+       * Só DEPOIS da entrega bem-sucedida o dreno é silenciado, pelo mesmo
+       * motivo da desduplicação de eventos de extensão acima: se a entrega
+       * falhou, ninguém foi avisado, e calar a outra regra transformaria uma
+       * falha de canal em perda silenciosa.
+       */
+      this.drain.noteFastAlert(current.observedAt);
+    } else if (drainEvent) {
+      // Nunca os dois no mesmo ciclo: `event` presente já significa que o
+      // dono está sendo avisado sobre este dinheiro agora.
+      try {
+        await this.dispatchAlert(drainEvent);
+      } catch (err) {
+        this.drain.forgetLastAlert();
         throw err;
       }
     }
