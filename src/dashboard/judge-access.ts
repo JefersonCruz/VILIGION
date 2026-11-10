@@ -120,43 +120,30 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-/**
- * Quais tokens de sessão são de jurado.
+/*
+ * NOTA SOBRE UMA DECISÃO REVERTIDA, porque o motivo importa pra quem vier.
  *
- * Vive aqui, e não dentro de `Session`, de propósito: o que esta sessão pode
- * fazer é uma decisão de AUTORIZAÇÃO do painel, não uma propriedade do ciclo
- * de vida da sessão. Manter separado também deixa `session.ts` livre pra evoluir
- * (expiração deslizante, teto absoluto) sem que esta feature atrapalhe.
+ * Aqui havia uma classe `JudgeSessions`: um `Set` com os tokens de sessão de
+ * jurado, separado de `Session`. O argumento era bom no papel - o que uma
+ * sessão PODE FAZER é autorização do painel, não propriedade do ciclo de vida
+ * da sessão, e manter separado deixava `session.ts` evoluir sozinho.
+ *
+ * O que o argumento não viu: estados separados têm tempos de vida separados, e
+ * aqui o descasamento tinha direção. O conjunto era limitado a 200 tokens e
+ * descartava o mais antigo quando enchia - descarte por VOLUME, e o volume é
+ * escolhido por quem abre as sessões. Perder a marca não derrubava o acesso,
+ * derrubava só a RESTRIÇÃO: a sessão seguia válida e passava a ser tratada
+ * como login completo. Pior, o login de jurado chama `loginLimiter.reset()`
+ * quando dá certo, então repetir não encontrava barreira alguma.
+ *
+ * Medido com o servidor HTTP de verdade (ver judge-session-escalation.test.ts):
+ * depois de 200 logins a mais, a primeira sessão respondia 200 em
+ * `GET /recipients` - a página que lista o telefone do dono, a única que esta
+ * política nega por escrito no README - em vez de 403.
+ *
+ * A marca agora é `Session.isJudge`: nasce e morre com a sessão. A separação
+ * que parecia mais limpa era a que abria o furo.
  */
-export class JudgeSessions {
-  private readonly tokens = new Set<string>();
-
-  /**
-   * Limite de tokens lembrados. Um conjunto que só cresce num processo que
-   * roda indefinidamente é vazamento de memória lento; o mais antigo sai
-   * quando passa daqui. Perder a marca de um token antigo é seguro: ele deixa
-   * de ser tratado como jurado e passa a cair na checagem normal de sessão,
-   * que já terá expirado.
-   */
-  static readonly MAX_TRACKED = 200;
-
-  mark(token: string): void {
-    this.tokens.add(token);
-    while (this.tokens.size > JudgeSessions.MAX_TRACKED) {
-      const oldest = this.tokens.values().next();
-      if (oldest.done) break;
-      this.tokens.delete(oldest.value);
-    }
-  }
-
-  isJudgeSession(token: string | undefined): boolean {
-    return token !== undefined && this.tokens.has(token);
-  }
-
-  forget(token: string | undefined): void {
-    if (token !== undefined) this.tokens.delete(token);
-  }
-}
 
 /**
  * Rotas de ESCRITA que uma sessão de jurado pode executar.
