@@ -39,6 +39,7 @@ function shortenAddress(address: string): string {
  */
 const ALERT_KIND_LABELS: Record<string, string> = {
   "balance-drop": "Queda de saldo",
+  "slow-drain": "Queda contínua",
   "transfer-blocked": "Transferência bloqueada",
 };
 

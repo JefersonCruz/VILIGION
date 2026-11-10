@@ -44,6 +44,25 @@ export type DetectionEvent =
       severity: AlertSeverity;
     }
   | {
+      /**
+       * Perda ACUMULADA num horizonte longo, devagar o bastante pra a janela
+       * deslizante nao enxergar - ver slow-drain.ts, que documenta a medicao.
+       *
+       * Tipo proprio, e nao um campo a mais em `balance-drop`, porque o que o
+       * dono precisa saber e diferente: nao "acabou de cair", e sim "vem
+       * caindo ha horas". Sendo variante separada, o compilador cobra a
+       * mensagem correspondente em cada idioma e canal
+       * (alert-content-policy.ts usa Record<DetectionEvent["kind"], string>),
+       * em vez de deixar o texto errado passar calado.
+       */
+      kind: "slow-drain";
+      userId: string;
+      pctDropped: number;
+      /** minutos entre o pico do horizonte e a leitura atual */
+      overMinutes: number;
+      severity: AlertSeverity;
+    }
+  | {
       kind: "transfer-blocked";
       userId: string;
       amount: bigint;

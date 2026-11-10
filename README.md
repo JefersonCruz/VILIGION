@@ -32,7 +32,18 @@ At the same time, linking a phone number to an on-chain balance creates a real, 
 ## What this project does
 
 1. **Monitors** TIP-20 addresses on Tempo (balance and `ReceivePolicyGuard`/TIP-403 blocked-transfer events) via direct RPC (Viem) as the primary source.
-2. **Detects** two event types against per-user configurable thresholds (private, never hardcoded): an abnormal balance drop inside a rolling window, and a blocked transfer above a configured amount. Statistical baselining of transfer *patterns* (z-score style) is roadmap, not built — see [`docs/PRODUCT-FEASIBILITY.md`](./docs/PRODUCT-FEASIBILITY.md).
+2. **Detects** three event types against per-user configurable thresholds (private, never hardcoded): an abnormal balance drop inside a rolling window, a **sustained decline over a long horizon** that the rolling window cannot see by construction, and a blocked transfer above a configured amount. Statistical baselining of transfer *patterns* (z-score style) is roadmap, not built — see [`docs/PRODUCT-FEASIBILITY.md`](./docs/PRODUCT-FEASIBILITY.md).
+
+   The second one exists because of a measured blind spot, not a hunch. The rolling window measures the drop as a percentage of the highest balance *inside the window*, and that reference falls as the balance falls — so a patient drain stays below the bar until most of the money is gone. Measured at a 15s poll with the recommended profile (10% warn / 30% call, 60-minute window):
+
+   | Scenario | Before | After |
+   |---|---|---|
+   | 40% drained over 24h | **never alerts** | first alert at 6h |
+   | 95% drained over 24h | first at 16h, then 1857 alerts (257 phone calls) | first at 2.5h, 10 alerts (2 calls) |
+   | 40% drained over 6h | 1 alert, at 6h — when the drain finished | first at 1.5h |
+   | 90% drained in 20min | first at 2min, 87 alerts | first at 2min, 8 alerts |
+
+   Two honest limits. There is a **sensitivity floor**: with a 24h horizon and a 10% bar, a drain slower than ~10% per day is still invisible — a measured 8%-over-24h drain produces no alert. And balance alone cannot tell an attacker draining slowly from a business simply spending; the discriminator used is that the money **does not come back**, which lowers the false positive rate rather than removing it. Checked against ordinary operations (flat balance, a one-off 25% payroll outflow, a treasury paying out and receiving daily): no new alerts in any of them. The rule and its reasoning are in [`src/engine/rules/slow-drain.ts`](./src/engine/rules/slow-drain.ts).
 3. **Alerts** through three channels, chosen by severity: a critical anomaly goes out by **real phone call** (Twilio Programmable Voice) and, if the owner registered a device, by **Web Push notification — no phone number involved at all**; a normal anomaly goes out by **email** (no per-message cost, no carrier call-log retention problem — see `SECURITY.md`). Content is **always generic** on every channel — never reveals balance or address, enforced by automated test rather than review.
 
    The push channel exists for a specific reason, and it isn't channel redundancy: a phone number is the one piece of data in the alert path that we cannot protect after the fact. It is attributable to a person, and it persists in carrier records and in Twilio's call logs — nothing in our code erases that. A push endpoint is an opaque address the browser issues and the owner can revoke, so there is no number to link to an account. The privacy property comes from the data not existing, not from stronger encryption. **Exercised end to end on a real device in production on 2026-10-12** — a test alert was delivered to a phone and the notification arrived. **Honest caveat:** it is inherently less reliable than a phone call — notably on iOS, where the app must be added to the home screen first. The two channels coexist on purpose; the more private channel is the less guaranteed one, and the owner chooses with that stated on screen.
