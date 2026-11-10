@@ -71,11 +71,21 @@ Five limits, because "temporary" without a mechanism is permanent:
 
 - **Off by default.** Without `JUDGE_ACCESS_PASSWORD` and `JUDGE_ACCESS_USERNAME`, the path does not exist — including in any clone.
 - **Dies on its own** at `JUDGE_ACCESS_EXPIRES_AT`, a constant in the source rather than a hosting setting, so the deadline is auditable by anyone reading the repository. Reopening requires a commit.
-- **Rate limited** by the existing login limiter (5 attempts / 15 min) — the only barrier on a path with no second factor, which is also why a password under 12 characters is refused at configuration time.
+- **Rate limited** by the existing login limiter (5 attempts / 15 min) on a path with no second factor, which is also why a password under 12 characters is refused at configuration time. Precisely: the limiter is reset on a *successful* judge login, so it bounds **guessing the password**, not **reusing it**. Someone holding the password can open sessions as fast as they like — see the defect recorded below, which depended on exactly that.
 - **Fully logged.** Every request from an evaluation session is recorded, allowed or refused, under a `[jurado]` prefix. An access path without an audit trail is one nobody can review afterwards.
 - **Never reaches admin surfaces.** `/admin/*` requires a bearer token that is not shared with judges; a session of any kind does not grant it.
 
 **Honest limits.** This is still a password granting read access to a dashboard showing a real monitored address and real alert history — not a pattern to copy for a production account with customer data, and not presented as one. It exists for a demonstration account on a testnet, with an expiry date attached. And because the session may edit thresholds and accounts, one judge can change what a later judge sees; on a demo account that is an acceptable trade for being able to evaluate the product at all.
+
+### Defect found and fixed, 2026-11-10: the three exclusions could be shed by volume
+
+The three exclusions above were enforced only while the session was **recognised** as an evaluation session, and that recognition lived in a separate in-memory `Set` capped at 200 tokens that discarded the oldest when full. The eviction was driven by **volume, not age** — and the volume is chosen by whoever opens the sessions. Combined with the limiter reset above, repeated logins met no barrier at all.
+
+Losing the mark did not end the session. It ended only the **restriction**: the session stayed valid and was then treated as an ordinary fully-authenticated login.
+
+Reproduced against the real HTTP server, not reasoned about on paper ([`src/dashboard/judge-session-escalation.test.ts`](./src/dashboard/judge-session-escalation.test.ts)): after 200 further logins, the first evaluation session answered **200** on `GET /recipients` — the page listing the owner's phone number, the one page this section says is refused for reading — instead of **403**.
+
+The mark now lives on the session record itself (`Session.isJudge`), so it is created and destroyed with the session: no separate lifetime to drift, no cap to overflow. The separation that looked cleaner was the one that opened the hole. The regression test opens 250 sessions and asserts the first one is still refused.
 
 ## Incident — upstream platform breach, 2026-10-22
 

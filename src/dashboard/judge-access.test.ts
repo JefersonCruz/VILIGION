@@ -3,7 +3,6 @@ import {
   isJudgeAccessOpen,
   isJudgeLogin,
   JUDGE_ACCESS_EXPIRES_AT,
-  JudgeSessions,
   readJudgeAccessConfig,
   refusalNoticeHtml,
   judgeMayAccess,
@@ -126,46 +125,6 @@ describe("política de acesso: o que o jurado pode fazer", () => {
   });
 });
 
-describe("marcação de sessões de jurado", () => {
-  it("marca e reconhece o token", () => {
-    const js = new JudgeSessions();
-    js.mark("abc");
-
-    expect(js.isJudgeSession("abc")).toBe(true);
-  });
-
-  it("token não marcado é sessão normal - o login completo não é afetado", () => {
-    const js = new JudgeSessions();
-    js.mark("abc");
-
-    expect(js.isJudgeSession("xyz")).toBe(false);
-    expect(js.isJudgeSession(undefined)).toBe(false);
-  });
-
-  it("logout esquece a marca", () => {
-    const js = new JudgeSessions();
-    js.mark("abc");
-    js.forget("abc");
-
-    expect(js.isJudgeSession("abc")).toBe(false);
-  });
-
-  it("o conjunto é limitado - não vaza memória num processo que roda sem parar", () => {
-    const js = new JudgeSessions();
-    for (let i = 0; i < JudgeSessions.MAX_TRACKED + 50; i++) js.mark(`t${i}`);
-
-    // o mais antigo saiu; o mais recente continua
-    expect(js.isJudgeSession("t0")).toBe(false);
-    expect(js.isJudgeSession(`t${JudgeSessions.MAX_TRACKED + 49}`)).toBe(true);
-  });
-
-  it("perder a marca de um token antigo falha para o lado seguro", () => {
-    // Um token esquecido deixa de ser tratado como jurado e cai na checagem
-    // normal de sessão - que, para um token antigo, já terá expirado.
-    const js = new JudgeSessions();
-    expect(js.isJudgeSession("token-que-nunca-foi-marcado")).toBe(false);
-  });
-});
 
 describe("a recusa explica, em vez de parecer quebrada", () => {
   const html = () => refusalNoticeHtml("Motivo de teste.");

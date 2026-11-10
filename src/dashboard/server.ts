@@ -20,7 +20,6 @@ import type { JudgeAccessConfig } from "./judge-access.js";
 import {
   isJudgeLogin,
   JUDGE_ACCESS_EXPIRES_AT,
-  JudgeSessions,
   readJudgeAccessConfig,
   refusalNoticeHtml,
   judgeMayAccess,
@@ -213,7 +212,6 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
    * em qualquer ambiente sem JUDGE_ACCESS_PASSWORD definida.
    */
   const judgeAccess = readJudgeAccessConfig(process.env);
-  const judgeSessions = new JudgeSessions();
   if (judgeAccess) {
     console.log(`[jurado] acesso de avaliacao HABILITADO para "${judgeAccess.username}" - le tudo e configura conta/limiares; NAO troca destinatario nem dispara alerta. Expira em ${JUDGE_ACCESS_EXPIRES_AT.toISOString()}`);
   }
@@ -230,8 +228,15 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
        * precisa poder auditar depois o que foi acessado. Prefixo "[jurado]"
        * pra filtrar (`railway logs | grep "\[jurado\]"`).
        */
+      /*
+       * `peek` e nao `validate`: a politica e decidida antes do roteamento, em
+       * TODA requisicao, e renovar a sessao aqui faria uma requisicao NEGADA
+       * manter a sessao viva. A marca vem da propria sessao (ver session.ts) -
+       * antes vinha de um Set separado que podia perder a marca por volume sem
+       * derrubar a sessao, e com isso perder so a restricao.
+       */
       const sessionToken = parseCookies(req.headers.cookie)["viligion_session"];
-      if (judgeSessions.isJudgeSession(sessionToken)) {
+      if (sessions.peek(sessionToken)?.isJudge === true) {
         const decisao = judgeMayAccess(req.method, req.url);
         console.log(
           `[jurado] ${decisao.allowed ? "ok     " : "NEGADO "} ${req.method ?? "?"} ${(req.url ?? "?").split("?")[0]}`,
@@ -242,7 +247,7 @@ export function createDashboardRequestHandler(deps: DashboardServerDeps) {
           return;
         }
       }
-      await route(req, res, deps, loginLimiter, waitlistLimiter, sessions, judgeAccess, judgeSessions);
+      await route(req, res, deps, loginLimiter, waitlistLimiter, sessions, judgeAccess);
     } catch (err) {
       console.error("[painel] erro não tratado:", err);
       if (!res.headersSent) {
@@ -271,7 +276,6 @@ async function route(
   waitlistLimiter: RateLimiter,
   sessions: SessionStore,
   judgeAccess: JudgeAccessConfig | null,
-  judgeSessions: JudgeSessions,
 ): Promise<void> {
   const url = req.url ?? "";
   const path = url.split("?")[0];
@@ -310,7 +314,7 @@ async function route(
   if (req.method === "GET" && url === "/signup") return renderSignupPage(res);
   if (req.method === "POST" && url === "/signup") return handleSignup(req, res, deps.signup);
   if (req.method === "GET" && url === "/login") return send(res, 200, loginPage({}));
-  if (req.method === "POST" && url === "/session") return handleSessionLogin(req, res, deps.users, loginLimiter, sessions, judgeAccess, judgeSessions);
+  if (req.method === "POST" && url === "/session") return handleSessionLogin(req, res, deps.users, loginLimiter, sessions, judgeAccess);
   if (req.method === "GET" && url === "/logout") return handleLogout(req, res, sessions);
 
   if (req.method === "GET" && url === "/dashboard") return withSession(req, res, sessions, (userId) => renderDashboard(res, deps, userId));
@@ -664,7 +668,6 @@ async function handleSessionLogin(
   loginLimiter: RateLimiter,
   sessions: SessionStore,
   judgeAccess: JudgeAccessConfig | null,
-  judgeSessions: JudgeSessions,
 ): Promise<void> {
   const body = await readFormBody(req);
   const { username, password, totpCode } = body;
@@ -687,8 +690,7 @@ async function handleSessionLogin(
     loginLimiter.reset(identifier);
     const user = await users.findByUsername(username);
     if (!user) return send(res, 401, loginPage({ error: "Credenciais inválidas." }));
-    const session = sessions.create(user.userId);
-    judgeSessions.mark(session.token);
+    const session = sessions.create(user.userId, { judge: true });
     console.log(`[jurado] sessao de avaliacao aberta para "${username}" - escrita limitada`);
     return redirect(res, "/dashboard", { "Set-Cookie": buildSessionCookie(session.token, SESSION_COOKIE_TTL_SECONDS) });
   }
