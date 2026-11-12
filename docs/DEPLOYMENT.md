@@ -4,6 +4,8 @@
 >
 > **Já executado de verdade em 2026-10-03** — não é só teoria. Projeto no ar em `https://viligion-app-production.up.railway.app`, testado com curl contra o domínio público (login, cadastro, dashboard, webhook todos respondendo). Os passos abaixo refletem o que realmente aconteceu, incluindo um obstáculo real (Passo 6) que não estava previsto na primeira versão deste guia.
 
+> **Migrando de conta de hospedagem, ou mexendo no domínio?** Este guia cobre um deploy do zero. Levar o banco, a chave mestra de criptografia e o `viligion.com` (Cloudflare) de uma conta para outra tem uma ordem obrigatória — um dos passos é irreversível se feito fora dela. Ver [`MIGRAR-DE-CONTA.md`](./MIGRAR-DE-CONTA.md).
+
 ## Antes de começar — o que o sistema expõe
 
 O processo sobe **um único servidor HTTP** (`PORT`, default 3000) atendendo webhook da Twilio e painel juntos — tentando a rota de webhook primeiro, caindo pro painel se não bater (ver `webhook-server.ts#handleWebhookRequest` e `dashboard/server.ts#createDashboardRequestHandler`). Isso foi uma correção deliberada: a versão original rodava dois `http.Server` em portas separadas, mas a Railway (confirmado na prática, não só na doc) só libera **um domínio público por serviço** via `railway domain` — então uma porta e um domínio é o que de fato funciona sem truque.
