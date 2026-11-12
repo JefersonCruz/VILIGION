@@ -1,14 +1,26 @@
 /**
  * Troca a chave mestra de criptografia SEM perder dado nenhum.
  *
+ * As chaves entram por VARIAVEL DE AMBIENTE, nunca por argumento:
+ *
  *   # 1. simula, nao escreve nada
- *   npx tsx scripts/rotate-encryption-key.ts --old <hex-atual> --new <hex-nova> --dry-run
+ *   $env:ROTATE_OLD_KEY = <valor atual de ENCRYPTION_KEY_KMS_ARN>
+ *   $env:ROTATE_NEW_KEY = node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"
+ *   npx tsx scripts/rotate-encryption-key.ts --dry-run
  *
  *   # 2. executa
- *   npx tsx scripts/rotate-encryption-key.ts --old <hex-atual> --new <hex-nova>
+ *   npx tsx scripts/rotate-encryption-key.ts
  *
- * Gere a chave nova com:
- *   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ *   # 3. limpa as duas da sessao
+ *   Remove-Item Env:ROTATE_OLD_KEY, Env:ROTATE_NEW_KEY
+ *
+ * POR QUE NAO POR ARGUMENTO. `--old` e `--new` ainda funcionam, pra nao
+ * quebrar quem ja tem o comando anotado, mas avisam alto. Argumento de linha
+ * de comando vai pro historico do shell - no Windows o PowerShell persiste
+ * ConsoleHost_history.txt em disco por padrao - e aparece na linha de comando
+ * do processo, legivel por qualquer coisa que liste processos. Numa ferramenta
+ * cuja razao de existir e responder ao vazamento de variaveis de ambiente,
+ * passar a chave velha E a nova por argv troca um vazamento por outro.
  *
  * ---
  *
@@ -67,24 +79,37 @@ function parseArgs(argv: string[]): Args {
     const i = argv.indexOf(`--${n}`);
     return i >= 0 ? argv[i + 1] : undefined;
   };
-  const old = get("old");
-  const nova = get("new");
+  /*
+   * Ambiente primeiro, argumento depois - e o argumento avisa. Ver a nota no
+   * cabecalho: argv fica no historico do shell e na lista de processos.
+   */
+  const oldArg = get("old");
+  const novaArg = get("new");
+  if (oldArg !== undefined || novaArg !== undefined) {
+    console.error(
+      "AVISO: chave passada por argumento de linha de comando. Isso fica no historico do shell " +
+        "e na linha de comando do processo. Prefira ROTATE_OLD_KEY / ROTATE_NEW_KEY.",
+    );
+  }
+  const old = process.env.ROTATE_OLD_KEY ?? oldArg;
+  const nova = process.env.ROTATE_NEW_KEY ?? novaArg;
   const databaseUrl = get("database-url") ?? process.env.DATABASE_URL;
 
   const erro = (m: string): never => {
     console.error(m);
-    console.error("\nUso: npx tsx scripts/rotate-encryption-key.ts --old <hex> --new <hex> [--dry-run]");
+    console.error("\nUso: ROTATE_OLD_KEY=<hex> ROTATE_NEW_KEY=<hex> npx tsx scripts/rotate-encryption-key.ts [--dry-run]");
     console.error("Gere a nova: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+    console.error("Ver docs/MIGRAR-DE-CONTA.md para a ordem completa.");
     process.exit(2);
   };
 
-  if (!old || !nova) erro("Faltou --old ou --new.");
+  if (!old || !nova) erro("Faltou ROTATE_OLD_KEY ou ROTATE_NEW_KEY (ou --old/--new).");
   if (!databaseUrl) erro("Sem DATABASE_URL. Rode via `railway run --service viligion-app -- ...` ou passe --database-url.");
   // 32 bytes = 64 hex. Conferir aqui evita descobrir no meio da rotacao.
-  for (const [nome, v] of [["--old", old], ["--new", nova]] as const) {
+  for (const [nome, v] of [["ROTATE_OLD_KEY", old], ["ROTATE_NEW_KEY", nova]] as const) {
     if (!/^[0-9a-fA-F]{64}$/.test(v)) erro(`${nome} precisa ser 64 caracteres hex (32 bytes). Recebi ${v.length}.`);
   }
-  if (old === nova) erro("--old e --new sao iguais. Isso nao rotaciona nada.");
+  if (old === nova) erro("A chave velha e a nova sao iguais. Isso nao rotaciona nada.");
 
   return { old, nova, dryRun: argv.includes("--dry-run"), databaseUrl };
 }
