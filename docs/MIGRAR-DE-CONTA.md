@@ -166,8 +166,20 @@ Esse script já valida a decifragem com a chave mestra. Se ele falhar aqui, pare
 
 Com o proxy ligado, o endereço público não muda. Mexe-se apenas no destino interno.
 
-1. **Na Railway (conta nova):** Settings → Networking → adicione `viligion.com` como domínio próprio. A Railway devolve um alvo CNAME (`algo.up.railway.app`) e começa a emitir certificado.
-2. **Na Cloudflare:** DNS → o registro de `viligion.com` (e de `www`) → troque o alvo para o CNAME novo. No apex funciona por *CNAME flattening*.
+0. **Na conta VELHA, libere o domínio primeiro.** Um domínio próprio é único em toda a Railway: enquanto estiver preso ao serviço antigo, a conta nova não consegue reivindicá-lo, e o erro é genérico (`Failed to create custom domain, please try again`) — não diz que o motivo é esse. Verificado na prática: um subdomínio novo criou sem problema no mesmo instante em que o apex falhava, o que descarta limite de plano. Faça pelo **navegador**, logado na conta antiga: remover o domínio do serviço velho. Trocar o CLI de volta funciona também, mas custa duas trocas de sessão.
+
+   Confira também o `www`: se estiver cadastrado no serviço antigo, precisa ser liberado junto.
+
+1. **Na Railway (conta nova):** Settings → Networking → adicione `viligion.com` como domínio próprio. A Railway devolve **dois** registros, não um:
+
+   | Tipo | Nome | Valor |
+   |---|---|---|
+   | CNAME | `@` (ou o subdomínio) | `<id>.up.railway.app` |
+   | TXT | `_railway-verify` | `railway-verify=<token>` |
+
+   O TXT é obrigatório para a verificação de propriedade; só o CNAME não basta. O alvo do CNAME é **por domínio** — não reaproveite o que aparece no domínio gerado nem o de outro domínio próprio.
+
+2. **Na Cloudflare:** DNS → crie os dois registros acima. No apex o CNAME funciona por *CNAME flattening*.
 3. **Durante a emissão do certificado**, deixe o registro em **DNS only** (nuvem cinza). Com o proxy ligado, o desafio de validação é interceptado pela Cloudflare e a emissão pode travar.
 4. Quando a Railway marcar o certificado como emitido, volte para **Proxied** (nuvem laranja).
 5. **SSL/TLS → modo de criptografia: `Full (strict)`.** A Railway serve certificado válido. Em `Flexible` a Cloudflare fala HTTP com a origem, a aplicação redireciona para HTTPS, e o resultado é laço de redirecionamento — o sintoma clássico de "o site não abre e não diz por quê".
