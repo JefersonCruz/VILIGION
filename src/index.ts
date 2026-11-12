@@ -34,6 +34,7 @@ import { asRequestListener } from "./async-request-handler.js";
 import { createTwilioVoiceClient } from "./alerts/twilio-voice.js";
 import { InMemoryWaitlistRepository, PostgresWaitlistRepository } from "./dashboard/waitlist.js";
 import { createEmailNotifier } from "./alerts/email-notifier.js";
+import { canalDoRegistro } from "./alerts/alert-channel-log.js";
 import { createWebPushNotifier, type PushSubscriptionRecord } from "./alerts/web-push.js";
 import { parsePushSubscription } from "./dashboard/push-subscription.js";
 import { generatePin, type PendingPin } from "./alerts/pin.js";
@@ -302,7 +303,7 @@ async function mainDemo() {
     console.log(`[alerta] disparando ${event.kind} (severidade=${event.severity}, alertId=${alertId})`);
 
     if (event.severity === "critical") {
-      alertLog.record({ alertId, userId: thresholds.userId, kind: event.kind, severity: "critical", deliveredVia: "voice" });
+      alertLog.record({ alertId, userId: thresholds.userId, kind: event.kind, severity: "critical", deliveredVia: canalDoRegistro("critical", { push: !!pushNotifier, voice: !!voiceClient, email: !!emailNotifier }) });
       const pending: PendingPin = generatePin(alertId);
       pinStore.set(alertId, pending);
       console.log(`[alerta] PIN de confirmação: ${pending.pin} (expira ${pending.expiresAt.toISOString()})`);
@@ -330,7 +331,7 @@ async function mainDemo() {
       return;
     }
 
-    alertLog.record({ alertId, userId: thresholds.userId, kind: event.kind, severity: "normal", deliveredVia: "email" });
+    alertLog.record({ alertId, userId: thresholds.userId, kind: event.kind, severity: "normal", deliveredVia: canalDoRegistro("normal", { push: !!pushNotifier, voice: !!voiceClient, email: !!emailNotifier }) });
     if (emailNotifier) {
       const toAddresses = (await recipients.listForUser(thresholds.userId)).filter((r) => r.kind === "email").map((r) => r.value);
       await emailNotifier.sendAlertEmail({ toAddresses, event });
@@ -499,12 +500,11 @@ async function mainWithDatabase(databaseUrl: string) {
   function makeDispatcher(userId: string) {
     return async (event: DetectionEvent) => {
       const alertId = randomUUID();
-      // Registra quais canais críticos foram TENTADOS (não qual entregou) -
-      // computado a partir do que está configurado, antes de qualquer await,
+      // Registra quais canais foram de fato TENTADOS (não qual entregou, e NUNCA
+      // um canal que não existe - ver alert-channel-log.ts). Antes de qualquer await,
       // pra manter a garantia de que o alerta é logado mesmo se a entrega
       // falhar depois.
-      const criticalChannels = [pushNotifier ? "push" : null, voiceClient ? "voice" : null].filter(Boolean).join("+");
-      const deliveredVia = event.severity === "critical" ? criticalChannels || "voice" : "email";
+      const deliveredVia = canalDoRegistro(event.severity, { push: !!pushNotifier, voice: !!voiceClient, email: !!emailNotifier });
       await alertLog.record({ alertId, userId, kind: event.kind, severity: event.severity, deliveredVia });
       console.log(`[alerta] user=${userId} ${event.kind} (severidade=${event.severity}, alertId=${alertId})`);
 

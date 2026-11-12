@@ -52,6 +52,10 @@ const CHANNEL_LABELS: Record<string, string> = {
   email: "E-mail",
   push: "Dispositivo",
   "push+voice": "Dispositivo + ligação",
+  // Alerta detectado que não tinha para onde ir - nenhum canal configurado.
+  // Aparece em vez de "Ligação", que era o que o histórico dizia antes mesmo
+  // sem Twilio nenhuma (ver alerts/alert-channel-log.ts).
+  nenhum: "Nenhum canal configurado",
 };
 
 /** `pinStatus` acumulou significados de entrega além da confirmação do PIN - ver index.ts. */
